@@ -10,7 +10,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mini-novel-mysql-data:/var/lib/mysql
-      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -31,7 +31,7 @@ services:
 
   mini-novel-app:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     container_name: mini-novel-app
     restart: unless-stopped
@@ -52,7 +52,7 @@ services:
 
   mini-novel-h5:
     build:
-      context: ./mini-novel-h5
+      context: ../mini-novel-h5
       dockerfile: Dockerfile
     container_name: mini-novel-h5
     restart: unless-stopped
@@ -63,7 +63,7 @@ services:
 
   mini-novel-crawler-service:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.crawler-service
     container_name: mini-novel-crawler-service
     restart: unless-stopped
@@ -80,7 +80,7 @@ services:
 
   mini-novel-admin-ui:
     build:
-      context: ./mini-novel-admin-ui
+      context: ../mini-novel-admin-ui
       dockerfile: Dockerfile
     container_name: mini-novel-admin-ui
     restart: unless-stopped
