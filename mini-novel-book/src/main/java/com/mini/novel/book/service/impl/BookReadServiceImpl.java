@@ -25,7 +25,9 @@ public class BookReadServiceImpl implements BookReadService {
     @Override
     public List<Novel> latestNovels(int limit) {
         return novelMapper.selectPage(Page.of(1, limit),
-                new LambdaQueryWrapper<Novel>().orderByDesc(Novel::getUpdatedAt)).getRecords();
+                new LambdaQueryWrapper<Novel>()
+                        .ne(Novel::getStatus, 0)
+                        .orderByDesc(Novel::getUpdatedAt)).getRecords();
     }
 
     @Override
@@ -34,11 +36,15 @@ public class BookReadServiceImpl implements BookReadService {
         if (novel == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "小说不存在");
         }
+        if (novel.getStatus() != null && novel.getStatus() == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "小说已下架");
+        }
         return novel;
     }
 
     @Override
     public List<Chapter> listChapters(Long novelId) {
+        getNovel(novelId);
         return chapterMapper.selectList(new LambdaQueryWrapper<Chapter>()
                 .eq(Chapter::getNovelId, novelId)
                 .orderByAsc(Chapter::getChapterNo));
@@ -50,6 +56,7 @@ public class BookReadServiceImpl implements BookReadService {
         if (chapter == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "章节不存在");
         }
+        getNovel(chapter.getNovelId());
         return chapter;
     }
 }
