@@ -122,6 +122,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 validateUrl(rank.rankUrl);
                 Document rankPage = fetch(rank.rankUrl);
                 List<BookSeed> seeds = parseBookSeeds(rankPage, rank.rankUrl, maxBooks(rank));
+                if (seeds.isEmpty() && source.sourceCode != null && source.sourceCode.toLowerCase().contains("qidian")
+                        && !rank.rankUrl.contains("m.qidian.com")) {
+                    Document mobilePage = fetch("https://m.qidian.com/");
+                    seeds = parseBookSeeds(mobilePage, "https://m.qidian.com/", maxBooks(rank));
+                }
                 total += seeds.size();
                 for (BookSeed seed : seeds) {
                     try {
@@ -139,8 +144,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 }
             }
 
-            task.status = failed == 0 ? "SUCCESS" : "PARTIAL_SUCCESS";
-            task.message = "采集完成：发现 " + total + " 本，写入/更新 " + success + " 本，失败 " + failed + " 本。";
+            if (total == 0) {
+                task.status = "NO_DATA";
+                task.message = "采集完成但未解析到书籍，请检查榜单地址或解析规则。";
+            } else {
+                task.status = failed == 0 ? "SUCCESS" : "PARTIAL_SUCCESS";
+                task.message = "采集完成：发现 " + total + " 本，写入/更新 " + success + " 本，失败 " + failed + " 本。";
+            }
         } catch (Exception ex) {
             task.status = "FAILED";
             task.message = "采集失败：" + ex.getMessage();
