@@ -114,6 +114,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         item.updatedAt = LocalDateTime.now();
         mergeItemMapper.updateById(item);
         MergeOutcome outcome = mergeBook(task, book, chapters);
+        syncRetriedItemStatus(mergeItemId, outcome);
         refreshTaskCounters(task.id);
         if (outcome == MergeOutcome.MERGED && !"MERGED".equals(task.status) && !"PARTIAL_MERGED".equals(task.status)) {
             task.status = "PARTIAL_MERGED";
@@ -429,6 +430,25 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         } else {
             chapterSourceMappingMapper.updateById(mapping);
         }
+    }
+
+    private void syncRetriedItemStatus(Long mergeItemId, MergeOutcome outcome) {
+        CrawlMergeItem item = mergeItemMapper.selectById(mergeItemId);
+        if (item == null || !"RETRYING".equals(item.matchStatus)) {
+            return;
+        }
+        if (outcome == MergeOutcome.MERGED) {
+            item.matchStatus = "MERGED";
+            item.message = "人工重新清洗后正文已入库。";
+        } else if (outcome == MergeOutcome.PENDING_REVIEW) {
+            item.matchStatus = "PENDING_REVIEW";
+            item.message = "重新清洗后仍未发现达标正文，等待补正文或人工审核。";
+        } else {
+            item.matchStatus = "FAILED";
+            item.message = "人工重新清洗失败，请检查原始章节和正文内容。";
+        }
+        item.updatedAt = LocalDateTime.now();
+        mergeItemMapper.updateById(item);
     }
 
     private void refreshNovelLatestChapter(Novel novel) {
