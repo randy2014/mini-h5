@@ -120,3 +120,28 @@ body {
 .seed-input {
   width: 520px;
 }
+
+.crawler-tabs {
+  padding: 0 2px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.form-grid .el-form-item {
+  margin-right: 0;
+}
+
+.form-grid .wide {
+  grid-column: span 2;
+}

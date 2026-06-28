@@ -9,7 +9,7 @@
         <el-menu-item index="/admin/users">用户管理</el-menu-item>
         <el-menu-item index="/admin/vip">VIP 管理</el-menu-item>
         <el-menu-item index="/admin/orders">付费管理</el-menu-item>
-        <el-menu-item index="/admin/crawler">采集任务</el-menu-item>
+        <el-menu-item index="/admin/crawler">采集管理</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
