@@ -15,6 +15,7 @@ import com.mini.novel.crawler.mapper.CrawlSourceCredentialMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
+import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.util.StringUtils;
@@ -36,6 +37,7 @@ public class CrawlerConfigController {
     private final CrawlTaskRecordMapper taskRecordMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
     private final CrawlerExecutionService crawlerExecutionService;
+    private final CrawlerMergeService crawlerMergeService;
 
     public CrawlerConfigController(CrawlerSourceConfigMapper sourceMapper,
                                    CrawlRankSourceMapper rankSourceMapper,
@@ -43,7 +45,8 @@ public class CrawlerConfigController {
                                    CrawlSourceCredentialMapper credentialMapper,
                                    CrawlTaskRecordMapper taskRecordMapper,
                                    CrawlMergeTaskMapper mergeTaskMapper,
-                                   CrawlerExecutionService crawlerExecutionService) {
+                                   CrawlerExecutionService crawlerExecutionService,
+                                   CrawlerMergeService crawlerMergeService) {
         this.sourceMapper = sourceMapper;
         this.rankSourceMapper = rankSourceMapper;
         this.scheduleMapper = scheduleMapper;
@@ -51,6 +54,7 @@ public class CrawlerConfigController {
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
         this.crawlerExecutionService = crawlerExecutionService;
+        this.crawlerMergeService = crawlerMergeService;
     }
 
     @GetMapping("/credentials")
@@ -219,6 +223,12 @@ public class CrawlerConfigController {
     @GetMapping("/merge-tasks")
     public Result<List<CrawlMergeTask>> mergeTasks() {
         return Result.ok(mergeTaskMapper.selectList(new QueryWrapper<CrawlMergeTask>().orderByDesc("id").last("LIMIT 100")));
+    }
+
+    @PostMapping("/merge-tasks/run-pending")
+    public Result<Void> runPendingMergeTasks() {
+        crawlerMergeService.mergePending();
+        return Result.ok();
     }
 
     private void normalizeSource(CrawlerSourceConfig source) {

@@ -8,6 +8,7 @@ import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
+import com.mini.novel.crawler.service.CrawlerMergeService;
 import com.mini.novel.crawler.service.CrawlerScheduleDispatcher;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -27,15 +28,18 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     private final CrawlTaskRecordMapper taskRecordMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
     private final CrawlerExecutionService executionService;
+    private final CrawlerMergeService mergeService;
 
     public CrawlerScheduleDispatcherImpl(CrawlScheduleMapper scheduleMapper,
                                          CrawlTaskRecordMapper taskRecordMapper,
                                          CrawlMergeTaskMapper mergeTaskMapper,
-                                         CrawlerExecutionService executionService) {
+                                         CrawlerExecutionService executionService,
+                                         CrawlerMergeService mergeService) {
         this.scheduleMapper = scheduleMapper;
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
         this.executionService = executionService;
+        this.mergeService = mergeService;
     }
 
     @Scheduled(fixedDelayString = "${crawler.schedule.fixed-delay-ms:60000}", initialDelayString = "${crawler.schedule.initial-delay-ms:20000}")
@@ -70,6 +74,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         for (CrawlTaskRecord task : tasks) {
             executionService.executeAsync(task.id);
         }
+        mergeService.mergePending();
     }
 
     private boolean isDue(CrawlSchedule schedule) {

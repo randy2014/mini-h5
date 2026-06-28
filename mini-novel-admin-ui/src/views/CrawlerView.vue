@@ -310,7 +310,10 @@
           <template #header>
             <div class="card-header">
               <span>清洗入库任务</span>
-              <el-button @click="loadMergeTasks">刷新</el-button>
+              <div class="header-actions">
+                <el-button type="primary" @click="runPendingMergeTasks">执行待清洗</el-button>
+                <el-button @click="loadMergeTasks">刷新</el-button>
+              </div>
             </div>
           </template>
           <el-table :data="mergeTasks" v-loading="loading.merge">
@@ -553,6 +556,12 @@ async function runSchedule(row) {
   ElMessage.success('采集任务已创建');
   activeTab.value = 'tasks';
   await Promise.all([loadSchedules(), loadTasks(), loadMergeTasks()]);
+}
+
+async function runPendingMergeTasks() {
+  await crawlerApi.post('/config/merge-tasks/run-pending');
+  ElMessage.success('待清洗任务已执行');
+  await Promise.all([loadMergeTasks(), loadTasks()]);
 }
 
 onMounted(loadAll);

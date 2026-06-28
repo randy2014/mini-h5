@@ -15,7 +15,11 @@ import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
+import com.mini.novel.crawler.parser.CrawlerSiteParser;
+import com.mini.novel.crawler.parser.ParsedBookSeed;
+import com.mini.novel.crawler.parser.ParsedBookSnapshot;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
+import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
@@ -25,14 +29,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
@@ -45,9 +44,6 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private static final String MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
     private static final int DEFAULT_MAX_BOOKS = 20;
-    private static final Pattern MOBILE_BOOK_PATTERN = Pattern.compile(
-            "\\{[^{}]*?\"bid\"\\s*:\\s*\"?(\\d+)\"?[^{}]*?\"cid\"\\s*:\\s*\"?(\\d+)\"?[^{}]*?\"bName\"\\s*:\\s*\"([^\"]+)\"[^{}]*?\"bAuth\"\\s*:\\s*\"([^\"]+)\"[^{}]*?(?:\"desc\"\\s*:\\s*\"([^\"]*)\")?[^{}]*?(?:\"cnt\"\\s*:\\s*\"([^\"]*)\")?[^{}]*?\\}");
-    private static final Pattern BOOK_ID_PATTERN = Pattern.compile("(?:/info/|/book/)(\\d+)");
 
     private final CrawlTaskRecordMapper taskMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
@@ -56,6 +52,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private final CrawlChapterRawMapper chapterRawMapper;
     private final CrawlContentRawMapper contentRawMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
+    private final CrawlerMergeService mergeService;
+    private final List<CrawlerSiteParser> siteParsers;
     private final TaskExecutor applicationTaskExecutor;
 
     public CrawlerExecutionServiceImpl(CrawlTaskRecordMapper taskMapper,
@@ -65,6 +63,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                                        CrawlChapterRawMapper chapterRawMapper,
                                        CrawlContentRawMapper contentRawMapper,
                                        CrawlMergeTaskMapper mergeTaskMapper,
+                                       CrawlerMergeService mergeService,
+                                       List<CrawlerSiteParser> siteParsers,
                                        @Qualifier("applicationTaskExecutor") TaskExecutor applicationTaskExecutor) {
         this.taskMapper = taskMapper;
         this.sourceMapper = sourceMapper;
@@ -73,6 +73,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         this.chapterRawMapper = chapterRawMapper;
         this.contentRawMapper = contentRawMapper;
         this.mergeTaskMapper = mergeTaskMapper;
+        this.mergeService = mergeService;
+        this.siteParsers = siteParsers;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
 
@@ -92,7 +94,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         task.status = "RUNNING";
         task.startedAt = now;
         task.updatedAt = now;
-        task.message = "采集执行中：正在读取榜单和章节入口。";
+        task.message = "采集执行中：正在读取榜单、书籍详情、章节入口和公开正文。";
         taskMapper.updateById(task);
 
         int total = 0;
@@ -104,34 +106,22 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 throw new IllegalStateException("采集源不存在：" + task.sourceId);
             }
 
-            List<CrawlRankSource> ranks = loadRanks(task);
-            if (ranks.isEmpty()) {
-                CrawlRankSource fallback = new CrawlRankSource();
-                fallback.id = 0L;
-                fallback.sourceId = source.id;
-                fallback.rankName = "站点首页";
-                fallback.rankType = "HOME";
-                fallback.rankUrl = source.baseUrl;
-                fallback.maxBooks = DEFAULT_MAX_BOOKS;
-                fallback.preferCompleted = true;
-                fallback.enabled = true;
-                ranks.add(fallback);
-            }
-
+            List<CrawlRankSource> ranks = loadRanks(task, source);
             for (CrawlRankSource rank : ranks) {
                 validateUrl(rank.rankUrl);
+                CrawlerSiteParser parser = selectParser(source, rank.rankUrl);
                 Document rankPage = fetch(rank.rankUrl);
-                List<BookSeed> seeds = parseBookSeeds(rankPage, rank.rankUrl, maxBooks(rank));
-                if (seeds.isEmpty() && source.sourceCode != null && source.sourceCode.toLowerCase().contains("qidian")
-                        && !rank.rankUrl.contains("m.qidian.com")) {
+                List<ParsedBookSeed> seeds = parser.parseBookSeeds(rankPage, rank.rankUrl, maxBooks(rank));
+                if (seeds.isEmpty() && isQidian(source, rank.rankUrl) && !rank.rankUrl.contains("m.qidian.com")) {
                     Document mobilePage = fetch("https://m.qidian.com/");
-                    seeds = parseBookSeeds(mobilePage, "https://m.qidian.com/", maxBooks(rank));
+                    seeds = parser.parseBookSeeds(mobilePage, "https://m.qidian.com/", maxBooks(rank));
                 }
+
                 total += seeds.size();
-                for (BookSeed seed : seeds) {
+                for (ParsedBookSeed seed : seeds) {
                     try {
-                        BookSnapshot snapshot = fetchBook(seed);
-                        if (!StringUtils.hasText(snapshot.title)) {
+                        ParsedBookSnapshot snapshot = parser.fetchBook(seed, this::fetch);
+                        if (!StringUtils.hasText(snapshot.title())) {
                             failed++;
                             continue;
                         }
@@ -165,16 +155,36 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
     }
 
-    private List<CrawlRankSource> loadRanks(CrawlTaskRecord task) {
+    private List<CrawlRankSource> loadRanks(CrawlTaskRecord task, CrawlerSourceConfig source) {
         if (task.rankSourceId != null) {
             CrawlRankSource rank = rankSourceMapper.selectById(task.rankSourceId);
             return rank == null ? new ArrayList<>() : new ArrayList<>(List.of(rank));
         }
-        return rankSourceMapper.selectList(new QueryWrapper<CrawlRankSource>()
+        List<CrawlRankSource> ranks = rankSourceMapper.selectList(new QueryWrapper<CrawlRankSource>()
                 .eq("source_id", task.sourceId)
                 .eq("enabled", true)
                 .orderByAsc("id")
                 .last("LIMIT 20"));
+        if (!ranks.isEmpty()) {
+            return ranks;
+        }
+        CrawlRankSource fallback = new CrawlRankSource();
+        fallback.id = 0L;
+        fallback.sourceId = source.id;
+        fallback.rankName = "站点首页";
+        fallback.rankType = "HOME";
+        fallback.rankUrl = source.baseUrl;
+        fallback.maxBooks = DEFAULT_MAX_BOOKS;
+        fallback.preferCompleted = true;
+        fallback.enabled = true;
+        return new ArrayList<>(List.of(fallback));
+    }
+
+    private CrawlerSiteParser selectParser(CrawlerSourceConfig source, String rankUrl) {
+        return siteParsers.stream()
+                .filter(parser -> parser.supports(source, rankUrl))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("没有可用的站点解析器"));
     }
 
     private Document fetch(String url) throws IOException {
@@ -185,77 +195,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 .get();
     }
 
-    private List<BookSeed> parseBookSeeds(Document document, String rankUrl, int maxBooks) {
-        List<BookSeed> mobileSeeds = parseMobileEmbeddedBooks(document.html(), maxBooks);
-        if (!mobileSeeds.isEmpty()) {
-            return mobileSeeds;
-        }
-
-        Set<String> links = new LinkedHashSet<>();
-        for (Element link : document.select("a[href*='book.qidian.com/info/'], a[href*='www.qidian.com/book/']")) {
-            String href = normalizeUrl(link.absUrl("href"));
-            if (StringUtils.hasText(href)) {
-                links.add(href);
-            }
-            if (links.size() >= maxBooks) {
-                break;
-            }
-        }
-
-        List<BookSeed> seeds = new ArrayList<>();
-        for (String link : links) {
-            seeds.add(new BookSeed(link, "", "", "", 0L, "", rankUrl));
-        }
-        return seeds;
-    }
-
-    private List<BookSeed> parseMobileEmbeddedBooks(String html, int maxBooks) {
-        List<BookSeed> seeds = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        Matcher matcher = MOBILE_BOOK_PATTERN.matcher(html);
-        while (matcher.find() && seeds.size() < maxBooks) {
-            String bid = matcher.group(1);
-            String cid = matcher.group(2);
-            if (!seen.add(bid)) {
-                continue;
-            }
-            seeds.add(new BookSeed(
-                    "https://book.qidian.com/info/" + bid,
-                    unescapeJson(matcher.group(3)),
-                    unescapeJson(matcher.group(4)),
-                    matcher.group(5) == null ? "" : unescapeJson(matcher.group(5)),
-                    parseWordCount(matcher.group(6)),
-                    cid,
-                    "https://m.qidian.com/"));
-        }
-        return seeds;
-    }
-
-    private BookSnapshot fetchBook(BookSeed seed) throws IOException {
-        String sourceBookId = extractBookId(seed.url);
-        if (StringUtils.hasText(seed.title)) {
-            return new BookSnapshot(seed.title, seed.author, "https://dummyimage.com/300x420/20232a/ffffff&text=Qidian",
-                    seed.intro, seed.url, sourceBookId, seed.wordCount, seed.chapterId, publicChapterUrl(seed.url, seed.chapterId));
-        }
-
-        Document detail = fetch(seed.url);
-        String title = firstText(detail, ".book-info h1 em", ".book-information h1", "h1 em", "h1");
-        String author = firstText(detail, ".book-info h1 a", ".writer", ".book-information .author", "a[href*='/author/']");
-        String intro = firstText(detail, ".book-intro p", ".intro", ".book-info-detail .book-intro", "meta[name=description]");
-        String cover = detail.select(".book-img img, .book-img-box img, img[src*='bookcover']").stream()
-                .map(img -> normalizeImageUrl(img.absUrl("src")))
-                .filter(StringUtils::hasText)
-                .findFirst()
-                .orElse("https://dummyimage.com/300x420/20232a/ffffff&text=Qidian");
-        long wordCount = parseWordCount(firstText(detail, ".book-info p em", ".total .num", ".count"));
-        String chapterId = firstChapterId(detail);
-        return new BookSnapshot(title, cleanAuthor(author), cover, intro, seed.url, sourceBookId, wordCount,
-                chapterId, publicChapterUrl(seed.url, chapterId));
-    }
-
-    private CrawlBookRaw upsertBookRaw(CrawlerSourceConfig source, CrawlRankSource rank, BookSnapshot snapshot) {
+    private CrawlBookRaw upsertBookRaw(CrawlerSourceConfig source, CrawlRankSource rank, ParsedBookSnapshot snapshot) {
         LocalDateTime now = LocalDateTime.now();
-        String sourceBookId = StringUtils.hasText(snapshot.sourceBookId) ? snapshot.sourceBookId : sha256(snapshot.sourceUrl).substring(0, 24);
+        String sourceBookId = StringUtils.hasText(snapshot.sourceBookId())
+                ? snapshot.sourceBookId()
+                : sha256(snapshot.sourceUrl()).substring(0, 24);
         CrawlBookRaw book = bookRawMapper.selectOne(new QueryWrapper<CrawlBookRaw>()
                 .eq("source_code", source.sourceCode)
                 .eq("source_book_id", sourceBookId)
@@ -266,17 +210,17 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         book.sourceCode = source.sourceCode;
         book.sourceBookId = sourceBookId;
-        book.sourceUrl = limit(snapshot.sourceUrl, 512);
-        book.title = limit(snapshot.title, 128);
-        book.author = limit(StringUtils.hasText(snapshot.author) ? snapshot.author : "未知作者", 64);
-        book.intro = snapshot.intro;
-        book.coverUrl = limit(snapshot.coverUrl, 512);
+        book.sourceUrl = limit(snapshot.sourceUrl(), 512);
+        book.title = limit(snapshot.title(), 128);
+        book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "未知作者", 64);
+        book.intro = snapshot.intro();
+        book.coverUrl = limit(snapshot.coverUrl(), 512);
         book.categoryName = "未分类";
         book.bookStatus = "UNKNOWN";
-        book.wordCount = snapshot.wordCount;
+        book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;
         book.rankType = rank.rankType;
-        book.contentStatus = StringUtils.hasText(snapshot.chapterId) ? "CATALOG_READY" : "META_ONLY";
+        book.contentStatus = StringUtils.hasText(snapshot.chapterId()) ? "CATALOG_READY" : "META_ONLY";
         book.rawJson = "{\"rankName\":\"" + json(rank.rankName) + "\",\"rankUrl\":\"" + json(rank.rankUrl) + "\"}";
         book.crawledAt = now;
         book.updatedAt = now;
@@ -288,12 +232,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return book;
     }
 
-    private void upsertChapterAndContent(CrawlBookRaw book, BookSnapshot snapshot) {
-        if (!StringUtils.hasText(snapshot.chapterId) && !StringUtils.hasText(snapshot.chapterUrl)) {
+    private void upsertChapterAndContent(CrawlBookRaw book, ParsedBookSnapshot snapshot) {
+        if (!StringUtils.hasText(snapshot.chapterId()) && !StringUtils.hasText(snapshot.chapterUrl())) {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
-        String sourceChapterId = StringUtils.hasText(snapshot.chapterId) ? snapshot.chapterId : sha256(snapshot.chapterUrl).substring(0, 24);
+        String sourceChapterId = StringUtils.hasText(snapshot.chapterId())
+                ? snapshot.chapterId()
+                : sha256(snapshot.chapterUrl()).substring(0, 24);
         CrawlChapterRaw chapter = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
                 .eq("book_raw_id", book.id)
                 .eq("source_chapter_id", sourceChapterId)
@@ -304,7 +250,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             chapter.createdAt = now;
         }
         chapter.sourceChapterId = sourceChapterId;
-        chapter.sourceUrl = limit(snapshot.chapterUrl, 512);
+        chapter.sourceUrl = limit(snapshot.chapterUrl(), 512);
         chapter.chapterNo = 1;
         chapter.title = "公开章节入口 #" + sourceChapterId;
         chapter.vip = false;
@@ -313,10 +259,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         chapter.crawledAt = now;
         chapter.updatedAt = now;
 
-        String content = fetchPublicChapterContent(snapshot.chapterUrl);
+        String content = fetchPublicChapterContent(snapshot.chapterUrl());
         if (StringUtils.hasText(content)) {
             chapter.contentHash = sha256(content);
             chapter.contentStatus = "CONTENT_READY";
+            book.contentStatus = "CONTENT_READY";
+            bookRawMapper.updateById(book);
         }
         if (chapter.id == null) {
             chapterRawMapper.insert(chapter);
@@ -335,7 +283,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         try {
             validateUrl(url);
             Document document = fetch(url);
-            String text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p").eachText()
+            String text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p, article p")
+                    .eachText()
                     .stream()
                     .filter(StringUtils::hasText)
                     .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
@@ -349,17 +298,19 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private void upsertContent(CrawlChapterRaw chapter, String content) {
-        CrawlContentRaw existing = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
+        CrawlContentRaw raw = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
                 .eq("chapter_raw_id", chapter.id)
                 .last("LIMIT 1"));
-        CrawlContentRaw raw = existing == null ? new CrawlContentRaw() : existing;
+        if (raw == null) {
+            raw = new CrawlContentRaw();
+            raw.createdAt = LocalDateTime.now();
+        }
         raw.chapterRawId = chapter.id;
         raw.content = content;
         raw.contentHash = sha256(content);
         raw.contentLength = content.length();
         raw.storageMode = "MYSQL_LONGTEXT";
         if (raw.id == null) {
-            raw.createdAt = LocalDateTime.now();
             contentRawMapper.insert(raw);
         } else {
             contentRawMapper.updateById(raw);
@@ -378,6 +329,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         mergeTask.message = "采集完成，等待清洗匹配与入业务库。";
         mergeTask.updatedAt = LocalDateTime.now();
         mergeTaskMapper.updateById(mergeTask);
+        if ("SUCCESS".equals(task.status) || "PARTIAL_SUCCESS".equals(task.status)) {
+            mergeService.mergeByCrawlTaskId(task.id);
+        }
     }
 
     private void validateUrl(String url) {
@@ -401,45 +355,6 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
     }
 
-    private String firstText(Document document, String... selectors) {
-        for (String selector : selectors) {
-            Element element = document.selectFirst(selector);
-            if (element != null) {
-                String text = "meta[name=description]".equals(selector) ? element.attr("content") : element.text();
-                if (StringUtils.hasText(text)) {
-                    return text.trim();
-                }
-            }
-        }
-        return "";
-    }
-
-    private String firstChapterId(Document document) {
-        for (Element link : document.select("a[href*='/chapter/']")) {
-            Matcher matcher = Pattern.compile("/chapter/\\d+/(\\d+)").matcher(link.attr("href"));
-            if (matcher.find()) {
-                return matcher.group(1);
-            }
-        }
-        return "";
-    }
-
-    private String publicChapterUrl(String bookUrl, String chapterId) {
-        String bookId = extractBookId(bookUrl);
-        if (StringUtils.hasText(bookId) && StringUtils.hasText(chapterId)) {
-            return "https://www.qidian.com/chapter/" + bookId + "/" + chapterId + "/";
-        }
-        return "";
-    }
-
-    private String extractBookId(String url) {
-        if (!StringUtils.hasText(url)) {
-            return "";
-        }
-        Matcher matcher = BOOK_ID_PATTERN.matcher(url);
-        return matcher.find() ? matcher.group(1) : "";
-    }
-
     private int maxBooks(CrawlRankSource rank) {
         return rank.maxBooks == null || rank.maxBooks <= 0 ? DEFAULT_MAX_BOOKS : Math.min(rank.maxBooks, 100);
     }
@@ -448,54 +363,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return text.contains("登录") || text.contains("付费") || text.contains("订阅") || text.contains("VIP");
     }
 
-    private String normalizeUrl(String url) {
-        if (!StringUtils.hasText(url)) {
-            return "";
-        }
-        int queryIndex = url.indexOf('?');
-        return queryIndex >= 0 ? url.substring(0, queryIndex) : url;
-    }
-
-    private String normalizeImageUrl(String url) {
-        if (!StringUtils.hasText(url)) {
-            return "";
-        }
-        return url.startsWith("//") ? "https:" + url : url;
-    }
-
-    private String cleanAuthor(String author) {
-        if (!StringUtils.hasText(author)) {
-            return "";
-        }
-        return author.replace("作者：", "").replace("作家：", "").trim();
-    }
-
-    private String unescapeJson(String text) {
-        if (!StringUtils.hasText(text)) {
-            return "";
-        }
-        return text.replace("\\\"", "\"")
-                .replace("\\/", "/")
-                .replace("\\n", "\n")
-                .replace("\\r", "")
-                .replace("\\t", " ")
-                .trim();
-    }
-
-    private long parseWordCount(String text) {
-        if (!StringUtils.hasText(text)) {
-            return 0L;
-        }
-        String normalized = text.replace(",", "").trim();
-        try {
-            if (normalized.contains("万")) {
-                return Math.round(Double.parseDouble(normalized.replaceAll("[^0-9.]", "")) * 10000);
-            }
-            String digits = normalized.replaceAll("[^0-9]", "");
-            return StringUtils.hasText(digits) ? Long.parseLong(digits) : 0L;
-        } catch (NumberFormatException ex) {
-            return 0L;
-        }
+    private boolean isQidian(CrawlerSourceConfig source, String rankUrl) {
+        String value = ((source.sourceCode == null ? "" : source.sourceCode) + " " + rankUrl).toLowerCase();
+        return value.contains("qidian");
     }
 
     private String sha256(String value) {
@@ -524,13 +394,5 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return value;
         }
         return value.substring(0, maxLength);
-    }
-
-    private record BookSeed(String url, String title, String author, String intro, long wordCount,
-                            String chapterId, String rankUrl) {
-    }
-
-    private record BookSnapshot(String title, String author, String coverUrl, String intro, String sourceUrl,
-                                String sourceBookId, long wordCount, String chapterId, String chapterUrl) {
     }
 }
