@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+target
+**/target
+mini-novel-h5
+.idea
+.vscode
+*.iml
+*.log
+*.exe
+*.msi
+docker-compose.override.yml

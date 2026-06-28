@@ -1,0 +1,99 @@
+services:
+  mini-novel-mysql:
+    image: mysql:8.4
+    container_name: mini-novel-mysql
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mini_novel}
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mini-novel-mysql-data:/var/lib/mysql
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mini-novel-redis:
+    image: redis:7.4-alpine
+    container_name: mini-novel-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - mini-novel-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mini-novel-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mini-novel-app
+    restart: unless-stopped
+    depends_on:
+      mini-novel-mysql:
+        condition: service_healthy
+      mini-novel-redis:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_DATASOURCE_URL: jdbc:mysql://mini-novel-mysql:3306/${MYSQL_DATABASE:-mini_novel}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      SPRING_DATA_REDIS_HOST: mini-novel-redis
+      SPRING_DATA_REDIS_PORT: 6379
+    ports:
+      - "8080:8080"
+
+  mini-novel-h5:
+    build:
+      context: ./mini-novel-h5
+      dockerfile: Dockerfile
+    container_name: mini-novel-h5
+    restart: unless-stopped
+    depends_on:
+      - mini-novel-app
+    ports:
+      - "5173:80"
+
+  mini-novel-crawler-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.crawler-service
+    container_name: mini-novel-crawler-service
+    restart: unless-stopped
+    depends_on:
+      mini-novel-mysql:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_DATASOURCE_URL: jdbc:mysql://mini-novel-mysql:3306/${MYSQL_DATABASE:-mini_novel}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports:
+      - "8090:8090"
+
+  mini-novel-admin-ui:
+    build:
+      context: ./mini-novel-admin-ui
+      dockerfile: Dockerfile
+    container_name: mini-novel-admin-ui
+    restart: unless-stopped
+    depends_on:
+      - mini-novel-app
+      - mini-novel-crawler-service
+    ports:
+      - "5180:80"
+
+volumes:
+  mini-novel-mysql-data:
+  mini-novel-redis-data:

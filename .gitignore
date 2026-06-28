@@ -1,0 +1,41 @@
+# Build outputs
+target/
+**/target/
+dist/
+**/dist/
+node_modules/
+**/node_modules/
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# Runtime logs and local diagnostics
+*.log
+logs/
+docker-feature-status.log
+docker-prereq-enable.log
+virtualization-status.log
+virtualization-status-after.log
+wsl-msi-install.log
+
+# Local installers and downloaded binaries
+*.exe
+*.msi
+DockerDesktopInstaller.exe
+wsl.*.msi
+
+# Local environment overrides
+.env
+.env.*
+!.env.example
+docker-compose.override.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Codex/local automation metadata
+.agents/
+.codex/

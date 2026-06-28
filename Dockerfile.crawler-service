@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.7
+FROM maven:3.9.9-eclipse-temurin-17 AS builder
+WORKDIR /workspace
+
+RUN printf '%s\n' \
+  '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"' \
+  '          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' \
+  '          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">' \
+  '  <mirrors><mirror><id>aliyunmaven</id><mirrorOf>*</mirrorOf><name>Aliyun Maven</name><url>https://maven.aliyun.com/repository/public</url></mirror></mirrors>' \
+  '</settings>' > /usr/share/maven/conf/settings.xml
+
+COPY pom.xml .
+COPY mini-novel-common/pom.xml mini-novel-common/pom.xml
+COPY mini-novel-core/pom.xml mini-novel-core/pom.xml
+COPY mini-novel-book/pom.xml mini-novel-book/pom.xml
+COPY mini-novel-crawler/pom.xml mini-novel-crawler/pom.xml
+COPY mini-novel-crawler-service/pom.xml mini-novel-crawler-service/pom.xml
+COPY . .
+RUN --mount=type=cache,target=/root/.m2 \
+    find /root/.m2/repository -name "*.lastUpdated" -delete 2>/dev/null || true; \
+    mvn -U -pl mini-novel-crawler-service -am package -DskipTests
+
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+ENV TZ=Asia/Shanghai
+COPY --from=builder /workspace/mini-novel-crawler-service/target/mini-novel-crawler-service-0.1.0-SNAPSHOT.jar /app/app.jar
+EXPOSE 8090
+ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.profiles.active=docker"]
