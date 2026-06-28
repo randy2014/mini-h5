@@ -12,6 +12,7 @@ import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
+import com.mini.novel.crawler.service.CrawlerExecutionService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.util.StringUtils;
@@ -31,17 +32,20 @@ public class CrawlerConfigController {
     private final CrawlScheduleMapper scheduleMapper;
     private final CrawlTaskRecordMapper taskRecordMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
+    private final CrawlerExecutionService crawlerExecutionService;
 
     public CrawlerConfigController(CrawlerSourceConfigMapper sourceMapper,
                                    CrawlRankSourceMapper rankSourceMapper,
                                    CrawlScheduleMapper scheduleMapper,
                                    CrawlTaskRecordMapper taskRecordMapper,
-                                   CrawlMergeTaskMapper mergeTaskMapper) {
+                                   CrawlMergeTaskMapper mergeTaskMapper,
+                                   CrawlerExecutionService crawlerExecutionService) {
         this.sourceMapper = sourceMapper;
         this.rankSourceMapper = rankSourceMapper;
         this.scheduleMapper = scheduleMapper;
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
+        this.crawlerExecutionService = crawlerExecutionService;
     }
 
     @GetMapping("/sources")
@@ -130,7 +134,7 @@ public class CrawlerConfigController {
         task.totalCount = 0;
         task.successCount = 0;
         task.failCount = 0;
-        task.message = "任务已创建，等待采集执行器拉取榜单、章节目录和正文。";
+        task.message = "任务已创建，采集执行器即将拉取榜单、章节目录和公开正文。";
         task.createdAt = now;
         task.updatedAt = now;
         taskRecordMapper.insert(task);
@@ -153,7 +157,18 @@ public class CrawlerConfigController {
             mergeTaskMapper.insert(mergeTask);
         }
 
+        crawlerExecutionService.executeAsync(task.id);
         return Result.ok(task);
+    }
+
+    @PostMapping("/tasks/{id}/run")
+    public Result<Void> runTask(@PathVariable Long id) {
+        CrawlTaskRecord task = taskRecordMapper.selectById(id);
+        if (task == null) {
+            return new Result<>(404, "采集任务不存在", null);
+        }
+        crawlerExecutionService.executeAsync(id);
+        return Result.ok();
     }
 
     @GetMapping("/tasks")
