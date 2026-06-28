@@ -30,6 +30,7 @@ wsl.*.msi
 .env
 .env.*
 !.env.example
+!deploy/.env.prod.example
 docker-compose.override.yml
 
 # OS files

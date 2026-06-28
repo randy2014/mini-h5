@@ -1,0 +1,84 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check deploy secrets
+        id: deploy-secrets
+        run: |
+          if [ -z "${{ secrets.VPS_HOST }}" ] || \
+             [ -z "${{ secrets.VPS_PORT }}" ] || \
+             [ -z "${{ secrets.VPS_USER }}" ] || \
+             [ -z "${{ secrets.VPS_SSH_KEY }}" ] || \
+             [ -z "${{ secrets.VPS_DEPLOY_PATH }}" ] || \
+             [ -z "${{ secrets.MYSQL_ROOT_PASSWORD }}" ]; then
+            echo "Deploy secrets are not configured yet. Skipping deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare SSH
+        if: steps.deploy-secrets.outputs.ready == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Ensure deploy directory
+        if: steps.deploy-secrets.outputs.ready == 'true'
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "mkdir -p '${{ secrets.VPS_DEPLOY_PATH }}'"
+
+      - name: Sync source to server
+        if: steps.deploy-secrets.outputs.ready == 'true'
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_PORT }}" \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.env' \
+            --exclude 'target/' \
+            --exclude '**/target/' \
+            --exclude 'node_modules/' \
+            --exclude '**/node_modules/' \
+            --exclude 'dist/' \
+            --exclude '**/dist/' \
+            ./ "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_DEPLOY_PATH }}/"
+
+      - name: Deploy containers
+        if: steps.deploy-secrets.outputs.ready == 'true'
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" << 'EOF'
+          set -e
+          cd "${{ secrets.VPS_DEPLOY_PATH }}"
+          cat > .env << ENV
+          MYSQL_DATABASE=mini_novel
+          MYSQL_USERNAME=root
+          MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
+          APP_PORT=8080
+          H5_PORT=5173
+          ADMIN_PORT=5180
+          ENV
+          docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --build
+          docker compose -f deploy/docker-compose.prod.yml --env-file .env ps
+          EOF
