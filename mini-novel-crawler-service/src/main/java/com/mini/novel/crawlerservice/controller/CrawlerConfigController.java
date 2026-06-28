@@ -276,6 +276,19 @@ public class CrawlerConfigController {
         return Result.ok();
     }
 
+    @PostMapping("/merge-items/{id}/retry")
+    public Result<Void> retryMergeItem(@PathVariable Long id) {
+        crawlerMergeService.retryMergeItem(id);
+        return Result.ok();
+    }
+
+    @PostMapping("/merge-items/{id}/ignore")
+    public Result<Void> ignoreMergeItem(@PathVariable Long id, @RequestBody(required = false) Map<String, String> payload) {
+        String reason = payload == null ? null : payload.get("reason");
+        crawlerMergeService.ignoreMergeItem(id, reason);
+        return Result.ok();
+    }
+
     private void normalizeSource(CrawlerSourceConfig source) {
         if (!StringUtils.hasText(source.sourceCode)) {
             source.sourceCode = "custom_" + System.currentTimeMillis();

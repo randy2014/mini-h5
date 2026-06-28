@@ -86,6 +86,72 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         }
     }
 
+    @Override
+    @Transactional
+    public void retryMergeItem(Long mergeItemId) {
+        CrawlMergeItem item = mergeItemMapper.selectById(mergeItemId);
+        if (item == null || item.bookRawId == null || item.mergeTaskId == null) {
+            return;
+        }
+        CrawlMergeTask task = mergeTaskMapper.selectById(item.mergeTaskId);
+        CrawlBookRaw book = bookRawMapper.selectById(item.bookRawId);
+        if (task == null || book == null) {
+            return;
+        }
+        List<CrawlChapterRaw> chapters = chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
+                .eq("book_raw_id", book.id)
+                .orderByAsc("chapter_no")
+                .last("LIMIT 500"));
+        if (chapters.isEmpty()) {
+            item.matchStatus = "PENDING_REVIEW";
+            item.message = "未发现章节目录，等待重新采集或手动补充。";
+            item.updatedAt = LocalDateTime.now();
+            mergeItemMapper.updateById(item);
+            return;
+        }
+        item.matchStatus = "RETRYING";
+        item.message = "人工触发重新清洗。";
+        item.updatedAt = LocalDateTime.now();
+        mergeItemMapper.updateById(item);
+        MergeOutcome outcome = mergeBook(task, book, chapters);
+        refreshTaskCounters(task.id);
+        if (outcome == MergeOutcome.MERGED && !"MERGED".equals(task.status) && !"PARTIAL_MERGED".equals(task.status)) {
+            task.status = "PARTIAL_MERGED";
+            task.message = "人工重新清洗已有内容入库，请继续处理剩余待审核记录。";
+            task.updatedAt = LocalDateTime.now();
+            mergeTaskMapper.updateById(task);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void ignoreMergeItem(Long mergeItemId, String reason) {
+        CrawlMergeItem item = mergeItemMapper.selectById(mergeItemId);
+        if (item == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        item.matchStatus = "IGNORED";
+        item.message = limit(StringUtils.hasText(reason) ? reason : "人工忽略该待审核采集结果。", 1000);
+        item.updatedAt = now;
+        mergeItemMapper.updateById(item);
+
+        CrawlBookRaw book = item.bookRawId == null ? null : bookRawMapper.selectById(item.bookRawId);
+        if (book != null) {
+            NovelSourceMapping mapping = novelSourceMappingMapper.selectOne(new QueryWrapper<NovelSourceMapping>()
+                    .eq("source_code", book.sourceCode)
+                    .eq("source_book_id", book.sourceBookId)
+                    .last("LIMIT 1"));
+            if (mapping != null) {
+                mapping.matchStatus = "IGNORED";
+                mapping.contentStatus = "IGNORED";
+                mapping.updatedAt = now;
+                novelSourceMappingMapper.updateById(mapping);
+            }
+        }
+        refreshTaskCounters(item.mergeTaskId);
+    }
+
     @Transactional
     public void mergeTask(CrawlMergeTask task) {
         if (task == null || (!"PENDING".equals(task.status) && !"FAILED".equals(task.status))) {
@@ -376,6 +442,45 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             novel.setUpdatedAt(LocalDateTime.now());
             novelMapper.updateById(novel);
         }
+    }
+
+    private void refreshTaskCounters(Long mergeTaskId) {
+        if (mergeTaskId == null) {
+            return;
+        }
+        CrawlMergeTask task = mergeTaskMapper.selectById(mergeTaskId);
+        if (task == null) {
+            return;
+        }
+        List<CrawlMergeItem> items = mergeItemMapper.selectList(new QueryWrapper<CrawlMergeItem>()
+                .eq("merge_task_id", mergeTaskId));
+        int merged = 0;
+        int pending = 0;
+        int failed = 0;
+        for (CrawlMergeItem item : items) {
+            if ("MERGED".equals(item.matchStatus) || "PARTIAL_MERGED".equals(item.matchStatus)) {
+                merged++;
+            } else if ("PENDING_REVIEW".equals(item.matchStatus) || "RETRYING".equals(item.matchStatus)) {
+                pending++;
+            } else if ("FAILED".equals(item.matchStatus)) {
+                failed++;
+            }
+        }
+        task.totalCount = items.size();
+        task.mergedCount = merged;
+        task.pendingReviewCount = pending;
+        task.failedCount = failed;
+        if (pending == 0 && failed == 0 && merged > 0) {
+            task.status = "MERGED";
+        } else if (pending > 0 && merged > 0) {
+            task.status = "PARTIAL_MERGED";
+        } else if (pending > 0) {
+            task.status = "PENDING_REVIEW";
+        } else if (failed > 0) {
+            task.status = "FAILED";
+        }
+        task.updatedAt = LocalDateTime.now();
+        mergeTaskMapper.updateById(task);
     }
 
     private void upsertMergeItem(CrawlMergeTask task, CrawlBookRaw book, NovelIdentity identity, Novel novel,

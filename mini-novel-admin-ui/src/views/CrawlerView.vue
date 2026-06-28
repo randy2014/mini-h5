@@ -353,6 +353,12 @@
             <el-table-column prop="message" label="原因" min-width="240" />
             <el-table-column prop="sourceUrl" label="来源地址" min-width="260" show-overflow-tooltip />
             <el-table-column prop="updatedAt" label="更新时间" width="180" />
+            <el-table-column label="操作" width="180" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="retryMergeItem(row)">重新清洗</el-button>
+                <el-button link type="danger" @click="ignoreMergeItem(row)">忽略</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
       </el-tab-pane>
@@ -362,7 +368,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { crawlerApi } from '../services/http';
 
 const activeTab = ref('sources');
@@ -597,6 +603,25 @@ async function runPendingMergeTasks() {
   await crawlerApi.post('/config/merge-tasks/run-pending');
   ElMessage.success('待清洗任务已执行');
   await Promise.all([loadMergeTasks(), loadMergeItems(), loadTasks()]);
+}
+
+async function retryMergeItem(row) {
+  await crawlerApi.post(`/config/merge-items/${row.id}/retry`);
+  ElMessage.success('已重新清洗该条记录');
+  await Promise.all([loadMergeTasks(), loadMergeItems()]);
+}
+
+async function ignoreMergeItem(row) {
+  await ElMessageBox.confirm(`确认忽略《${row.title || row.id}》这条待审核记录？`, '忽略待审核记录', {
+    confirmButtonText: '确认忽略',
+    cancelButtonText: '取消',
+    type: 'warning'
+  });
+  await crawlerApi.post(`/config/merge-items/${row.id}/ignore`, {
+    reason: '人工确认忽略该待审核采集结果。'
+  });
+  ElMessage.success('已忽略该条记录');
+  await Promise.all([loadMergeTasks(), loadMergeItems()]);
 }
 
 onMounted(loadAll);
