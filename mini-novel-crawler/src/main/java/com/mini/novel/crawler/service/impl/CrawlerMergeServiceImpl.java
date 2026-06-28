@@ -125,7 +125,13 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                     failed++;
                 }
             }
-            task.status = failed == 0 ? "MERGED" : "PARTIAL_MERGED";
+            if (merged > 0) {
+                task.status = failed == 0 ? "MERGED" : "PARTIAL_MERGED";
+            } else if (pending > 0 && failed == 0) {
+                task.status = "PENDING_REVIEW";
+            } else {
+                task.status = "FAILED";
+            }
             task.message = "清洗入库完成：处理 " + total + " 本，入库 " + merged + " 本，待审核 " + pending + " 本，失败 " + failed + " 本。";
         } catch (Exception ex) {
             task.status = "FAILED";
