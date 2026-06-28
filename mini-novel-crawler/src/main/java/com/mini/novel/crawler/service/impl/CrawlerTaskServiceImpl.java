@@ -81,7 +81,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
                 throw new IllegalStateException("未从公开页面解析到书籍数据，可能被站点校验页拦截。");
             }
             task.setStatus(1);
-            task.setMessage("起点公开数据采集完成：最近5天任务窗口内写入/更新 " + imported + " 本书。");
+            task.setMessage("起点公开元数据采集完成：最近5天任务窗口内写入/更新 " + imported + " 本书。");
         } catch (Exception ex) {
             task.setStatus(2);
             task.setMessage("起点采集失败：" + ex.getMessage());
@@ -101,7 +101,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
                 continue;
             }
             Novel novel = upsertNovel(snapshot);
-            upsertIntroChapter(novel, snapshot);
+            upsertPublicChapter(novel, snapshot);
             imported++;
         }
         return imported;
@@ -159,7 +159,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
         }
         List<BookSeed> seeds = new ArrayList<>();
         for (String link : links) {
-            seeds.add(new BookSeed(link, "", "", "", 0L));
+            seeds.add(new BookSeed(link, "", "", "", 0L, ""));
         }
         return seeds;
     }
@@ -167,7 +167,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
     private BookSnapshot fetchBook(BookSeed seed) throws IOException {
         if (StringUtils.hasText(seed.title)) {
             return new BookSnapshot(seed.title, seed.author, "https://dummyimage.com/300x420/20232a/ffffff&text=Qidian",
-                    seed.intro, seed.url, seed.wordCount);
+                    seed.intro, seed.url, seed.wordCount, seed.chapterId);
         }
         Document detail = fetch(seed.url);
         String title = firstText(detail, ".book-info h1 em", ".book-information h1", "h1 em", "h1");
@@ -179,7 +179,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
                 .findFirst()
                 .orElse("https://dummyimage.com/300x420/20232a/ffffff&text=Qidian");
         long wordCount = parseWordCount(firstText(detail, ".book-info p em", ".total .num", ".count"));
-        return new BookSnapshot(title, cleanAuthor(author), cover, intro, seed.url, wordCount);
+        return new BookSnapshot(title, cleanAuthor(author), cover, intro, seed.url, wordCount, seed.chapterId);
     }
 
     private List<BookSeed> parseMobileEmbeddedBooks(String html) {
@@ -188,6 +188,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
         Matcher matcher = MOBILE_BOOK_PATTERN.matcher(html);
         while (matcher.find() && seeds.size() < MAX_BOOKS) {
             String bid = matcher.group(1);
+            String cid = matcher.group(2);
             if (!seen.add(bid)) {
                 continue;
             }
@@ -200,7 +201,8 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
                     title,
                     author,
                     intro,
-                    wordCount));
+                    wordCount,
+                    cid));
         }
         return seeds;
     }
@@ -221,7 +223,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
         novel.setCategoryId(1L);
         novel.setStatus(1);
         novel.setWordCount(snapshot.wordCount);
-        novel.setLatestChapterTitle("公开简介");
+        novel.setLatestChapterTitle(publicChapterTitle(snapshot));
         novel.setSourceUrl(limit(snapshot.sourceUrl, 512));
         novel.setUpdatedAt(now);
         if (novel.getId() == null) {
@@ -232,7 +234,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
         return novel;
     }
 
-    private void upsertIntroChapter(Novel novel, BookSnapshot snapshot) {
+    private void upsertPublicChapter(Novel novel, BookSnapshot snapshot) {
         Chapter chapter = chapterMapper.selectOne(new LambdaQueryWrapper<Chapter>()
                 .eq(Chapter::getNovelId, novel.getId())
                 .eq(Chapter::getChapterNo, 1)
@@ -244,11 +246,11 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
             chapter.setChapterNo(1);
             chapter.setCreatedAt(now);
         }
-        chapter.setTitle("公开简介");
-        chapter.setContent(buildReadableIntro(snapshot));
+        chapter.setTitle(publicChapterTitle(snapshot));
+        chapter.setContent(buildPublicChapterNotice(snapshot));
         chapter.setVip(false);
         chapter.setPriceCoin(0);
-        chapter.setSourceUrl(limit(snapshot.sourceUrl, 512));
+        chapter.setSourceUrl(limit(publicChapterUrl(snapshot), 512));
         chapter.setUpdatedAt(now);
         if (chapter.getId() == null) {
             chapterMapper.insert(chapter);
@@ -259,11 +261,27 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
         novelMapper.updateById(novel);
     }
 
-    private String buildReadableIntro(BookSnapshot snapshot) {
+    private String publicChapterTitle(BookSnapshot snapshot) {
+        if (StringUtils.hasText(snapshot.chapterId)) {
+            return "起点公开章节入口 #" + snapshot.chapterId;
+        }
+        return "起点公开书籍资料";
+    }
+
+    private String publicChapterUrl(BookSnapshot snapshot) {
+        String bookId = snapshot.sourceUrl == null ? "" : snapshot.sourceUrl.replaceAll(".*/", "");
+        if (StringUtils.hasText(bookId) && StringUtils.hasText(snapshot.chapterId)) {
+            return "https://www.qidian.com/chapter/" + bookId + "/" + snapshot.chapterId + "/";
+        }
+        return snapshot.sourceUrl;
+    }
+
+    private String buildPublicChapterNotice(BookSnapshot snapshot) {
         String intro = StringUtils.hasText(snapshot.intro) ? snapshot.intro : "该书来自起点公开页面，本次采集未获取到公开简介。";
         return snapshot.title + "\n\n" + intro.trim()
-                + "\n\n来源：" + snapshot.sourceUrl
-                + "\n\n说明：当前采集器只写入公开可访问信息，不采集登录、VIP 或付费章节正文。";
+                + "\n\n书籍来源：" + snapshot.sourceUrl
+                + "\n章节入口：" + publicChapterUrl(snapshot)
+                + "\n\n版权说明：当前采集器只写入公开元数据和来源链接，不复制起点登录、VIP、付费或受版权保护的章节正文。";
     }
 
     private String firstText(Document document, String... selectors) {
@@ -336,9 +354,10 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
         return value.substring(0, maxLength);
     }
 
-    private record BookSeed(String url, String title, String author, String intro, long wordCount) {
+    private record BookSeed(String url, String title, String author, String intro, long wordCount, String chapterId) {
     }
 
-    private record BookSnapshot(String title, String author, String coverUrl, String intro, String sourceUrl, long wordCount) {
+    private record BookSnapshot(String title, String author, String coverUrl, String intro, String sourceUrl, long wordCount,
+                                String chapterId) {
     }
 }
