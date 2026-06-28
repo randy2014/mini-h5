@@ -145,3 +145,9 @@ body {
 .form-grid .wide {
   grid-column: span 2;
 }
+
+.import-hint {
+  float: left;
+  color: #64748b;
+  line-height: 32px;
+}
