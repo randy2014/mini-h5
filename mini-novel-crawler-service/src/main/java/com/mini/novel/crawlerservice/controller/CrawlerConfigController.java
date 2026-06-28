@@ -5,11 +5,13 @@ import com.mini.novel.common.result.Result;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
 import com.mini.novel.crawler.entity.CrawlRankSource;
 import com.mini.novel.crawler.entity.CrawlSchedule;
+import com.mini.novel.crawler.entity.CrawlSourceCredential;
 import com.mini.novel.crawler.entity.CrawlTaskRecord;
 import com.mini.novel.crawler.entity.CrawlerSourceConfig;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
+import com.mini.novel.crawler.mapper.CrawlSourceCredentialMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
@@ -30,6 +32,7 @@ public class CrawlerConfigController {
     private final CrawlerSourceConfigMapper sourceMapper;
     private final CrawlRankSourceMapper rankSourceMapper;
     private final CrawlScheduleMapper scheduleMapper;
+    private final CrawlSourceCredentialMapper credentialMapper;
     private final CrawlTaskRecordMapper taskRecordMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
     private final CrawlerExecutionService crawlerExecutionService;
@@ -37,15 +40,51 @@ public class CrawlerConfigController {
     public CrawlerConfigController(CrawlerSourceConfigMapper sourceMapper,
                                    CrawlRankSourceMapper rankSourceMapper,
                                    CrawlScheduleMapper scheduleMapper,
+                                   CrawlSourceCredentialMapper credentialMapper,
                                    CrawlTaskRecordMapper taskRecordMapper,
                                    CrawlMergeTaskMapper mergeTaskMapper,
                                    CrawlerExecutionService crawlerExecutionService) {
         this.sourceMapper = sourceMapper;
         this.rankSourceMapper = rankSourceMapper;
         this.scheduleMapper = scheduleMapper;
+        this.credentialMapper = credentialMapper;
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
         this.crawlerExecutionService = crawlerExecutionService;
+    }
+
+    @GetMapping("/credentials")
+    public Result<List<CrawlSourceCredential>> credentials() {
+        List<CrawlSourceCredential> rows = credentialMapper.selectList(new QueryWrapper<CrawlSourceCredential>()
+                .orderByDesc("id")
+                .last("LIMIT 200"));
+        rows.forEach(this::maskCredential);
+        return Result.ok(rows);
+    }
+
+    @PostMapping("/credentials")
+    public Result<CrawlSourceCredential> createCredential(@RequestBody CrawlSourceCredential credential) {
+        normalizeCredential(credential, null);
+        credential.createdAt = LocalDateTime.now();
+        credential.updatedAt = credential.createdAt;
+        credentialMapper.insert(credential);
+        maskCredential(credential);
+        return Result.ok(credential);
+    }
+
+    @PutMapping("/credentials/{id}")
+    public Result<CrawlSourceCredential> updateCredential(@PathVariable Long id, @RequestBody CrawlSourceCredential credential) {
+        CrawlSourceCredential existing = credentialMapper.selectById(id);
+        if (existing == null) {
+            return new Result<>(404, "采集账号不存在", null);
+        }
+        credential.id = id;
+        normalizeCredential(credential, existing);
+        credential.updatedAt = LocalDateTime.now();
+        credentialMapper.updateById(credential);
+        CrawlSourceCredential saved = credentialMapper.selectById(id);
+        maskCredential(saved);
+        return Result.ok(saved);
     }
 
     @GetMapping("/sources")
@@ -128,6 +167,7 @@ public class CrawlerConfigController {
         CrawlTaskRecord task = new CrawlTaskRecord();
         task.scheduleId = schedule.id;
         task.sourceId = schedule.sourceId;
+        task.credentialId = schedule.credentialId;
         task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
         task.triggerType = "MANUAL";
         task.status = "PENDING";
@@ -232,6 +272,45 @@ public class CrawlerConfigController {
         }
         if (schedule.enabled == null) {
             schedule.enabled = true;
+        }
+    }
+
+    private void normalizeCredential(CrawlSourceCredential credential, CrawlSourceCredential existing) {
+        if (!StringUtils.hasText(credential.name)) {
+            credential.name = "采集账号";
+        }
+        if (!StringUtils.hasText(credential.authMode)) {
+            credential.authMode = "PASSWORD";
+        }
+        if (!StringUtils.hasText(credential.status)) {
+            credential.status = "UNVERIFIED";
+        }
+        if (credential.enabled == null) {
+            credential.enabled = true;
+        }
+        if ("__KEEP__".equals(credential.passwordCipher) && existing != null) {
+            credential.passwordCipher = existing.passwordCipher;
+        }
+        if ("__KEEP__".equals(credential.cookieText) && existing != null) {
+            credential.cookieText = existing.cookieText;
+        }
+        if (!StringUtils.hasText(credential.passwordCipher) && existing != null) {
+            credential.passwordCipher = existing.passwordCipher;
+        }
+        if (!StringUtils.hasText(credential.cookieText) && existing != null) {
+            credential.cookieText = existing.cookieText;
+        }
+    }
+
+    private void maskCredential(CrawlSourceCredential credential) {
+        if (credential == null) {
+            return;
+        }
+        if (StringUtils.hasText(credential.passwordCipher)) {
+            credential.passwordCipher = "__KEEP__";
+        }
+        if (StringUtils.hasText(credential.cookieText)) {
+            credential.cookieText = "__KEEP__";
         }
     }
 }

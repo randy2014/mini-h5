@@ -22,7 +22,7 @@
             <el-form-item label="源类型">
               <el-select v-model="sourceForm.sourceType">
                 <el-option label="公开内容" value="PUBLIC" />
-                <el-option label="授权账号" value="AUTHORIZED_VIP" />
+                <el-option label="授权 VIP" value="AUTHORIZED_VIP" />
                 <el-option label="手动导入" value="IMPORT" />
               </el-select>
             </el-form-item>
@@ -69,6 +69,77 @@
         </el-card>
       </el-tab-pane>
 
+      <el-tab-pane label="账号凭据" name="credentials">
+        <el-card shadow="never" class="panel">
+          <template #header>
+            <div class="card-header">
+              <span>授权账号配置</span>
+              <el-button type="primary" @click="saveCredential">保存凭据</el-button>
+            </div>
+          </template>
+          <el-form :model="credentialForm" label-width="110px" class="form-grid">
+            <el-form-item label="采集源">
+              <el-select v-model="credentialForm.sourceId" placeholder="选择采集源">
+                <el-option v-for="item in sources" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="凭据名称">
+              <el-input v-model="credentialForm.name" placeholder="起点 VIP 账号" />
+            </el-form-item>
+            <el-form-item label="认证方式">
+              <el-select v-model="credentialForm.authMode">
+                <el-option label="账号密码" value="PASSWORD" />
+                <el-option label="Cookie" value="COOKIE" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="用户名">
+              <el-input v-model="credentialForm.username" placeholder="登录用户名" />
+            </el-form-item>
+            <el-form-item label="密码">
+              <el-input v-model="credentialForm.passwordCipher" type="password" show-password placeholder="留空则保持原密码" />
+            </el-form-item>
+            <el-form-item label="登录地址">
+              <el-input v-model="credentialForm.loginUrl" placeholder="https://..." />
+            </el-form-item>
+            <el-form-item label="Cookie" class="wide">
+              <el-input v-model="credentialForm.cookieText" type="textarea" :rows="3" placeholder="可选，留空则保持原 Cookie" />
+            </el-form-item>
+            <el-form-item label="请求头 JSON" class="wide">
+              <el-input v-model="credentialForm.headersJson" type="textarea" :rows="3" placeholder='{"User-Agent":"..."}' />
+            </el-form-item>
+            <el-form-item label="启用">
+              <el-switch v-model="credentialForm.enabled" />
+            </el-form-item>
+            <el-form-item label="备注" class="wide">
+              <el-input v-model="credentialForm.remark" placeholder="用于授权采集场景，请确保账号具有对应授权" />
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <el-card shadow="never">
+          <template #header>账号凭据列表</template>
+          <el-table :data="credentials" v-loading="loading.credentials">
+            <el-table-column prop="id" label="ID" width="72" />
+            <el-table-column prop="sourceId" label="源 ID" width="90" />
+            <el-table-column prop="name" label="名称" min-width="150" />
+            <el-table-column prop="authMode" label="认证方式" width="110" />
+            <el-table-column prop="username" label="用户名" width="160" />
+            <el-table-column prop="status" label="校验状态" width="120" />
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="updatedAt" label="更新时间" width="180" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="editCredential(row)">编辑</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
       <el-tab-pane label="榜单源" name="ranks">
         <el-card shadow="never" class="panel">
           <template #header>
@@ -97,7 +168,7 @@
             <el-form-item label="榜单地址" class="wide">
               <el-input v-model="rankForm.rankUrl" placeholder="https://www.qidian.com/rank/yuepiao/" />
             </el-form-item>
-            <el-form-item label="最大书籍">
+            <el-form-item label="最大书数">
               <el-input-number v-model="rankForm.maxBooks" :min="1" :max="500" />
             </el-form-item>
             <el-form-item label="优先完结">
@@ -113,7 +184,7 @@
           <template #header>榜单源列表</template>
           <el-table :data="rankSources" v-loading="loading.ranks">
             <el-table-column prop="id" label="ID" width="72" />
-            <el-table-column prop="sourceId" label="源ID" width="90" />
+            <el-table-column prop="sourceId" label="源 ID" width="90" />
             <el-table-column prop="rankName" label="名称" min-width="150" />
             <el-table-column prop="rankType" label="类型" width="110" />
             <el-table-column prop="rankUrl" label="地址" min-width="260" />
@@ -152,6 +223,11 @@
                 <el-option v-for="item in sources" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
+            <el-form-item label="授权凭据">
+              <el-select v-model="scheduleForm.credentialId" clearable placeholder="公开抓取可不选">
+                <el-option v-for="item in enabledCredentials" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
             <el-form-item label="执行时间">
               <el-input v-model="scheduleForm.scheduleTimes" placeholder="00:00,08:00,14:00" />
             </el-form-item>
@@ -161,7 +237,7 @@
             <el-form-item label="公开章节">
               <el-switch v-model="scheduleForm.crawlPublic" />
             </el-form-item>
-            <el-form-item label="授权VIP章节">
+            <el-form-item label="授权 VIP 章节">
               <el-switch v-model="scheduleForm.crawlVip" />
             </el-form-item>
             <el-form-item label="完成后清洗">
@@ -178,10 +254,11 @@
           <el-table :data="schedules" v-loading="loading.schedules">
             <el-table-column prop="id" label="ID" width="72" />
             <el-table-column prop="name" label="名称" min-width="160" />
-            <el-table-column prop="sourceId" label="源ID" width="90" />
+            <el-table-column prop="sourceId" label="源 ID" width="90" />
+            <el-table-column prop="credentialId" label="凭据 ID" width="90" />
             <el-table-column prop="scheduleTimes" label="执行时间" width="170" />
             <el-table-column label="模式" width="180">
-              <template #default="{ row }">{{ row.crawlVip ? '公开 + 授权VIP' : '公开内容' }}</template>
+              <template #default="{ row }">{{ row.crawlVip ? '公开 + 授权 VIP' : '公开内容' }}</template>
             </el-table-column>
             <el-table-column label="自动清洗" width="100">
               <template #default="{ row }">{{ row.autoMerge ? '是' : '否' }}</template>
@@ -212,10 +289,11 @@
           </template>
           <el-table :data="tasks" v-loading="loading.tasks">
             <el-table-column prop="id" label="ID" width="72" />
-            <el-table-column prop="scheduleId" label="计划ID" width="90" />
-            <el-table-column prop="sourceId" label="源ID" width="90" />
+            <el-table-column prop="scheduleId" label="计划 ID" width="90" />
+            <el-table-column prop="sourceId" label="源 ID" width="90" />
+            <el-table-column prop="credentialId" label="凭据 ID" width="90" />
             <el-table-column prop="taskType" label="类型" width="130" />
-            <el-table-column label="状态" width="120">
+            <el-table-column label="状态" width="130">
               <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
             </el-table-column>
             <el-table-column prop="totalCount" label="总数" width="80" />
@@ -237,8 +315,8 @@
           </template>
           <el-table :data="mergeTasks" v-loading="loading.merge">
             <el-table-column prop="id" label="ID" width="72" />
-            <el-table-column prop="crawlTaskId" label="采集任务ID" width="110" />
-            <el-table-column label="状态" width="120">
+            <el-table-column prop="crawlTaskId" label="采集任务 ID" width="110" />
+            <el-table-column label="状态" width="130">
               <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
             </el-table-column>
             <el-table-column prop="totalCount" label="总数" width="80" />
@@ -255,21 +333,25 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { crawlerApi } from '../services/http';
 
 const activeTab = ref('sources');
 const sources = ref([]);
+const credentials = ref([]);
 const rankSources = ref([]);
 const schedules = ref([]);
 const tasks = ref([]);
 const mergeTasks = ref([]);
-const loading = reactive({ sources: false, ranks: false, schedules: false, tasks: false, merge: false });
+const loading = reactive({ sources: false, credentials: false, ranks: false, schedules: false, tasks: false, merge: false });
 
 const sourceForm = reactive(defaultSource());
+const credentialForm = reactive(defaultCredential());
 const rankForm = reactive(defaultRank());
 const scheduleForm = reactive(defaultSchedule());
+
+const enabledCredentials = computed(() => credentials.value.filter((item) => item.enabled));
 
 function defaultSource() {
   return {
@@ -281,6 +363,23 @@ function defaultSource() {
     authMode: 'NONE',
     enabled: true,
     priority: 10,
+    remark: ''
+  };
+}
+
+function defaultCredential() {
+  return {
+    id: null,
+    sourceId: null,
+    name: '授权采集账号',
+    authMode: 'PASSWORD',
+    username: '',
+    passwordCipher: '',
+    cookieText: '',
+    headersJson: '',
+    loginUrl: '',
+    status: 'UNVERIFIED',
+    enabled: true,
     remark: ''
   };
 }
@@ -303,6 +402,7 @@ function defaultSchedule() {
     id: null,
     name: '热门榜单每日抓取',
     sourceId: null,
+    credentialId: null,
     scheduleTimes: '00:00,08:00,14:00',
     timezone: 'Asia/Shanghai',
     crawlPublic: true,
@@ -331,10 +431,21 @@ async function loadSources() {
   loading.sources = true;
   try {
     sources.value = await crawlerApi.get('/config/sources');
-    if (!rankForm.sourceId && sources.value[0]) rankForm.sourceId = sources.value[0].id;
-    if (!scheduleForm.sourceId && sources.value[0]) scheduleForm.sourceId = sources.value[0].id;
+    const firstSource = sources.value[0]?.id || null;
+    if (!credentialForm.sourceId) credentialForm.sourceId = firstSource;
+    if (!rankForm.sourceId) rankForm.sourceId = firstSource;
+    if (!scheduleForm.sourceId) scheduleForm.sourceId = firstSource;
   } finally {
     loading.sources = false;
+  }
+}
+
+async function loadCredentials() {
+  loading.credentials = true;
+  try {
+    credentials.value = await crawlerApi.get('/config/credentials');
+  } finally {
+    loading.credentials = false;
   }
 }
 
@@ -376,7 +487,7 @@ async function loadMergeTasks() {
 
 async function loadAll() {
   await loadSources();
-  await Promise.all([loadRanks(), loadSchedules(), loadTasks(), loadMergeTasks()]);
+  await Promise.all([loadCredentials(), loadRanks(), loadSchedules(), loadTasks(), loadMergeTasks()]);
 }
 
 async function saveSource() {
@@ -391,6 +502,22 @@ async function saveSource() {
 function editSource(row) {
   assignForm(sourceForm, { ...defaultSource(), ...row });
   activeTab.value = 'sources';
+}
+
+async function saveCredential() {
+  const payload = { ...credentialForm };
+  if (!payload.passwordCipher) payload.passwordCipher = '__KEEP__';
+  if (!payload.cookieText) payload.cookieText = '__KEEP__';
+  const request = payload.id ? crawlerApi.put(`/config/credentials/${payload.id}`, payload) : crawlerApi.post('/config/credentials', payload);
+  await request;
+  ElMessage.success('账号凭据已保存');
+  assignForm(credentialForm, { ...defaultCredential(), sourceId: sources.value[0]?.id || null });
+  await loadCredentials();
+}
+
+function editCredential(row) {
+  assignForm(credentialForm, { ...defaultCredential(), ...row, passwordCipher: '', cookieText: '' });
+  activeTab.value = 'credentials';
 }
 
 async function saveRank() {

@@ -101,6 +101,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         CrawlTaskRecord task = new CrawlTaskRecord();
         task.scheduleId = schedule.id;
         task.sourceId = schedule.sourceId;
+        task.credentialId = schedule.credentialId;
         task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
         task.triggerType = triggerType;
         task.status = "PENDING";

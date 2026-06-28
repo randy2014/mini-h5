@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS crawl_schedule (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(64) NOT NULL,
   source_id BIGINT,
+  credential_id BIGINT,
   schedule_times VARCHAR(64) NOT NULL DEFAULT '00:00,08:00,14:00',
   timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai',
   crawl_public TINYINT(1) NOT NULL DEFAULT 1,
@@ -253,7 +254,29 @@ CREATE TABLE IF NOT EXISTS crawl_schedule (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_enabled_next_run (enabled, next_run_at),
-  KEY idx_source_id (source_id)
+  KEY idx_source_id (source_id),
+  KEY idx_credential_id (credential_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS crawl_source_credential (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  source_id BIGINT NOT NULL,
+  name VARCHAR(64) NOT NULL,
+  auth_mode VARCHAR(32) NOT NULL DEFAULT 'PASSWORD',
+  username VARCHAR(128),
+  password_cipher VARCHAR(1000),
+  cookie_text TEXT,
+  headers_json JSON,
+  login_url VARCHAR(512),
+  status VARCHAR(32) NOT NULL DEFAULT 'UNVERIFIED',
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  last_check_status VARCHAR(32),
+  last_check_at DATETIME,
+  remark VARCHAR(255),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_source_enabled (source_id, enabled),
+  KEY idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS crawl_task_v2 (
@@ -261,6 +284,7 @@ CREATE TABLE IF NOT EXISTS crawl_task_v2 (
   schedule_id BIGINT,
   source_id BIGINT,
   rank_source_id BIGINT,
+  credential_id BIGINT,
   task_type VARCHAR(32) NOT NULL,
   trigger_type VARCHAR(32) NOT NULL DEFAULT 'MANUAL',
   status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
@@ -275,7 +299,8 @@ CREATE TABLE IF NOT EXISTS crawl_task_v2 (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_status_created (status, created_at),
   KEY idx_schedule_id (schedule_id),
-  KEY idx_source_id (source_id)
+  KEY idx_source_id (source_id),
+  KEY idx_credential_id (credential_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS crawl_book_raw (

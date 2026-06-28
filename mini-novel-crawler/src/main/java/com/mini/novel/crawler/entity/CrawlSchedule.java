@@ -11,6 +11,7 @@ public class CrawlSchedule {
     public Long id;
     public String name;
     public Long sourceId;
+    public Long credentialId;
     public String scheduleTimes;
     public String timezone;
     public Boolean crawlPublic;

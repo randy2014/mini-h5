@@ -12,6 +12,7 @@ public class CrawlTaskRecord {
     public Long scheduleId;
     public Long sourceId;
     public Long rankSourceId;
+    public Long credentialId;
     public String taskType;
     public String triggerType;
     public String status;
