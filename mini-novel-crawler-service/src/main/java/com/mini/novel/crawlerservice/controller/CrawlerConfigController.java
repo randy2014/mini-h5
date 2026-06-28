@@ -3,12 +3,16 @@ package com.mini.novel.crawlerservice.controller;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
+import com.mini.novel.crawler.entity.CrawlMergeItem;
+import com.mini.novel.crawler.entity.CrawlBookRaw;
 import com.mini.novel.crawler.entity.CrawlRankSource;
 import com.mini.novel.crawler.entity.CrawlSchedule;
 import com.mini.novel.crawler.entity.CrawlSourceCredential;
 import com.mini.novel.crawler.entity.CrawlTaskRecord;
 import com.mini.novel.crawler.entity.CrawlerSourceConfig;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
+import com.mini.novel.crawler.mapper.CrawlMergeItemMapper;
+import com.mini.novel.crawler.mapper.CrawlBookRawMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlSourceCredentialMapper;
@@ -17,12 +21,16 @@ import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
 import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,6 +44,8 @@ public class CrawlerConfigController {
     private final CrawlSourceCredentialMapper credentialMapper;
     private final CrawlTaskRecordMapper taskRecordMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
+    private final CrawlMergeItemMapper mergeItemMapper;
+    private final CrawlBookRawMapper bookRawMapper;
     private final CrawlerExecutionService crawlerExecutionService;
     private final CrawlerMergeService crawlerMergeService;
 
@@ -45,6 +55,8 @@ public class CrawlerConfigController {
                                    CrawlSourceCredentialMapper credentialMapper,
                                    CrawlTaskRecordMapper taskRecordMapper,
                                    CrawlMergeTaskMapper mergeTaskMapper,
+                                   CrawlMergeItemMapper mergeItemMapper,
+                                   CrawlBookRawMapper bookRawMapper,
                                    CrawlerExecutionService crawlerExecutionService,
                                    CrawlerMergeService crawlerMergeService) {
         this.sourceMapper = sourceMapper;
@@ -53,6 +65,8 @@ public class CrawlerConfigController {
         this.credentialMapper = credentialMapper;
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
+        this.mergeItemMapper = mergeItemMapper;
+        this.bookRawMapper = bookRawMapper;
         this.crawlerExecutionService = crawlerExecutionService;
         this.crawlerMergeService = crawlerMergeService;
     }
@@ -223,6 +237,37 @@ public class CrawlerConfigController {
     @GetMapping("/merge-tasks")
     public Result<List<CrawlMergeTask>> mergeTasks() {
         return Result.ok(mergeTaskMapper.selectList(new QueryWrapper<CrawlMergeTask>().orderByDesc("id").last("LIMIT 100")));
+    }
+
+    @GetMapping("/merge-items")
+    public Result<List<Map<String, Object>>> mergeItems(@RequestParam(required = false) String status) {
+        QueryWrapper<CrawlMergeItem> wrapper = new QueryWrapper<CrawlMergeItem>().orderByDesc("id").last("LIMIT 300");
+        if (StringUtils.hasText(status)) {
+            wrapper.eq("match_status", status);
+        }
+        List<CrawlMergeItem> items = mergeItemMapper.selectList(wrapper);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (CrawlMergeItem item : items) {
+            CrawlBookRaw book = item.bookRawId == null ? null : bookRawMapper.selectById(item.bookRawId);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", item.id);
+            row.put("mergeTaskId", item.mergeTaskId);
+            row.put("bookRawId", item.bookRawId);
+            row.put("identityId", item.identityId);
+            row.put("novelId", item.novelId);
+            row.put("matchStatus", item.matchStatus);
+            row.put("confidenceScore", item.confidenceScore);
+            row.put("message", item.message);
+            row.put("sourceCode", book == null ? null : book.sourceCode);
+            row.put("sourceBookId", book == null ? null : book.sourceBookId);
+            row.put("title", book == null ? null : book.title);
+            row.put("author", book == null ? null : book.author);
+            row.put("sourceUrl", book == null ? null : book.sourceUrl);
+            row.put("contentStatus", book == null ? null : book.contentStatus);
+            row.put("updatedAt", item.updatedAt);
+            rows.add(row);
+        }
+        return Result.ok(rows);
     }
 
     @PostMapping("/merge-tasks/run-pending")

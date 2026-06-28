@@ -67,6 +67,7 @@
             </el-table-column>
           </el-table>
         </el-card>
+
       </el-tab-pane>
 
       <el-tab-pane label="账号凭据" name="credentials">
@@ -138,6 +139,7 @@
             </el-table-column>
           </el-table>
         </el-card>
+
       </el-tab-pane>
 
       <el-tab-pane label="榜单源" name="ranks">
@@ -330,6 +332,29 @@
             <el-table-column prop="createdAt" label="创建时间" width="180" />
           </el-table>
         </el-card>
+
+        <el-card shadow="never" class="panel">
+          <template #header>
+            <div class="card-header">
+              <span>待审核明细</span>
+              <el-button @click="loadMergeItems">刷新明细</el-button>
+            </div>
+          </template>
+          <el-table :data="mergeItems" v-loading="loading.mergeItems">
+            <el-table-column prop="id" label="ID" width="72" />
+            <el-table-column prop="mergeTaskId" label="清洗任务 ID" width="110" />
+            <el-table-column prop="sourceCode" label="来源" width="130" />
+            <el-table-column prop="title" label="书名" min-width="160" />
+            <el-table-column prop="author" label="作者" width="120" />
+            <el-table-column prop="contentStatus" label="原始状态" width="120" />
+            <el-table-column label="审核状态" width="130">
+              <template #default="{ row }"><el-tag :type="statusType(row.matchStatus)">{{ row.matchStatus }}</el-tag></template>
+            </el-table-column>
+            <el-table-column prop="message" label="原因" min-width="240" />
+            <el-table-column prop="sourceUrl" label="来源地址" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="updatedAt" label="更新时间" width="180" />
+          </el-table>
+        </el-card>
       </el-tab-pane>
     </el-tabs>
   </section>
@@ -347,7 +372,8 @@ const rankSources = ref([]);
 const schedules = ref([]);
 const tasks = ref([]);
 const mergeTasks = ref([]);
-const loading = reactive({ sources: false, credentials: false, ranks: false, schedules: false, tasks: false, merge: false });
+const mergeItems = ref([]);
+const loading = reactive({ sources: false, credentials: false, ranks: false, schedules: false, tasks: false, merge: false, mergeItems: false });
 
 const sourceForm = reactive(defaultSource());
 const credentialForm = reactive(defaultCredential());
@@ -488,9 +514,18 @@ async function loadMergeTasks() {
   }
 }
 
+async function loadMergeItems() {
+  loading.mergeItems = true;
+  try {
+    mergeItems.value = await crawlerApi.get('/config/merge-items?status=PENDING_REVIEW');
+  } finally {
+    loading.mergeItems = false;
+  }
+}
+
 async function loadAll() {
   await loadSources();
-  await Promise.all([loadCredentials(), loadRanks(), loadSchedules(), loadTasks(), loadMergeTasks()]);
+  await Promise.all([loadCredentials(), loadRanks(), loadSchedules(), loadTasks(), loadMergeTasks(), loadMergeItems()]);
 }
 
 async function saveSource() {
@@ -561,7 +596,7 @@ async function runSchedule(row) {
 async function runPendingMergeTasks() {
   await crawlerApi.post('/config/merge-tasks/run-pending');
   ElMessage.success('待清洗任务已执行');
-  await Promise.all([loadMergeTasks(), loadTasks()]);
+  await Promise.all([loadMergeTasks(), loadMergeItems(), loadTasks()]);
 }
 
 onMounted(loadAll);
