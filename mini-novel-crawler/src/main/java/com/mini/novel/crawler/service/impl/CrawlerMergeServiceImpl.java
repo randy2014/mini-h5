@@ -145,6 +145,29 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         LocalDateTime now = LocalDateTime.now();
         NovelIdentity identity = upsertIdentity(book, now);
         NovelSourceMapping novelMapping = upsertNovelMapping(identity, book, now);
+
+        int acceptableChapters = 0;
+        for (CrawlChapterRaw rawChapter : chapters) {
+            CrawlContentRaw content = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
+                    .eq("chapter_raw_id", rawChapter.id)
+                    .last("LIMIT 1"));
+            ContentQuality quality = evaluateContent(content == null ? "" : content.content);
+            if (quality.accepted) {
+                acceptableChapters++;
+            }
+        }
+        if (acceptableChapters == 0) {
+            for (CrawlChapterRaw rawChapter : chapters) {
+                upsertChapterMapping(novelMapping, rawChapter, null, "PENDING_REVIEW", now);
+            }
+            novelMapping.contentStatus = "PENDING_REVIEW";
+            novelMapping.matchStatus = "PENDING_REVIEW";
+            novelMapping.updatedAt = LocalDateTime.now();
+            novelSourceMappingMapper.updateById(novelMapping);
+            upsertMergeItem(task, book, identity, null, "PENDING_REVIEW", "未发现达标正文，已保留映射关系，等待补正文或人工审核。");
+            return MergeOutcome.PENDING_REVIEW;
+        }
+
         Novel novel = ensureNovel(identity, novelMapping, book, now);
 
         int mergedChapters = 0;
@@ -363,7 +386,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             item.createdAt = now;
         }
         item.identityId = identity.id;
-        item.novelId = novel.getId();
+        item.novelId = novel == null ? null : novel.getId();
         item.matchStatus = status;
         item.confidenceScore = 100;
         item.message = limit(message, 1000);
