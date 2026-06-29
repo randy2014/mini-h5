@@ -30,7 +30,7 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class CrawlerMergeServiceImpl implements CrawlerMergeService {
-    private static final int MIN_CONTENT_LENGTH = 120;
+    private static final int MIN_CONTENT_LENGTH = 80;
 
     private final CrawlMergeTaskMapper mergeTaskMapper;
     private final CrawlMergeItemMapper mergeItemMapper;
