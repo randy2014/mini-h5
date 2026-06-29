@@ -18,6 +18,7 @@ import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.parser.CrawlerSiteParser;
 import com.mini.novel.crawler.parser.ParsedBookSeed;
 import com.mini.novel.crawler.parser.ParsedBookSnapshot;
+import com.mini.novel.crawler.parser.ParsedChapterSnapshot;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
 import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.io.IOException;
@@ -126,7 +127,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             continue;
                         }
                         CrawlBookRaw book = upsertBookRaw(source, rank, snapshot);
-                        upsertChapterAndContent(book, snapshot);
+                        upsertChaptersAndContent(book, snapshot);
                         success++;
                     } catch (Exception itemEx) {
                         failed++;
@@ -188,6 +189,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private Document fetch(String url) throws IOException {
+        validateUrl(url);
         return Jsoup.connect(url)
                 .userAgent(url.contains("m.qidian.com") ? MOBILE_USER_AGENT : USER_AGENT)
                 .header("Accept-Language", "zh-CN,zh;q=0.9")
@@ -230,6 +232,61 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             bookRawMapper.updateById(book);
         }
         return book;
+    }
+
+    private void upsertChaptersAndContent(CrawlBookRaw book, ParsedBookSnapshot snapshot) {
+        List<ParsedChapterSnapshot> chapters = snapshot.chapters();
+        if (chapters == null || chapters.isEmpty()) {
+            upsertChapterAndContent(book, snapshot);
+            return;
+        }
+        int readyCount = 0;
+        for (ParsedChapterSnapshot parsedChapter : chapters) {
+            ParsedBookSnapshot chapterSnapshot = new ParsedBookSnapshot(
+                    snapshot.title(),
+                    snapshot.author(),
+                    snapshot.coverUrl(),
+                    snapshot.intro(),
+                    snapshot.sourceUrl(),
+                    snapshot.sourceBookId(),
+                    snapshot.wordCount(),
+                    parsedChapter.chapterId(),
+                    parsedChapter.url());
+            upsertChapterAndContent(book, chapterSnapshot, parsedChapter);
+            CrawlChapterRaw raw = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
+                    .eq("book_raw_id", book.id)
+                    .eq("source_chapter_id", StringUtils.hasText(parsedChapter.chapterId())
+                            ? parsedChapter.chapterId()
+                            : sha256(parsedChapter.url()).substring(0, 24))
+                    .last("LIMIT 1"));
+            if (raw != null && "CONTENT_READY".equals(raw.contentStatus)) {
+                readyCount++;
+            }
+        }
+        book.contentStatus = readyCount > 0 ? "CONTENT_READY" : "CATALOG_READY";
+        bookRawMapper.updateById(book);
+    }
+
+    private void upsertChapterAndContent(CrawlBookRaw book, ParsedBookSnapshot snapshot, ParsedChapterSnapshot parsedChapter) {
+        upsertChapterAndContent(book, snapshot);
+        if (parsedChapter == null || !StringUtils.hasText(snapshot.chapterUrl())) {
+            return;
+        }
+        String sourceChapterId = StringUtils.hasText(parsedChapter.chapterId())
+                ? parsedChapter.chapterId()
+                : sha256(parsedChapter.url()).substring(0, 24);
+        CrawlChapterRaw chapter = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
+                .eq("book_raw_id", book.id)
+                .eq("source_chapter_id", sourceChapterId)
+                .last("LIMIT 1"));
+        if (chapter == null) {
+            return;
+        }
+        chapter.chapterNo = parsedChapter.chapterNo() <= 0 ? chapter.chapterNo : parsedChapter.chapterNo();
+        chapter.title = limit(StringUtils.hasText(parsedChapter.title()) ? parsedChapter.title() : chapter.title, 255);
+        chapter.vip = parsedChapter.vip();
+        chapter.updatedAt = LocalDateTime.now();
+        chapterRawMapper.updateById(chapter);
     }
 
     private void upsertChapterAndContent(CrawlBookRaw book, ParsedBookSnapshot snapshot) {
@@ -283,11 +340,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         try {
             validateUrl(url);
             Document document = fetch(url);
-            String text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p, article p")
+            String text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p, "
+                            + "#content p, #content, .chapterContent, .read-content, .article-content, article p, article")
                     .eachText()
                     .stream()
                     .filter(StringUtils::hasText)
                     .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+            text = cleanContent(text);
             if (text.length() < 80 || containsBlockedText(text)) {
                 return "";
             }
@@ -295,6 +354,16 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         } catch (Exception ex) {
             return "";
         }
+    }
+
+    private String cleanContent(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        return text.replaceAll("(?i)请收藏本站.*", "")
+                .replaceAll("(?i)手机用户请浏览.*", "")
+                .replaceAll("\\n{3,}", "\n\n")
+                .trim();
     }
 
     private void upsertContent(CrawlChapterRaw chapter, String content) {
