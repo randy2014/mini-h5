@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public class CrawlBookRaw {
     @TableId(type = IdType.AUTO)
     public Long id;
+    public Long crawlTaskId;
     public String sourceCode;
     public String sourceBookId;
     public String sourceUrl;

@@ -305,6 +305,7 @@ CREATE TABLE IF NOT EXISTS crawl_task_v2 (
 
 CREATE TABLE IF NOT EXISTS crawl_book_raw (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  crawl_task_id BIGINT,
   source_code VARCHAR(64) NOT NULL,
   source_book_id VARCHAR(128) NOT NULL,
   source_url VARCHAR(512),
@@ -323,6 +324,7 @@ CREATE TABLE IF NOT EXISTS crawl_book_raw (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_source_book (source_code, source_book_id),
+  KEY idx_crawl_task_id (crawl_task_id),
   KEY idx_title_author (title, author),
   KEY idx_content_status (content_status),
   KEY idx_rank_heat (rank_type, heat_score)

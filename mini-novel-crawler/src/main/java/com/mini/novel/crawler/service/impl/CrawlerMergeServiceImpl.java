@@ -171,9 +171,13 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         int pending = 0;
         int failed = 0;
         try {
-            List<CrawlBookRaw> books = bookRawMapper.selectList(new QueryWrapper<CrawlBookRaw>()
+            QueryWrapper<CrawlBookRaw> bookWrapper = new QueryWrapper<CrawlBookRaw>()
                     .orderByDesc("crawled_at")
-                    .last("LIMIT 300"));
+                    .last("LIMIT 300");
+            if (task.crawlTaskId != null) {
+                bookWrapper.eq("crawl_task_id", task.crawlTaskId);
+            }
+            List<CrawlBookRaw> books = bookRawMapper.selectList(bookWrapper);
             for (CrawlBookRaw book : books) {
                 List<CrawlChapterRaw> chapters = chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
                         .eq("book_raw_id", book.id)

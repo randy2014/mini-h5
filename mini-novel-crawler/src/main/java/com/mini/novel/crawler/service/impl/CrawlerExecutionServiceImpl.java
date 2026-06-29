@@ -126,7 +126,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             failed++;
                             continue;
                         }
-                        CrawlBookRaw book = upsertBookRaw(source, rank, snapshot);
+                        CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
                         upsertChaptersAndContent(book, snapshot);
                         success++;
                     } catch (Exception itemEx) {
@@ -197,7 +197,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 .get();
     }
 
-    private CrawlBookRaw upsertBookRaw(CrawlerSourceConfig source, CrawlRankSource rank, ParsedBookSnapshot snapshot) {
+    private CrawlBookRaw upsertBookRaw(CrawlTaskRecord task, CrawlerSourceConfig source, CrawlRankSource rank,
+                                       ParsedBookSnapshot snapshot) {
         LocalDateTime now = LocalDateTime.now();
         String sourceBookId = StringUtils.hasText(snapshot.sourceBookId())
                 ? snapshot.sourceBookId()
@@ -210,6 +211,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             book = new CrawlBookRaw();
             book.createdAt = now;
         }
+        book.crawlTaskId = task.id;
         book.sourceCode = source.sourceCode;
         book.sourceBookId = sourceBookId;
         book.sourceUrl = limit(snapshot.sourceUrl(), 512);
