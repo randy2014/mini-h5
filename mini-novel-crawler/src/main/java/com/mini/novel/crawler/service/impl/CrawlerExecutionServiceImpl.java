@@ -30,9 +30,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
@@ -45,6 +48,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private static final String MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
     private static final int DEFAULT_MAX_BOOKS = 20;
+    private static final int MAX_CHAPTER_PAGES = 8;
 
     private final CrawlTaskRecordMapper taskMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
@@ -340,15 +344,21 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return "";
         }
         try {
-            validateUrl(url);
-            Document document = fetch(url);
-            String text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p, "
-                            + "#content p, #content, .chapterContent, .read-content, .article-content, article p, article")
-                    .eachText()
-                    .stream()
-                    .filter(StringUtils::hasText)
-                    .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
-            text = cleanContent(text);
+            Set<String> visited = new LinkedHashSet<>();
+            List<String> pageContents = new ArrayList<>();
+            String currentUrl = url;
+            while (StringUtils.hasText(currentUrl) && visited.size() < MAX_CHAPTER_PAGES
+                    && visited.add(normalizeFetchUrl(currentUrl))) {
+                validateUrl(currentUrl);
+                Document document = fetch(currentUrl);
+                String pageText = extractChapterText(document);
+                if (!StringUtils.hasText(pageText)) {
+                    break;
+                }
+                pageContents.add(pageText);
+                currentUrl = nextChapterPageUrl(document, currentUrl);
+            }
+            String text = cleanContent(String.join("\n\n", pageContents));
             if (text.length() < 80 || containsBlockedText(text)) {
                 return "";
             }
@@ -356,6 +366,86 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         } catch (Exception ex) {
             return "";
         }
+    }
+
+    private String extractChapterText(Document document) {
+        String text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p, "
+                        + "#content p, .chapterContent p, .article-content p, article p")
+                .eachText()
+                .stream()
+                .filter(StringUtils::hasText)
+                .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+        if (!StringUtils.hasText(text)) {
+            text = document.select("#content, .chapterContent, .read-content, .chapter-content, .content, "
+                            + ".article-content, article")
+                    .eachText()
+                    .stream()
+                    .filter(StringUtils::hasText)
+                    .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+        }
+        return cleanContent(text);
+    }
+
+    private String nextChapterPageUrl(Document document, String currentUrl) {
+        Element relNext = document.selectFirst("a[rel=next][href]");
+        String nextUrl = nextPageHref(relNext, currentUrl);
+        if (StringUtils.hasText(nextUrl)) {
+            return nextUrl;
+        }
+        for (Element link : document.select("a[href]")) {
+            nextUrl = nextPageHref(link, currentUrl);
+            if (StringUtils.hasText(nextUrl)) {
+                return nextUrl;
+            }
+        }
+        return "";
+    }
+
+    private String nextPageHref(Element link, String currentUrl) {
+        if (link == null) {
+            return "";
+        }
+        String text = link.text() == null ? "" : link.text().trim().toLowerCase();
+        String aria = link.attr("aria-label") == null ? "" : link.attr("aria-label").trim().toLowerCase();
+        String value = text + " " + aria;
+        if (!isChapterPageNextHint(value)) {
+            return "";
+        }
+        String href = normalizeFetchUrl(link.absUrl("href"));
+        if (!StringUtils.hasText(href) || href.equals(normalizeFetchUrl(currentUrl)) || !sameHost(currentUrl, href)) {
+            return "";
+        }
+        return href;
+    }
+
+    private boolean isChapterPageNextHint(String value) {
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        if (value.contains("下一章") || value.contains("下章") || value.contains("后一章")
+                || value.contains("next chapter")) {
+            return false;
+        }
+        return value.contains("下一页") || value.contains("下页") || value.contains("继续阅读")
+                || value.equals("next") || value.contains("next page");
+    }
+
+    private boolean sameHost(String left, String right) {
+        try {
+            URI leftUri = URI.create(left);
+            URI rightUri = URI.create(right);
+            return leftUri.getHost() != null && leftUri.getHost().equalsIgnoreCase(rightUri.getHost());
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    private String normalizeFetchUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return "";
+        }
+        int hashIndex = url.indexOf('#');
+        return hashIndex >= 0 ? url.substring(0, hashIndex) : url;
     }
 
     private String cleanContent(String text) {
