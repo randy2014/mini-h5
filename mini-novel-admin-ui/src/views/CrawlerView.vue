@@ -39,6 +39,14 @@
             <el-form-item label="启用">
               <el-switch v-model="sourceForm.enabled" />
             </el-form-item>
+            <el-form-item label="规则 JSON" class="wide">
+              <el-input
+                v-model="sourceForm.ruleConfigJson"
+                type="textarea"
+                :rows="8"
+                placeholder='{"rankRules":{"bookList":"ol li a","bookUrl":"attr:href","bookName":"text"},"bookRules":{"name":"h1","author":".author","intro":".intro"},"catalogRules":{"chapterList":".catalog a","chapterUrl":"attr:href","chapterTitle":"text"},"chapterRules":{"content":"#content","nextPage":"a[rel=next]","removeSelectors":["script","style"],"maxPages":8,"minContentLength":80}}'
+              />
+            </el-form-item>
             <el-form-item label="备注" class="wide">
               <el-input v-model="sourceForm.remark" placeholder="仅接入授权或公开可访问内容" />
             </el-form-item>
@@ -396,6 +404,7 @@ function defaultSource() {
     baseUrl: 'https://www.qidian.com',
     sourceType: 'PUBLIC',
     authMode: 'NONE',
+    ruleConfigJson: '',
     enabled: true,
     priority: 10,
     remark: ''

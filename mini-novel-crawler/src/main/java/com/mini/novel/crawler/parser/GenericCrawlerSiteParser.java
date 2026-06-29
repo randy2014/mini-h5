@@ -26,6 +26,16 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
 
     @Override
     public List<ParsedBookSeed> parseBookSeeds(Document document, String rankUrl, int maxBooks) {
+        return parseBookSeeds(null, document, rankUrl, maxBooks);
+    }
+
+    @Override
+    public List<ParsedBookSeed> parseBookSeeds(CrawlerSourceConfig source, Document document, String rankUrl, int maxBooks) {
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
+        List<ParsedBookSeed> ruleSeeds = parseRuleBookSeeds(rules, document, rankUrl, maxBooks);
+        if (!ruleSeeds.isEmpty()) {
+            return ruleSeeds;
+        }
         Set<String> links = new LinkedHashSet<>();
         for (Element link : document.select("a[href]")) {
             String text = link.text();
@@ -46,21 +56,48 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
 
     @Override
     public ParsedBookSnapshot fetchBook(ParsedBookSeed seed, DocumentFetcher fetcher) throws Exception {
+        return fetchBook(null, seed, fetcher);
+    }
+
+    @Override
+    public ParsedBookSnapshot fetchBook(CrawlerSourceConfig source, ParsedBookSeed seed, DocumentFetcher fetcher) throws Exception {
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
         Document detail = fetcher.fetch(seed.url());
-        String title = firstText(detail, "h1", ".book-title", ".novel-title", "meta[property=og:title]", "title");
-        String author = firstText(detail, ".author", ".book-author", ".writer", "a[href*='author']");
-        String intro = firstText(detail, ".intro", ".book-intro", ".summary", ".description", "meta[name=description]");
-        String cover = detail.select("img[src]").stream()
+        String title = firstRuleValue(detail, rules.text("bookRules.name"));
+        if (!StringUtils.hasText(title)) {
+            title = firstText(detail, "h1", ".book-title", ".novel-title", "meta[property=og:title]", "title");
+        }
+        String author = firstRuleValue(detail, rules.text("bookRules.author"));
+        if (!StringUtils.hasText(author)) {
+            author = firstText(detail, ".author", ".book-author", ".writer", "a[href*='author']");
+        }
+        String intro = firstRuleValue(detail, rules.text("bookRules.intro"));
+        if (!StringUtils.hasText(intro)) {
+            intro = firstText(detail, ".intro", ".book-intro", ".summary", ".description", "meta[name=description]");
+        }
+        String cover = firstRuleValue(detail, rules.text("bookRules.cover"));
+        if (!StringUtils.hasText(cover)) {
+            cover = detail.select("img[src]").stream()
                 .map(img -> normalizeImageUrl(img.absUrl("src")))
                 .filter(StringUtils::hasText)
                 .findFirst()
                 .orElse("https://dummyimage.com/300x420/20232a/ffffff&text=Novel");
-        List<ParsedChapterSnapshot> chapters = chapterLinks(detail);
+        }
+        List<ParsedChapterSnapshot> chapters = ruleChapterLinks(rules, detail);
+        if (chapters.isEmpty()) {
+            chapters = chapterLinks(detail);
+        }
         if (chapters.size() <= 1) {
-            String catalogUrl = firstCatalogUrl(detail);
+            String catalogUrl = firstRuleValue(detail, rules.text("bookRules.catalogUrl"));
+            if (!StringUtils.hasText(catalogUrl)) {
+                catalogUrl = firstCatalogUrl(detail);
+            }
             if (StringUtils.hasText(catalogUrl) && !catalogUrl.equals(seed.url())) {
                 Document catalog = fetcher.fetch(catalogUrl);
-                List<ParsedChapterSnapshot> catalogChapters = chapterLinks(catalog);
+                List<ParsedChapterSnapshot> catalogChapters = ruleChapterLinks(rules, catalog);
+                if (catalogChapters.isEmpty()) {
+                    catalogChapters = chapterLinks(catalog);
+                }
                 if (catalogChapters.size() > chapters.size()) {
                     chapters = catalogChapters;
                 }
@@ -77,6 +114,73 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         String chapterUrl = chapters.isEmpty() ? "" : chapters.get(0).url();
         return new ParsedBookSnapshot(title, cleanAuthor(author), cover, intro, seed.url(), sourceBookId, 0L,
                 chapterId, chapterUrl, chapters);
+    }
+
+    private List<ParsedBookSeed> parseRuleBookSeeds(CrawlerRuleConfig rules, Document document, String rankUrl, int maxBooks) {
+        String listSelector = rules.text("rankRules.bookList");
+        if (!StringUtils.hasText(listSelector)) {
+            return List.of();
+        }
+        List<ParsedBookSeed> seeds = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Element item : document.select(listSelector)) {
+            String url = ruleValue(item, rules.text("rankRules.bookUrl"));
+            if (!StringUtils.hasText(url) && "a".equalsIgnoreCase(item.tagName())) {
+                url = item.absUrl("href");
+            }
+            url = normalizeUrl(url);
+            if (!StringUtils.hasText(url) || !seen.add(url)) {
+                continue;
+            }
+            seeds.add(new ParsedBookSeed(
+                    url,
+                    ruleValue(item, rules.text("rankRules.bookName")),
+                    ruleValue(item, rules.text("rankRules.author")),
+                    ruleValue(item, rules.text("rankRules.intro")),
+                    0L,
+                    "",
+                    rankUrl));
+            if (seeds.size() >= maxBooks) {
+                break;
+            }
+        }
+        return seeds;
+    }
+
+    private List<ParsedChapterSnapshot> ruleChapterLinks(CrawlerRuleConfig rules, Document document) {
+        String listSelector = rules.text("catalogRules.chapterList");
+        if (!StringUtils.hasText(listSelector)) {
+            return List.of();
+        }
+        List<ParsedChapterSnapshot> chapters = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Element item : document.select(listSelector)) {
+            String href = normalizeUrl(ruleValue(item, rules.text("catalogRules.chapterUrl")));
+            if (!StringUtils.hasText(href) && "a".equalsIgnoreCase(item.tagName())) {
+                href = normalizeUrl(item.absUrl("href"));
+            }
+            if (!StringUtils.hasText(href) || !seen.add(href)) {
+                continue;
+            }
+            String title = cleanChapterTitle(ruleValue(item, rules.text("catalogRules.chapterTitle")));
+            if (!StringUtils.hasText(title)) {
+                title = cleanChapterTitle(item.text());
+            }
+            int chapterNo = chapters.size() + 1;
+            int parsedNo = parseChapterNo(title);
+            if (parsedNo > 0) {
+                chapterNo = parsedNo;
+            }
+            chapters.add(new ParsedChapterSnapshot(Integer.toHexString(href.hashCode()),
+                    StringUtils.hasText(title) ? title : "Chapter " + chapterNo,
+                    href,
+                    chapterNo,
+                    isVipHint(title, href)));
+            if (chapters.size() >= MAX_CHAPTERS_PER_BOOK) {
+                break;
+            }
+        }
+        return chapters;
     }
 
     private boolean looksLikeBookLink(String href, String text) {
@@ -212,6 +316,46 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
             }
         }
         return "";
+    }
+
+    private String firstRuleValue(Document document, String rule) {
+        if (!StringUtils.hasText(rule)) {
+            return "";
+        }
+        return ruleValue(document, rule);
+    }
+
+    private String ruleValue(Element scope, String rule) {
+        if (!StringUtils.hasText(rule)) {
+            return "";
+        }
+        String selector = rule.trim();
+        if ("text".equalsIgnoreCase(selector)) {
+            return scope.text().trim();
+        }
+        if ("html".equalsIgnoreCase(selector)) {
+            return scope.html().trim();
+        }
+        String attr = "";
+        int atIndex = selector.lastIndexOf('@');
+        if (atIndex > 0 && atIndex < selector.length() - 1) {
+            attr = selector.substring(atIndex + 1).trim();
+            selector = selector.substring(0, atIndex).trim();
+        } else if (selector.startsWith("attr:")) {
+            attr = selector.substring("attr:".length()).trim();
+            selector = "";
+        }
+        Element element = StringUtils.hasText(selector) ? scope.selectFirst(selector) : scope;
+        if (element == null) {
+            return "";
+        }
+        if (StringUtils.hasText(attr)) {
+            return normalizeImageUrl(element.absUrl(attr));
+        }
+        if (element.tagName().equalsIgnoreCase("meta")) {
+            return element.attr("content").trim();
+        }
+        return element.text().trim();
     }
 
     private String cleanAuthor(String author) {

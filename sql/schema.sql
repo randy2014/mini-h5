@@ -214,6 +214,7 @@ CREATE TABLE IF NOT EXISTS crawl_source (
   base_url VARCHAR(512) NOT NULL,
   source_type VARCHAR(32) NOT NULL DEFAULT 'PUBLIC',
   auth_mode VARCHAR(32) NOT NULL DEFAULT 'NONE',
+  rule_config_json JSON,
   enabled TINYINT(1) NOT NULL DEFAULT 1,
   priority INT NOT NULL DEFAULT 100,
   remark VARCHAR(255),

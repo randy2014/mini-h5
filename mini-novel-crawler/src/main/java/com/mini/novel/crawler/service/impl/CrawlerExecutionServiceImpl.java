@@ -16,6 +16,7 @@ import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.parser.CrawlerSiteParser;
+import com.mini.novel.crawler.parser.CrawlerRuleConfig;
 import com.mini.novel.crawler.parser.ParsedBookSeed;
 import com.mini.novel.crawler.parser.ParsedBookSnapshot;
 import com.mini.novel.crawler.parser.ParsedChapterSnapshot;
@@ -116,22 +117,22 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 validateUrl(rank.rankUrl);
                 CrawlerSiteParser parser = selectParser(source, rank.rankUrl);
                 Document rankPage = fetch(rank.rankUrl);
-                List<ParsedBookSeed> seeds = parser.parseBookSeeds(rankPage, rank.rankUrl, maxBooks(rank));
+                List<ParsedBookSeed> seeds = parser.parseBookSeeds(source, rankPage, rank.rankUrl, maxBooks(rank));
                 if (seeds.isEmpty() && isQidian(source, rank.rankUrl) && !rank.rankUrl.contains("m.qidian.com")) {
                     Document mobilePage = fetch("https://m.qidian.com/");
-                    seeds = parser.parseBookSeeds(mobilePage, "https://m.qidian.com/", maxBooks(rank));
+                    seeds = parser.parseBookSeeds(source, mobilePage, "https://m.qidian.com/", maxBooks(rank));
                 }
 
                 total += seeds.size();
                 for (ParsedBookSeed seed : seeds) {
                     try {
-                        ParsedBookSnapshot snapshot = parser.fetchBook(seed, this::fetch);
+                        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
                         if (!StringUtils.hasText(snapshot.title())) {
                             failed++;
                             continue;
                         }
                         CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
-                        upsertChaptersAndContent(book, snapshot);
+                        upsertChaptersAndContent(source, book, snapshot);
                         success++;
                     } catch (Exception itemEx) {
                         failed++;
@@ -240,10 +241,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return book;
     }
 
-    private void upsertChaptersAndContent(CrawlBookRaw book, ParsedBookSnapshot snapshot) {
+    private void upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
         List<ParsedChapterSnapshot> chapters = snapshot.chapters();
         if (chapters == null || chapters.isEmpty()) {
-            upsertChapterAndContent(book, snapshot);
+            upsertChapterAndContent(source, book, snapshot);
             return;
         }
         int readyCount = 0;
@@ -258,7 +259,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     snapshot.wordCount(),
                     parsedChapter.chapterId(),
                     parsedChapter.url());
-            upsertChapterAndContent(book, chapterSnapshot, parsedChapter);
+            upsertChapterAndContent(source, book, chapterSnapshot, parsedChapter);
             CrawlChapterRaw raw = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
                     .eq("book_raw_id", book.id)
                     .eq("source_chapter_id", StringUtils.hasText(parsedChapter.chapterId())
@@ -273,8 +274,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         bookRawMapper.updateById(book);
     }
 
-    private void upsertChapterAndContent(CrawlBookRaw book, ParsedBookSnapshot snapshot, ParsedChapterSnapshot parsedChapter) {
-        upsertChapterAndContent(book, snapshot);
+    private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot, ParsedChapterSnapshot parsedChapter) {
+        upsertChapterAndContent(source, book, snapshot);
         if (parsedChapter == null || !StringUtils.hasText(snapshot.chapterUrl())) {
             return;
         }
@@ -295,7 +296,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         chapterRawMapper.updateById(chapter);
     }
 
-    private void upsertChapterAndContent(CrawlBookRaw book, ParsedBookSnapshot snapshot) {
+    private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
         if (!StringUtils.hasText(snapshot.chapterId()) && !StringUtils.hasText(snapshot.chapterUrl())) {
             return;
         }
@@ -322,7 +323,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         chapter.crawledAt = now;
         chapter.updatedAt = now;
 
-        String content = fetchPublicChapterContent(snapshot.chapterUrl());
+        String content = fetchPublicChapterContent(snapshot.chapterUrl(), source);
         if (StringUtils.hasText(content)) {
             chapter.contentHash = sha256(content);
             chapter.contentStatus = "CONTENT_READY";
@@ -339,27 +340,31 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
     }
 
-    private String fetchPublicChapterContent(String url) {
+    private String fetchPublicChapterContent(String url, CrawlerSourceConfig source) {
         if (!StringUtils.hasText(url)) {
             return "";
         }
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
         try {
             Set<String> visited = new LinkedHashSet<>();
             List<String> pageContents = new ArrayList<>();
             String currentUrl = url;
-            while (StringUtils.hasText(currentUrl) && visited.size() < MAX_CHAPTER_PAGES
+            int maxPages = Math.max(1, Math.min(rules.intValue("chapterRules.maxPages", MAX_CHAPTER_PAGES), MAX_CHAPTER_PAGES));
+            while (StringUtils.hasText(currentUrl) && visited.size() < maxPages
                     && visited.add(normalizeFetchUrl(currentUrl))) {
                 validateUrl(currentUrl);
                 Document document = fetch(currentUrl);
-                String pageText = extractChapterText(document);
+                removeRuleSelectors(document, rules);
+                String pageText = extractChapterText(document, rules);
                 if (!StringUtils.hasText(pageText)) {
                     break;
                 }
                 pageContents.add(pageText);
-                currentUrl = nextChapterPageUrl(document, currentUrl);
+                currentUrl = nextChapterPageUrl(document, currentUrl, rules);
             }
             String text = cleanContent(String.join("\n\n", pageContents));
-            if (text.length() < 80 || containsBlockedText(text)) {
+            int minLength = Math.max(1, rules.intValue("chapterRules.minContentLength", 80));
+            if (text.length() < minLength || containsBlockedText(text, rules)) {
                 return "";
             }
             return text;
@@ -368,13 +373,31 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
     }
 
-    private String extractChapterText(Document document) {
-        String text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p, "
+    private String extractChapterText(Document document, CrawlerRuleConfig rules) {
+        String contentSelector = rules.text("chapterRules.content");
+        String text = "";
+        if (StringUtils.hasText(contentSelector)) {
+            text = document.select(contentSelector + " p")
+                    .eachText()
+                    .stream()
+                    .filter(StringUtils::hasText)
+                    .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+            if (!StringUtils.hasText(text)) {
+                text = document.select(contentSelector)
+                        .eachText()
+                        .stream()
+                        .filter(StringUtils::hasText)
+                        .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+            }
+        }
+        if (!StringUtils.hasText(text)) {
+            text = document.select(".read-content p, .chapter-content p, .content p, #chapterContent p, "
                         + "#content p, .chapterContent p, .article-content p, article p")
                 .eachText()
                 .stream()
                 .filter(StringUtils::hasText)
                 .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+        }
         if (!StringUtils.hasText(text)) {
             text = document.select("#content, .chapterContent, .read-content, .chapter-content, .content, "
                             + ".article-content, article")
@@ -386,8 +409,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return cleanContent(text);
     }
 
-    private String nextChapterPageUrl(Document document, String currentUrl) {
-        Element relNext = document.selectFirst("a[rel=next][href]");
+    private String nextChapterPageUrl(Document document, String currentUrl, CrawlerRuleConfig rules) {
+        String nextSelector = rules.text("chapterRules.nextPage");
+        Element relNext = StringUtils.hasText(nextSelector)
+                ? document.select(nextSelector).stream()
+                        .filter(link -> StringUtils.hasText(link.attr("href")))
+                        .findFirst()
+                        .orElse(null)
+                : document.selectFirst("a[rel=next][href]");
         String nextUrl = nextPageHref(relNext, currentUrl);
         if (StringUtils.hasText(nextUrl)) {
             return nextUrl;
@@ -399,6 +428,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
         }
         return "";
+    }
+
+    private void removeRuleSelectors(Document document, CrawlerRuleConfig rules) {
+        for (String selector : rules.list("chapterRules.removeSelectors")) {
+            document.select(selector).remove();
+        }
     }
 
     private String nextPageHref(Element link, String currentUrl) {
@@ -520,7 +555,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return rank.maxBooks == null || rank.maxBooks <= 0 ? DEFAULT_MAX_BOOKS : Math.min(rank.maxBooks, 100);
     }
 
-    private boolean containsBlockedText(String text) {
+    private boolean containsBlockedText(String text, CrawlerRuleConfig rules) {
+        for (String pattern : rules.list("qualityRules.rejectPatterns")) {
+            if (StringUtils.hasText(pattern) && text.contains(pattern)) {
+                return true;
+            }
+        }
         return text.contains("登录") || text.contains("付费") || text.contains("订阅") || text.contains("VIP");
     }
 
