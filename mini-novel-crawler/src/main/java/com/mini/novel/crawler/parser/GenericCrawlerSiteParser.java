@@ -95,6 +95,9 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         if (chapters.isEmpty()) {
             chapters.addAll(chapterLinks(detail, maxChapters(rules)));
         }
+        if (!chapters.isEmpty()) {
+            chapters = uniqueAndOrder(chapters, rules);
+        }
 
         String catalogUrl = firstNonBlank(
                 firstRuleValue(detail, rules.text("bookRules.catalogUrl", "book.catalogUrl", "detail.catalogUrl")),
@@ -166,7 +169,7 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
             }
             currentUrl = nextCatalogPageUrl(catalog, currentUrl, rules);
         }
-        return uniqueAndOrder(chapters, rules);
+        return chapters;
     }
 
     private List<ParsedChapterSnapshot> ruleChapterLinks(CrawlerRuleConfig rules, Document document) {
