@@ -136,8 +136,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                         CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
                         upsertChaptersAndContent(source, book, snapshot);
                         success++;
+                        updateRunningProgress(task, total, success, failed, rank, seed);
+                        updateMergeTask(task, true);
                     } catch (Exception itemEx) {
                         failed++;
+                        updateRunningProgress(task, total, success, failed, rank, seed);
                     }
                 }
             }
@@ -159,8 +162,22 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             task.finishedAt = LocalDateTime.now();
             task.updatedAt = task.finishedAt;
             taskMapper.updateById(task);
-            updateMergeTask(task);
+            updateMergeTask(task, false);
         }
+    }
+
+    private void updateRunningProgress(CrawlTaskRecord task, int total, int success, int failed,
+                                       CrawlRankSource rank, ParsedBookSeed seed) {
+        task.totalCount = total;
+        task.successCount = success;
+        task.failCount = failed;
+        task.updatedAt = LocalDateTime.now();
+        task.message = "Crawler is running: discovered " + total
+                + ", saved " + success
+                + ", failed " + failed
+                + ", current rank " + limit(rank.rankName, 64)
+                + ", current book " + limit(seed.url(), 160) + ".";
+        taskMapper.updateById(task);
     }
 
     private List<CrawlRankSource> loadRanks(CrawlTaskRecord task, CrawlerSourceConfig source) {
@@ -569,7 +586,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
     }
 
-    private void updateMergeTask(CrawlTaskRecord task) {
+    private void updateMergeTask(CrawlTaskRecord task, boolean forceMerge) {
         CrawlMergeTask mergeTask = mergeTaskMapper.selectOne(new QueryWrapper<CrawlMergeTask>()
                 .eq("crawl_task_id", task.id)
                 .last("LIMIT 1"));
@@ -578,10 +595,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         mergeTask.totalCount = task.successCount == null ? 0 : task.successCount;
         mergeTask.status = "PENDING";
-        mergeTask.message = "Crawler finished; waiting for clean merge into business database.";
+        mergeTask.message = forceMerge
+                ? "Crawler is running; incrementally merging ready books into business database."
+                : "Crawler finished; waiting for clean merge into business database.";
         mergeTask.updatedAt = LocalDateTime.now();
         mergeTaskMapper.updateById(mergeTask);
-        if ("SUCCESS".equals(task.status) || "PARTIAL_SUCCESS".equals(task.status)) {
+        if (forceMerge || "SUCCESS".equals(task.status) || "PARTIAL_SUCCESS".equals(task.status)) {
             mergeService.mergeByCrawlTaskId(task.id);
         }
     }
