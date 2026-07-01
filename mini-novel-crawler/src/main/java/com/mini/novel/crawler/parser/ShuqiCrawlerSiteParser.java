@@ -94,8 +94,8 @@ public class ShuqiCrawlerSiteParser implements CrawlerSiteParser {
         long wordCount = number(pageData, "wordCount");
 
         List<ParsedChapterSnapshot> chapters = freeChapters(bookId, readerUrl, pageData);
-        String chapterId = chapters.isEmpty() ? firstChapterId : chapters.get(0).chapterId();
-        String chapterUrl = chapters.isEmpty() ? readerUrl : chapters.get(0).url();
+        String chapterId = chapters.isEmpty() ? "" : chapters.get(0).chapterId();
+        String chapterUrl = chapters.isEmpty() ? "" : chapters.get(0).url();
         return new ParsedBookSnapshot(title, cleanAuthor(author), cover, intro, bookUrl(bookId), bookId, wordCount,
                 chapterId, chapterUrl, chapters);
     }
