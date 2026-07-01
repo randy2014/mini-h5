@@ -72,6 +72,7 @@ wait_for_mysql
 
 run_migration "sql/migrations/20260629_crawl_task_scope.sql"
 run_migration "sql/migrations/20260629_rule_config_chain.sql"
+run_migration "sql/migrations/20260701_shuqi_public_seed.sql"
 
 echo "Building and starting application services..."
 compose up -d --build

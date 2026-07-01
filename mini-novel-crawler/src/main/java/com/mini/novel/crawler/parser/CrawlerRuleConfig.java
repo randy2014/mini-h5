@@ -31,18 +31,28 @@ public class CrawlerRuleConfig {
         return root != null && !root.isMissingNode() && !root.isNull();
     }
 
-    public String text(String path) {
-        JsonNode node = node(path);
+    public String text(String... paths) {
+        JsonNode node = firstNode(paths);
         return node == null || node.isMissingNode() || node.isNull() ? "" : node.asText("");
     }
 
-    public int intValue(String path, int defaultValue) {
-        JsonNode node = node(path);
+    public int intValue(int defaultValue, String... paths) {
+        JsonNode node = firstNode(paths);
         return node == null || node.isMissingNode() || node.isNull() ? defaultValue : node.asInt(defaultValue);
     }
 
-    public List<String> list(String path) {
-        JsonNode node = node(path);
+    public long longValue(long defaultValue, String... paths) {
+        JsonNode node = firstNode(paths);
+        return node == null || node.isMissingNode() || node.isNull() ? defaultValue : node.asLong(defaultValue);
+    }
+
+    public boolean boolValue(boolean defaultValue, String... paths) {
+        JsonNode node = firstNode(paths);
+        return node == null || node.isMissingNode() || node.isNull() ? defaultValue : node.asBoolean(defaultValue);
+    }
+
+    public List<String> list(String... paths) {
+        JsonNode node = firstNode(paths);
         if (node == null || node.isMissingNode() || node.isNull()) {
             return Collections.emptyList();
         }
@@ -58,6 +68,19 @@ public class CrawlerRuleConfig {
             values.add(node.asText());
         }
         return values;
+    }
+
+    private JsonNode firstNode(String... paths) {
+        if (paths == null) {
+            return null;
+        }
+        for (String path : paths) {
+            JsonNode node = node(path);
+            if (node != null && !node.isMissingNode() && !node.isNull()) {
+                return node;
+            }
+        }
+        return null;
     }
 
     private JsonNode node(String path) {

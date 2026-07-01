@@ -15,8 +15,8 @@ import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
-import com.mini.novel.crawler.parser.CrawlerSiteParser;
 import com.mini.novel.crawler.parser.CrawlerRuleConfig;
+import com.mini.novel.crawler.parser.CrawlerSiteParser;
 import com.mini.novel.crawler.parser.ParsedBookSeed;
 import com.mini.novel.crawler.parser.ParsedBookSnapshot;
 import com.mini.novel.crawler.parser.ParsedChapterSnapshot;
@@ -49,7 +49,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private static final String MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
     private static final int DEFAULT_MAX_BOOKS = 20;
-    private static final int MAX_CHAPTER_PAGES = 8;
+    private static final int DEFAULT_MAX_CHAPTER_PAGES = 8;
+    private static final int MAX_CHAPTER_PAGES_CAP = 30;
 
     private final CrawlTaskRecordMapper taskMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
@@ -100,7 +101,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         task.status = "RUNNING";
         task.startedAt = now;
         task.updatedAt = now;
-        task.message = "采集执行中：正在读取榜单、书籍详情、章节入口和公开正文。";
+        task.message = "Crawler is reading rank pages, book details, catalogs and public chapter content.";
         taskMapper.updateById(task);
 
         int total = 0;
@@ -109,7 +110,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         try {
             CrawlerSourceConfig source = sourceMapper.selectById(task.sourceId);
             if (source == null) {
-                throw new IllegalStateException("采集源不存在：" + task.sourceId);
+                throw new IllegalStateException("Crawler source not found: " + task.sourceId);
             }
 
             List<CrawlRankSource> ranks = loadRanks(task, source);
@@ -142,14 +143,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
             if (total == 0) {
                 task.status = "NO_DATA";
-                task.message = "采集完成但未解析到书籍，请检查榜单地址或解析规则。";
+                task.message = "Crawler finished, but no book was parsed. Check rank URL or source rules.";
             } else {
                 task.status = failed == 0 ? "SUCCESS" : "PARTIAL_SUCCESS";
-                task.message = "采集完成：发现 " + total + " 本，写入/更新 " + success + " 本，失败 " + failed + " 本。";
+                task.message = "Crawler finished: discovered " + total + ", saved " + success + ", failed " + failed + ".";
             }
         } catch (Exception ex) {
             task.status = "FAILED";
-            task.message = "采集失败：" + ex.getMessage();
+            task.message = "Crawler failed: " + ex.getMessage();
         } finally {
             task.totalCount = total;
             task.successCount = success;
@@ -177,7 +178,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         CrawlRankSource fallback = new CrawlRankSource();
         fallback.id = 0L;
         fallback.sourceId = source.id;
-        fallback.rankName = "站点首页";
+        fallback.rankName = "Site home";
         fallback.rankType = "HOME";
         fallback.rankUrl = source.baseUrl;
         fallback.maxBooks = DEFAULT_MAX_BOOKS;
@@ -190,7 +191,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return siteParsers.stream()
                 .filter(parser -> parser.supports(source, rankUrl))
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("没有可用的站点解析器"));
+                .orElseThrow(() -> new IllegalStateException("No available crawler parser"));
     }
 
     private Document fetch(String url) throws IOException {
@@ -221,10 +222,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.sourceBookId = sourceBookId;
         book.sourceUrl = limit(snapshot.sourceUrl(), 512);
         book.title = limit(snapshot.title(), 128);
-        book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "未知作者", 64);
+        book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "Unknown", 64);
         book.intro = snapshot.intro();
         book.coverUrl = limit(snapshot.coverUrl(), 512);
-        book.categoryName = "未分类";
+        book.categoryName = "Unknown";
         book.bookStatus = "UNKNOWN";
         book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;
@@ -244,7 +245,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private void upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
         List<ParsedChapterSnapshot> chapters = snapshot.chapters();
         if (chapters == null || chapters.isEmpty()) {
-            upsertChapterAndContent(source, book, snapshot);
+            upsertChapterAndContent(source, book, snapshot, null);
             return;
         }
         int readyCount = 0;
@@ -274,29 +275,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         bookRawMapper.updateById(book);
     }
 
-    private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot, ParsedChapterSnapshot parsedChapter) {
-        upsertChapterAndContent(source, book, snapshot);
-        if (parsedChapter == null || !StringUtils.hasText(snapshot.chapterUrl())) {
-            return;
-        }
-        String sourceChapterId = StringUtils.hasText(parsedChapter.chapterId())
-                ? parsedChapter.chapterId()
-                : sha256(parsedChapter.url()).substring(0, 24);
-        CrawlChapterRaw chapter = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
-                .eq("book_raw_id", book.id)
-                .eq("source_chapter_id", sourceChapterId)
-                .last("LIMIT 1"));
-        if (chapter == null) {
-            return;
-        }
-        chapter.chapterNo = parsedChapter.chapterNo() <= 0 ? chapter.chapterNo : parsedChapter.chapterNo();
-        chapter.title = limit(StringUtils.hasText(parsedChapter.title()) ? parsedChapter.title() : chapter.title, 255);
-        chapter.vip = parsedChapter.vip();
-        chapter.updatedAt = LocalDateTime.now();
-        chapterRawMapper.updateById(chapter);
-    }
-
-    private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
+    private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book,
+                                         ParsedBookSnapshot snapshot, ParsedChapterSnapshot parsedChapter) {
         if (!StringUtils.hasText(snapshot.chapterId()) && !StringUtils.hasText(snapshot.chapterUrl())) {
             return;
         }
@@ -313,17 +293,25 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             chapter.bookRawId = book.id;
             chapter.createdAt = now;
         }
+        int chapterNo = parsedChapter == null || parsedChapter.chapterNo() <= 0 ? 1 : parsedChapter.chapterNo();
+        String title = parsedChapter == null || !StringUtils.hasText(parsedChapter.title())
+                ? "Public chapter entry #" + sourceChapterId
+                : parsedChapter.title();
+        boolean vip = parsedChapter != null && parsedChapter.vip();
         chapter.sourceChapterId = sourceChapterId;
         chapter.sourceUrl = limit(snapshot.chapterUrl(), 512);
-        chapter.chapterNo = 1;
-        chapter.title = "公开章节入口 #" + sourceChapterId;
-        chapter.vip = false;
+        chapter.chapterNo = chapterNo;
+        chapter.title = limit(title, 255);
+        chapter.vip = vip;
         chapter.priceCoin = 0;
         chapter.contentStatus = "ENTRY_READY";
         chapter.crawledAt = now;
         chapter.updatedAt = now;
 
-        String content = fetchPublicChapterContent(snapshot.chapterUrl(), source);
+        String content = parsedChapter == null ? "" : parsedChapter.content();
+        if (!StringUtils.hasText(content)) {
+            content = fetchPublicChapterContent(snapshot.chapterUrl(), source);
+        }
         if (StringUtils.hasText(content)) {
             chapter.contentHash = sha256(content);
             chapter.contentStatus = "CONTENT_READY";
@@ -349,7 +337,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             Set<String> visited = new LinkedHashSet<>();
             List<String> pageContents = new ArrayList<>();
             String currentUrl = url;
-            int maxPages = Math.max(1, Math.min(rules.intValue("chapterRules.maxPages", MAX_CHAPTER_PAGES), MAX_CHAPTER_PAGES));
+            int maxPages = Math.max(1, Math.min(rules.intValue(DEFAULT_MAX_CHAPTER_PAGES,
+                    "chapterRules.maxPages", "chapter.maxPages", "content.maxPages"), MAX_CHAPTER_PAGES_CAP));
             while (StringUtils.hasText(currentUrl) && visited.size() < maxPages
                     && visited.add(normalizeFetchUrl(currentUrl))) {
                 validateUrl(currentUrl);
@@ -363,7 +352,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 currentUrl = nextChapterPageUrl(document, currentUrl, rules);
             }
             String text = cleanContent(String.join("\n\n", pageContents));
-            int minLength = Math.max(1, rules.intValue("chapterRules.minContentLength", 80));
+            int minLength = Math.max(1, rules.intValue(80,
+                    "chapterRules.minContentLength", "chapter.minContentLength", "qualityRules.minContentLength"));
             if (text.length() < minLength || containsBlockedText(text, rules)) {
                 return "";
             }
@@ -374,20 +364,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private String extractChapterText(Document document, CrawlerRuleConfig rules) {
-        String contentSelector = rules.text("chapterRules.content");
+        String contentRule = rules.text("chapterRules.content", "chapter.content", "content.rule", "content.selector");
         String text = "";
-        if (StringUtils.hasText(contentSelector)) {
-            text = document.select(contentSelector + " p")
-                    .eachText()
-                    .stream()
-                    .filter(StringUtils::hasText)
-                    .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
-            if (!StringUtils.hasText(text)) {
-                text = document.select(contentSelector)
-                        .eachText()
-                        .stream()
-                        .filter(StringUtils::hasText)
-                        .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+        if (StringUtils.hasText(contentRule)) {
+            for (String rule : contentRule.split("\\|\\|")) {
+                text = extractTextByRule(document, rule);
+                if (StringUtils.hasText(text)) {
+                    break;
+                }
             }
         }
         if (!StringUtils.hasText(text)) {
@@ -409,20 +393,60 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return cleanContent(text);
     }
 
+    private String extractTextByRule(Document document, String rule) {
+        if (!StringUtils.hasText(rule)) {
+            return "";
+        }
+        String selector = rule.trim();
+        if (selector.startsWith("css:")) {
+            selector = selector.substring("css:".length()).trim();
+        }
+        String attr = "";
+        int attrIndex = selector.lastIndexOf('@');
+        if (attrIndex > 0 && attrIndex < selector.length() - 1) {
+            attr = selector.substring(attrIndex + 1).trim();
+            selector = selector.substring(0, attrIndex).trim();
+        }
+        if (!StringUtils.hasText(selector)) {
+            return "";
+        }
+        if ("html".equalsIgnoreCase(attr)) {
+            return document.select(selector).stream()
+                    .map(Element::html)
+                    .filter(StringUtils::hasText)
+                    .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+        }
+        if (StringUtils.hasText(attr)) {
+            return document.select(selector).stream()
+                    .map(element -> element.attr(attr))
+                    .filter(StringUtils::hasText)
+                    .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+        }
+        String paragraphText = document.select(selector + " p").eachText().stream()
+                .filter(StringUtils::hasText)
+                .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+        if (StringUtils.hasText(paragraphText)) {
+            return paragraphText;
+        }
+        return document.select(selector).eachText().stream()
+                .filter(StringUtils::hasText)
+                .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
+    }
+
     private String nextChapterPageUrl(Document document, String currentUrl, CrawlerRuleConfig rules) {
-        String nextSelector = rules.text("chapterRules.nextPage");
+        String nextSelector = rules.text("chapterRules.nextPage", "chapter.nextPage", "content.nextPage");
         Element relNext = StringUtils.hasText(nextSelector)
                 ? document.select(nextSelector).stream()
                         .filter(link -> StringUtils.hasText(link.attr("href")))
                         .findFirst()
                         .orElse(null)
                 : document.selectFirst("a[rel=next][href]");
-        String nextUrl = nextPageHref(relNext, currentUrl);
+        String nextUrl = nextPageHref(relNext, currentUrl, rules);
         if (StringUtils.hasText(nextUrl)) {
             return nextUrl;
         }
         for (Element link : document.select("a[href]")) {
-            nextUrl = nextPageHref(link, currentUrl);
+            nextUrl = nextPageHref(link, currentUrl, rules);
             if (StringUtils.hasText(nextUrl)) {
                 return nextUrl;
             }
@@ -431,12 +455,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private void removeRuleSelectors(Document document, CrawlerRuleConfig rules) {
-        for (String selector : rules.list("chapterRules.removeSelectors")) {
+        for (String selector : rules.list("chapterRules.removeSelectors", "chapter.removeSelectors", "content.removeSelectors")) {
             document.select(selector).remove();
         }
     }
 
-    private String nextPageHref(Element link, String currentUrl) {
+    private String nextPageHref(Element link, String currentUrl, CrawlerRuleConfig rules) {
         if (link == null) {
             return "";
         }
@@ -447,7 +471,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return "";
         }
         String href = normalizeFetchUrl(link.absUrl("href"));
-        if (!StringUtils.hasText(href) || href.equals(normalizeFetchUrl(currentUrl)) || !sameHost(currentUrl, href)) {
+        boolean allowCrossHost = rules.boolValue(false,
+                "chapterRules.allowCrossHostNextPage", "chapter.allowCrossHostNextPage");
+        if (!StringUtils.hasText(href)
+                || href.equals(normalizeFetchUrl(currentUrl))
+                || (!allowCrossHost && !sameHost(currentUrl, href))) {
             return "";
         }
         return href;
@@ -457,12 +485,17 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (!StringUtils.hasText(value)) {
             return false;
         }
-        if (value.contains("下一章") || value.contains("下章") || value.contains("后一章")
+        if (value.contains("\u4e0b\u4e00\u7ae0")
+                || value.contains("\u4e0b\u7ae0")
+                || value.contains("\u540e\u4e00\u7ae0")
                 || value.contains("next chapter")) {
             return false;
         }
-        return value.contains("下一页") || value.contains("下页") || value.contains("继续阅读")
-                || value.equals("next") || value.contains("next page");
+        return value.contains("\u4e0b\u4e00\u9875")
+                || value.contains("\u4e0b\u9875")
+                || value.contains("\u7ee7\u7eed\u9605\u8bfb")
+                || value.equals("next")
+                || value.contains("next page");
     }
 
     private boolean sameHost(String left, String right) {
@@ -487,8 +520,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (!StringUtils.hasText(text)) {
             return "";
         }
-        return text.replaceAll("(?i)请收藏本站.*", "")
-                .replaceAll("(?i)手机用户请浏览.*", "")
+        return text.replaceAll("(?i)please\\s+login.*", "")
+                .replaceAll("\u8bf7\u6536\u85cf\u672c\u7ad9.*", "")
+                .replaceAll("\u624b\u673a\u7528\u6237\u8bf7\u6d4f\u89c8.*", "")
                 .replaceAll("\\n{3,}", "\n\n")
                 .trim();
     }
@@ -522,7 +556,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         mergeTask.totalCount = task.successCount == null ? 0 : task.successCount;
         mergeTask.status = "PENDING";
-        mergeTask.message = "采集完成，等待清洗匹配与入业务库。";
+        mergeTask.message = "Crawler finished; waiting for clean merge into business database.";
         mergeTask.updatedAt = LocalDateTime.now();
         mergeTaskMapper.updateById(mergeTask);
         if ("SUCCESS".equals(task.status) || "PARTIAL_SUCCESS".equals(task.status)) {
@@ -535,19 +569,19 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             URI uri = URI.create(url);
             String scheme = uri.getScheme();
             if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
-                throw new IllegalArgumentException("仅允许 http/https 地址");
+                throw new IllegalArgumentException("Only http/https URLs are allowed");
             }
             String host = uri.getHost();
             if (!StringUtils.hasText(host)) {
-                throw new IllegalArgumentException("地址缺少域名");
+                throw new IllegalArgumentException("URL host is required");
             }
             InetAddress address = InetAddress.getByName(host);
             if (address.isAnyLocalAddress() || address.isLoopbackAddress()
                     || address.isLinkLocalAddress() || address.isSiteLocalAddress()) {
-                throw new IllegalArgumentException("禁止采集内网或本机地址");
+                throw new IllegalArgumentException("Private or local network URLs are not allowed");
             }
         } catch (UnknownHostException ex) {
-            throw new IllegalArgumentException("采集域名无法解析");
+            throw new IllegalArgumentException("Crawler host cannot be resolved");
         }
     }
 
@@ -556,12 +590,18 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private boolean containsBlockedText(String text, CrawlerRuleConfig rules) {
-        for (String pattern : rules.list("qualityRules.rejectPatterns")) {
+        for (String pattern : rules.list("qualityRules.rejectPatterns",
+                "chapterRules.rejectPatterns", "chapter.rejectPatterns", "content.rejectPatterns")) {
             if (StringUtils.hasText(pattern) && text.contains(pattern)) {
                 return true;
             }
         }
-        return text.contains("登录") || text.contains("付费") || text.contains("订阅") || text.contains("VIP");
+        return text.contains("acw_sc__v2")
+                || text.contains("aliyunwaf")
+                || text.contains("\u9a8c\u8bc1\u7801")
+                || text.contains("\u8bf7\u767b\u5f55")
+                || text.contains("\u8bf7\u8ba2\u9605")
+                || text.contains("\u8d2d\u4e70\u672c\u7ae0");
     }
 
     private boolean isQidian(CrawlerSourceConfig source, String rankUrl) {
@@ -579,7 +619,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
             return hex.toString();
         } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 不可用", ex);
+            throw new IllegalStateException("SHA-256 is not available", ex);
         }
     }
 

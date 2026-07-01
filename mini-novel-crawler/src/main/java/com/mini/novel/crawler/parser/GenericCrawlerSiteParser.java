@@ -2,6 +2,7 @@ package com.mini.novel.crawler.parser;
 
 import com.mini.novel.crawler.entity.CrawlerSourceConfig;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -16,8 +17,13 @@ import org.springframework.util.StringUtils;
 @Component
 @Order(1000)
 public class GenericCrawlerSiteParser implements CrawlerSiteParser {
-    private static final int MAX_CHAPTERS_PER_BOOK = 20;
-    private static final Pattern CHAPTER_NO_PATTERN = Pattern.compile("(?:第\\s*)?([0-9一二三四五六七八九十百千万]+)\\s*[章节回]");
+    private static final int DEFAULT_MAX_CHAPTERS_PER_BOOK = 2000;
+    private static final int MAX_CHAPTERS_PER_BOOK_CAP = 5000;
+    private static final int DEFAULT_MAX_CATALOG_PAGES = 1;
+    private static final int MAX_CATALOG_PAGES_CAP = 20;
+    private static final Pattern CHAPTER_NO_PATTERN = Pattern.compile(
+            "(?:\\u7b2c\\s*)?([0-9\\u4e00\\u4e8c\\u4e09\\u56db\\u4e94\\u516d\\u4e03\\u516b\\u4e5d\\u5341\\u767e\\u5343\\u4e07]+)\\s*[\\u7ae0\\u8282\\u5377]");
+    private static final Pattern WORD_COUNT_PATTERN = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*([\\u4e07\\u5343]?)\\s*[\\u5b57]?");
 
     @Override
     public boolean supports(CrawlerSourceConfig source, String rankUrl) {
@@ -36,6 +42,7 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         if (!ruleSeeds.isEmpty()) {
             return ruleSeeds;
         }
+
         Set<String> links = new LinkedHashSet<>();
         for (Element link : document.select("a[href]")) {
             String text = link.text();
@@ -47,6 +54,7 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
                 break;
             }
         }
+
         List<ParsedBookSeed> seeds = new ArrayList<>();
         for (String link : links) {
             seeds.add(new ParsedBookSeed(link, "", "", "", 0L, "", rankUrl));
@@ -63,82 +71,78 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
     public ParsedBookSnapshot fetchBook(CrawlerSourceConfig source, ParsedBookSeed seed, DocumentFetcher fetcher) throws Exception {
         CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
         Document detail = fetcher.fetch(seed.url());
-        String title = firstRuleValue(detail, rules.text("bookRules.name"));
-        if (!StringUtils.hasText(title)) {
-            title = firstText(detail, "h1", ".book-title", ".novel-title", "meta[property=og:title]", "title");
-        }
-        String author = firstRuleValue(detail, rules.text("bookRules.author"));
-        if (!StringUtils.hasText(author)) {
-            author = firstText(detail, ".author", ".book-author", ".writer", "a[href*='author']");
-        }
-        String intro = firstRuleValue(detail, rules.text("bookRules.intro"));
-        if (!StringUtils.hasText(intro)) {
-            intro = firstText(detail, ".intro", ".book-intro", ".summary", ".description", "meta[name=description]");
-        }
-        String cover = firstRuleValue(detail, rules.text("bookRules.cover"));
-        if (!StringUtils.hasText(cover)) {
-            cover = detail.select("img[src]").stream()
-                .map(img -> normalizeImageUrl(img.absUrl("src")))
-                .filter(StringUtils::hasText)
-                .findFirst()
-                .orElse("https://dummyimage.com/300x420/20232a/ffffff&text=Novel");
-        }
-        List<ParsedChapterSnapshot> chapters = ruleChapterLinks(rules, detail);
+
+        String title = firstNonBlank(
+                firstRuleValue(detail, rules.text("bookRules.name", "book.name", "detail.name")),
+                seed.title(),
+                firstText(detail, "h1", ".book-title", ".novel-title", "meta[property=og:title]", "title"));
+        String author = firstNonBlank(
+                firstRuleValue(detail, rules.text("bookRules.author", "book.author", "detail.author")),
+                seed.author(),
+                firstText(detail, ".author", ".book-author", ".writer", "a[href*='author']"));
+        String intro = firstNonBlank(
+                firstRuleValue(detail, rules.text("bookRules.intro", "book.intro", "detail.intro")),
+                seed.intro(),
+                firstText(detail, ".intro", ".book-intro", ".summary", ".description", "meta[name=description]"));
+        String cover = firstNonBlank(
+                firstRuleValue(detail, rules.text("bookRules.cover", "book.cover", "detail.cover")),
+                firstImage(detail));
+        long wordCount = firstPositive(
+                parseWordCount(firstRuleValue(detail, rules.text("bookRules.wordCount", "book.wordCount", "detail.wordCount"))),
+                seed.wordCount());
+
+        List<ParsedChapterSnapshot> chapters = new ArrayList<>(ruleChapterLinks(rules, detail));
         if (chapters.isEmpty()) {
-            chapters = chapterLinks(detail);
+            chapters.addAll(chapterLinks(detail, maxChapters(rules)));
         }
-        if (chapters.size() <= 1) {
-            String catalogUrl = firstRuleValue(detail, rules.text("bookRules.catalogUrl"));
-            if (!StringUtils.hasText(catalogUrl)) {
-                catalogUrl = firstCatalogUrl(detail);
-            }
-            if (StringUtils.hasText(catalogUrl) && !catalogUrl.equals(seed.url())) {
-                Document catalog = fetcher.fetch(catalogUrl);
-                List<ParsedChapterSnapshot> catalogChapters = ruleChapterLinks(rules, catalog);
-                if (catalogChapters.isEmpty()) {
-                    catalogChapters = chapterLinks(catalog);
-                }
-                if (catalogChapters.size() > chapters.size()) {
-                    chapters = catalogChapters;
-                }
+
+        String catalogUrl = firstNonBlank(
+                firstRuleValue(detail, rules.text("bookRules.catalogUrl", "book.catalogUrl", "detail.catalogUrl")),
+                firstCatalogUrl(detail));
+        if (StringUtils.hasText(catalogUrl)) {
+            List<ParsedChapterSnapshot> catalogChapters = fetchCatalogChapters(rules, catalogUrl, fetcher);
+            if (catalogChapters.size() > chapters.size()) {
+                chapters = catalogChapters;
             }
         }
+
         if (chapters.isEmpty()) {
             String chapterUrl = firstChapterUrl(detail);
             if (StringUtils.hasText(chapterUrl)) {
-                chapters = List.of(new ParsedChapterSnapshot(Integer.toHexString(chapterUrl.hashCode()), "", chapterUrl, 1, false));
+                chapters = List.of(new ParsedChapterSnapshot(stableId(chapterUrl), "", chapterUrl, 1, false));
             }
         }
-        String sourceBookId = Integer.toHexString(seed.url().hashCode());
+
+        String sourceBookId = firstNonBlank(firstRuleValue(detail, rules.text("bookRules.sourceBookId", "book.sourceBookId")),
+                stableId(seed.url()));
         String chapterId = chapters.isEmpty() ? "" : chapters.get(0).chapterId();
         String chapterUrl = chapters.isEmpty() ? "" : chapters.get(0).url();
-        return new ParsedBookSnapshot(title, cleanAuthor(author), cover, intro, seed.url(), sourceBookId, 0L,
-                chapterId, chapterUrl, chapters);
+        return new ParsedBookSnapshot(title, cleanAuthor(author), cover, intro, seed.url(), sourceBookId,
+                wordCount, chapterId, chapterUrl, chapters);
     }
 
     private List<ParsedBookSeed> parseRuleBookSeeds(CrawlerRuleConfig rules, Document document, String rankUrl, int maxBooks) {
-        String listSelector = rules.text("rankRules.bookList");
+        String listSelector = rules.text("rankRules.bookList", "searchRules.bookList", "search.list");
         if (!StringUtils.hasText(listSelector)) {
             return List.of();
         }
         List<ParsedBookSeed> seeds = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (Element item : document.select(listSelector)) {
-            String url = ruleValue(item, rules.text("rankRules.bookUrl"));
+            String url = normalizeUrl(ruleValue(item, rules.text("rankRules.bookUrl", "searchRules.bookUrl", "search.bookUrl", "search.detailUrl")));
             if (!StringUtils.hasText(url) && "a".equalsIgnoreCase(item.tagName())) {
-                url = item.absUrl("href");
+                url = normalizeUrl(item.absUrl("href"));
             }
-            url = normalizeUrl(url);
             if (!StringUtils.hasText(url) || !seen.add(url)) {
                 continue;
             }
             seeds.add(new ParsedBookSeed(
                     url,
-                    ruleValue(item, rules.text("rankRules.bookName")),
-                    ruleValue(item, rules.text("rankRules.author")),
-                    ruleValue(item, rules.text("rankRules.intro")),
-                    0L,
-                    "",
+                    ruleValue(item, rules.text("rankRules.bookName", "searchRules.bookName", "search.name")),
+                    ruleValue(item, rules.text("rankRules.author", "searchRules.author", "search.author")),
+                    ruleValue(item, rules.text("rankRules.intro", "searchRules.intro", "search.intro")),
+                    parseWordCount(ruleValue(item, rules.text("rankRules.wordCount", "searchRules.wordCount", "search.wordCount"))),
+                    ruleValue(item, rules.text("rankRules.chapterId", "searchRules.chapterId", "search.chapterId")),
                     rankUrl));
             if (seeds.size() >= maxBooks) {
                 break;
@@ -147,46 +151,101 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         return seeds;
     }
 
+    private List<ParsedChapterSnapshot> fetchCatalogChapters(CrawlerRuleConfig rules, String catalogUrl,
+                                                             DocumentFetcher fetcher) throws Exception {
+        List<ParsedChapterSnapshot> chapters = new ArrayList<>();
+        Set<String> visitedPages = new LinkedHashSet<>();
+        String currentUrl = catalogUrl;
+        int maxPages = Math.max(1, Math.min(rules.intValue(DEFAULT_MAX_CATALOG_PAGES,
+                "catalogRules.maxPages", "toc.maxPages"), MAX_CATALOG_PAGES_CAP));
+        while (StringUtils.hasText(currentUrl) && visitedPages.size() < maxPages && visitedPages.add(currentUrl)) {
+            Document catalog = fetcher.fetch(currentUrl);
+            chapters.addAll(ruleChapterLinks(rules, catalog));
+            if (chapters.isEmpty()) {
+                chapters.addAll(chapterLinks(catalog, maxChapters(rules)));
+            }
+            currentUrl = nextCatalogPageUrl(catalog, currentUrl, rules);
+        }
+        return uniqueAndOrder(chapters, rules);
+    }
+
     private List<ParsedChapterSnapshot> ruleChapterLinks(CrawlerRuleConfig rules, Document document) {
-        String listSelector = rules.text("catalogRules.chapterList");
+        String listSelector = rules.text("catalogRules.chapterList", "toc.chapterList", "catalog.list");
         if (!StringUtils.hasText(listSelector)) {
             return List.of();
         }
         List<ParsedChapterSnapshot> chapters = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
+        int maxChapters = maxChapters(rules);
         for (Element item : document.select(listSelector)) {
-            String href = normalizeUrl(ruleValue(item, rules.text("catalogRules.chapterUrl")));
+            String href = normalizeUrl(ruleValue(item, rules.text("catalogRules.chapterUrl", "toc.chapterUrl", "catalog.url")));
             if (!StringUtils.hasText(href) && "a".equalsIgnoreCase(item.tagName())) {
                 href = normalizeUrl(item.absUrl("href"));
             }
             if (!StringUtils.hasText(href) || !seen.add(href)) {
                 continue;
             }
-            String title = cleanChapterTitle(ruleValue(item, rules.text("catalogRules.chapterTitle")));
+            String title = cleanChapterTitle(ruleValue(item, rules.text("catalogRules.chapterTitle", "toc.chapterTitle", "catalog.title")));
             if (!StringUtils.hasText(title)) {
                 title = cleanChapterTitle(item.text());
             }
-            int chapterNo = chapters.size() + 1;
-            int parsedNo = parseChapterNo(title);
-            if (parsedNo > 0) {
-                chapterNo = parsedNo;
-            }
-            chapters.add(new ParsedChapterSnapshot(Integer.toHexString(href.hashCode()),
+            int chapterNo = normalizedChapterNo(title, chapters.size() + 1);
+            chapters.add(new ParsedChapterSnapshot(stableId(href),
                     StringUtils.hasText(title) ? title : "Chapter " + chapterNo,
                     href,
                     chapterNo,
                     isVipHint(title, href)));
-            if (chapters.size() >= MAX_CHAPTERS_PER_BOOK) {
+            if (chapters.size() >= maxChapters) {
+                break;
+            }
+        }
+        return uniqueAndOrder(chapters, rules);
+    }
+
+    private List<ParsedChapterSnapshot> chapterLinks(Document detail, int maxChapters) {
+        List<ParsedChapterSnapshot> chapters = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Element link : detail.select("a[href]")) {
+            String text = cleanChapterTitle(link.text());
+            String href = normalizeUrl(link.absUrl("href"));
+            if (!looksLikeChapterLink(href, text) || !seen.add(href)) {
+                continue;
+            }
+            int chapterNo = normalizedChapterNo(text, chapters.size() + 1);
+            chapters.add(new ParsedChapterSnapshot(stableId(href),
+                    StringUtils.hasText(text) ? text : "Chapter " + chapterNo,
+                    href,
+                    chapterNo,
+                    isVipHint(text, href)));
+            if (chapters.size() >= maxChapters) {
                 break;
             }
         }
         return chapters;
     }
 
-    private boolean looksLikeBookLink(String href, String text) {
-        String lower = href.toLowerCase();
-        return text != null && text.trim().length() >= 2
-                && (lower.contains("book") || lower.contains("novel") || lower.contains("info") || lower.contains("read"));
+    private List<ParsedChapterSnapshot> uniqueAndOrder(List<ParsedChapterSnapshot> chapters, CrawlerRuleConfig rules) {
+        if (chapters.isEmpty()) {
+            return chapters;
+        }
+        List<ParsedChapterSnapshot> unique = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (ParsedChapterSnapshot chapter : chapters) {
+            if (StringUtils.hasText(chapter.url()) && seen.add(chapter.url())) {
+                int chapterNo = chapter.chapterNo() <= 0 ? unique.size() + 1 : chapter.chapterNo();
+                unique.add(new ParsedChapterSnapshot(chapter.chapterId(), chapter.title(), chapter.url(), chapterNo, chapter.vip()));
+            }
+        }
+        if (rules.boolValue(false, "catalogRules.reverse", "toc.reverse", "catalog.reverse")) {
+            Collections.reverse(unique);
+            List<ParsedChapterSnapshot> reordered = new ArrayList<>();
+            for (int i = 0; i < unique.size(); i++) {
+                ParsedChapterSnapshot chapter = unique.get(i);
+                reordered.add(new ParsedChapterSnapshot(chapter.chapterId(), chapter.title(), chapter.url(), i + 1, chapter.vip()));
+            }
+            return reordered;
+        }
+        return unique;
     }
 
     private String firstChapterUrl(Document detail) {
@@ -196,37 +255,45 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
             String lower = href.toLowerCase();
             if (StringUtils.hasText(href)
                     && (lower.contains("chapter") || lower.contains("read"))
-                    && (text.contains("第") || text.contains("章") || text.contains("阅读") || text.contains("开始"))) {
+                    && (text.contains("\u7b2c") || text.contains("\u7ae0")
+                    || text.contains("\u9605\u8bfb") || text.contains("\u5f00\u59cb"))) {
                 return href;
             }
         }
         return "";
     }
 
-    private List<ParsedChapterSnapshot> chapterLinks(Document detail) {
-        List<ParsedChapterSnapshot> chapters = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
+    private String firstCatalogUrl(Document detail) {
         for (Element link : detail.select("a[href]")) {
-            String text = cleanChapterTitle(link.text());
+            String text = link.text();
             String href = normalizeUrl(link.absUrl("href"));
-            if (!looksLikeChapterLink(href, text) || !seen.add(href)) {
-                continue;
-            }
-            int chapterNo = chapters.size() + 1;
-            int parsedNo = parseChapterNo(text);
-            if (parsedNo > 0) {
-                chapterNo = parsedNo;
-            }
-            chapters.add(new ParsedChapterSnapshot(Integer.toHexString(href.hashCode()),
-                    StringUtils.hasText(text) ? text : "章节 " + chapterNo,
-                    href,
-                    chapterNo,
-                    isVipHint(text, href)));
-            if (chapters.size() >= MAX_CHAPTERS_PER_BOOK) {
-                break;
+            String lower = href.toLowerCase();
+            if (StringUtils.hasText(href)
+                    && (text.contains("\u76ee\u5f55") || lower.contains("catalog") || lower.contains("chapterlist"))) {
+                return href;
             }
         }
-        return chapters;
+        return "";
+    }
+
+    private String nextCatalogPageUrl(Document document, String currentUrl, CrawlerRuleConfig rules) {
+        String nextSelector = rules.text("catalogRules.nextPage", "toc.nextPage", "catalog.nextPage");
+        if (!StringUtils.hasText(nextSelector)) {
+            return "";
+        }
+        for (Element link : document.select(nextSelector)) {
+            String href = normalizeUrl(StringUtils.hasText(link.attr("href")) ? link.absUrl("href") : link.text());
+            if (StringUtils.hasText(href) && !href.equals(currentUrl)) {
+                return href;
+            }
+        }
+        return "";
+    }
+
+    private boolean looksLikeBookLink(String href, String text) {
+        String lower = href.toLowerCase();
+        return text != null && text.trim().length() >= 2
+                && (lower.contains("book") || lower.contains("novel") || lower.contains("info"));
     }
 
     private boolean looksLikeChapterLink(String href, String text) {
@@ -235,30 +302,99 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         }
         String lower = href.toLowerCase();
         String normalizedText = text.trim();
-        if (normalizedText.length() > 80 || normalizedText.contains("登录") || normalizedText.contains("注册")) {
+        if (normalizedText.length() > 100
+                || normalizedText.contains("\u767b\u5f55")
+                || normalizedText.contains("\u6ce8\u518c")) {
             return false;
         }
         return lower.contains("chapter") || lower.contains("read") || lower.matches(".*/\\d+\\.html$")
-                || normalizedText.contains("章") || normalizedText.contains("节") || normalizedText.startsWith("第");
+                || normalizedText.contains("\u7ae0") || normalizedText.contains("\u8282")
+                || normalizedText.startsWith("\u7b2c");
     }
 
-    private String firstCatalogUrl(Document detail) {
-        for (Element link : detail.select("a[href]")) {
-            String text = link.text();
-            String href = normalizeUrl(link.absUrl("href"));
-            String lower = href.toLowerCase();
-            if (StringUtils.hasText(href) && (text.contains("目录") || lower.contains("catalog") || lower.contains("chapterlist"))) {
-                return href;
+    private String firstText(Document document, String... selectors) {
+        for (String selector : selectors) {
+            Element element = document.selectFirst(selector);
+            if (element != null) {
+                String text = selector.startsWith("meta") ? element.attr("content") : element.text();
+                if (StringUtils.hasText(text)) {
+                    return text.trim();
+                }
             }
         }
         return "";
     }
 
-    private String cleanChapterTitle(String title) {
-        if (!StringUtils.hasText(title)) {
+    private String firstImage(Document detail) {
+        return detail.select("img[src]").stream()
+                .map(img -> normalizeImageUrl(img.absUrl("src")))
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse("https://dummyimage.com/300x420/20232a/ffffff&text=Novel");
+    }
+
+    private String firstRuleValue(Element scope, String rule) {
+        if (!StringUtils.hasText(rule)) {
             return "";
         }
-        return title.replaceAll("\\s+", " ").trim();
+        for (String part : rule.split("\\|\\|")) {
+            String value = ruleValue(scope, part);
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String ruleValue(Element scope, String rule) {
+        if (!StringUtils.hasText(rule)) {
+            return "";
+        }
+        String selector = rule.trim();
+        if ("text".equalsIgnoreCase(selector)) {
+            return scope.text().trim();
+        }
+        if ("ownText".equalsIgnoreCase(selector)) {
+            return scope.ownText().trim();
+        }
+        if ("html".equalsIgnoreCase(selector)) {
+            return scope.html().trim();
+        }
+        String attr = "";
+        int atIndex = selector.lastIndexOf('@');
+        if (atIndex > 0 && atIndex < selector.length() - 1) {
+            attr = selector.substring(atIndex + 1).trim();
+            selector = selector.substring(0, atIndex).trim();
+        } else if (selector.startsWith("attr:")) {
+            attr = selector.substring("attr:".length()).trim();
+            selector = "";
+        } else if (selector.startsWith("css:")) {
+            selector = selector.substring("css:".length()).trim();
+        }
+        Element element = StringUtils.hasText(selector) ? scope.selectFirst(selector) : scope;
+        if (element == null) {
+            return "";
+        }
+        if (StringUtils.hasText(attr)) {
+            if ("href".equalsIgnoreCase(attr) || "src".equalsIgnoreCase(attr)) {
+                return normalizeImageUrl(element.absUrl(attr));
+            }
+            return element.attr(attr).trim();
+        }
+        if (element.tagName().equalsIgnoreCase("meta")) {
+            return element.attr("content").trim();
+        }
+        return element.text().trim();
+    }
+
+    private int maxChapters(CrawlerRuleConfig rules) {
+        return Math.max(1, Math.min(rules.intValue(DEFAULT_MAX_CHAPTERS_PER_BOOK,
+                "catalogRules.maxChapters", "toc.maxChapters", "catalog.maxChapters"), MAX_CHAPTERS_PER_BOOK_CAP));
+    }
+
+    private int normalizedChapterNo(String title, int fallback) {
+        int parsedNo = parseChapterNo(title);
+        return parsedNo > 0 ? parsedNo : fallback;
     }
 
     private int parseChapterNo(String title) {
@@ -278,99 +414,104 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         if (!StringUtils.hasText(value)) {
             return 0;
         }
-        String digits = value
-                .replace("一", "1").replace("二", "2").replace("三", "3").replace("四", "4").replace("五", "5")
-                .replace("六", "6").replace("七", "7").replace("八", "8").replace("九", "9");
-        if ("十".equals(value)) {
-            return 10;
+        int result = 0;
+        int section = 0;
+        int number = 0;
+        for (int i = 0; i < value.length(); i++) {
+            int digit = chineseDigit(value.charAt(i));
+            if (digit >= 0) {
+                number = digit;
+                continue;
+            }
+            int unit = chineseUnit(value.charAt(i));
+            if (unit == 10000) {
+                section = (section + number) * unit;
+                result += section;
+                section = 0;
+                number = 0;
+            } else if (unit > 0) {
+                section += (number == 0 ? 1 : number) * unit;
+                number = 0;
+            }
         }
-        if (value.startsWith("十") && digits.length() > 1) {
-            return 10 + Character.digit(digits.charAt(1), 10);
+        return result + section + number;
+    }
+
+    private int chineseDigit(char ch) {
+        return switch (ch) {
+            case '\u96f6' -> 0;
+            case '\u4e00' -> 1;
+            case '\u4e8c', '\u4e24' -> 2;
+            case '\u4e09' -> 3;
+            case '\u56db' -> 4;
+            case '\u4e94' -> 5;
+            case '\u516d' -> 6;
+            case '\u4e03' -> 7;
+            case '\u516b' -> 8;
+            case '\u4e5d' -> 9;
+            default -> -1;
+        };
+    }
+
+    private int chineseUnit(char ch) {
+        return switch (ch) {
+            case '\u5341' -> 10;
+            case '\u767e' -> 100;
+            case '\u5343' -> 1000;
+            case '\u4e07' -> 10000;
+            default -> 0;
+        };
+    }
+
+    private long parseWordCount(String text) {
+        if (!StringUtils.hasText(text)) {
+            return 0L;
         }
-        if (value.contains("十")) {
-            String[] parts = digits.split("十", -1);
-            int left = parts[0].isEmpty() ? 1 : Character.digit(parts[0].charAt(0), 10);
-            int right = parts.length > 1 && !parts[1].isEmpty() ? Character.digit(parts[1].charAt(0), 10) : 0;
-            return left * 10 + right;
+        Matcher matcher = WORD_COUNT_PATTERN.matcher(text.replace(",", ""));
+        if (!matcher.find()) {
+            return 0L;
         }
-        try {
-            return Integer.parseInt(digits);
-        } catch (NumberFormatException ex) {
-            return 0;
+        double value = Double.parseDouble(matcher.group(1));
+        String unit = matcher.group(2);
+        if ("\u4e07".equals(unit)) {
+            value *= 10000D;
+        } else if ("\u5343".equals(unit)) {
+            value *= 1000D;
         }
+        return Math.round(value);
     }
 
     private boolean isVipHint(String text, String href) {
         String value = ((text == null ? "" : text) + " " + (href == null ? "" : href)).toLowerCase();
-        return value.contains("vip") || value.contains("付费") || value.contains("订阅");
+        return value.contains("vip")
+                || value.contains("\u4ed8\u8d39")
+                || value.contains("\u8ba2\u9605");
     }
 
-    private String firstText(Document document, String... selectors) {
-        for (String selector : selectors) {
-            Element element = document.selectFirst(selector);
-            if (element != null) {
-                String text = selector.startsWith("meta") ? element.attr("content") : element.text();
-                if (StringUtils.hasText(text)) {
-                    return text.trim();
-                }
-            }
-        }
-        return "";
-    }
-
-    private String firstRuleValue(Document document, String rule) {
-        if (!StringUtils.hasText(rule)) {
+    private String cleanChapterTitle(String title) {
+        if (!StringUtils.hasText(title)) {
             return "";
         }
-        return ruleValue(document, rule);
-    }
-
-    private String ruleValue(Element scope, String rule) {
-        if (!StringUtils.hasText(rule)) {
-            return "";
-        }
-        String selector = rule.trim();
-        if ("text".equalsIgnoreCase(selector)) {
-            return scope.text().trim();
-        }
-        if ("html".equalsIgnoreCase(selector)) {
-            return scope.html().trim();
-        }
-        String attr = "";
-        int atIndex = selector.lastIndexOf('@');
-        if (atIndex > 0 && atIndex < selector.length() - 1) {
-            attr = selector.substring(atIndex + 1).trim();
-            selector = selector.substring(0, atIndex).trim();
-        } else if (selector.startsWith("attr:")) {
-            attr = selector.substring("attr:".length()).trim();
-            selector = "";
-        }
-        Element element = StringUtils.hasText(selector) ? scope.selectFirst(selector) : scope;
-        if (element == null) {
-            return "";
-        }
-        if (StringUtils.hasText(attr)) {
-            return normalizeImageUrl(element.absUrl(attr));
-        }
-        if (element.tagName().equalsIgnoreCase("meta")) {
-            return element.attr("content").trim();
-        }
-        return element.text().trim();
+        return title.replaceAll("\\s+", " ").trim();
     }
 
     private String cleanAuthor(String author) {
         if (!StringUtils.hasText(author)) {
             return "";
         }
-        return author.replace("作者：", "").replace("作家：", "").trim();
+        return author.replace("\u4f5c\u8005\uff1a", "")
+                .replace("\u4f5c\u5bb6\uff1a", "")
+                .replace("Author:", "")
+                .trim();
     }
 
     private String normalizeUrl(String url) {
         if (!StringUtils.hasText(url)) {
             return "";
         }
-        int queryIndex = url.indexOf('?');
-        return queryIndex >= 0 ? url.substring(0, queryIndex) : url;
+        String trimmed = normalizeImageUrl(url.trim());
+        int hashIndex = trimmed.indexOf('#');
+        return hashIndex >= 0 ? trimmed.substring(0, hashIndex) : trimmed;
     }
 
     private String normalizeImageUrl(String url) {
@@ -378,5 +519,30 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
             return "";
         }
         return url.startsWith("//") ? "https:" + url : url;
+    }
+
+    private String stableId(String value) {
+        return Integer.toHexString((value == null ? "" : value).hashCode());
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private long firstPositive(long... values) {
+        for (long value : values) {
+            if (value > 0) {
+                return value;
+            }
+        }
+        return 0L;
     }
 }
