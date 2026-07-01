@@ -84,6 +84,9 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
                 firstRuleValue(detail, rules.text("bookRules.intro", "book.intro", "detail.intro")),
                 seed.intro(),
                 firstText(detail, ".intro", ".book-intro", ".summary", ".description", "meta[name=description]"));
+        String categoryName = firstNonBlank(
+                firstRuleValue(detail, rules.text("bookRules.categoryName", "book.categoryName", "detail.categoryName")),
+                firstText(detail, "meta[property=og:novel:category]", ".category", ".book-category"));
         String cover = firstNonBlank(
                 firstRuleValue(detail, rules.text("bookRules.cover", "book.cover", "detail.cover")),
                 firstImage(detail));
@@ -121,7 +124,7 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         String chapterId = chapters.isEmpty() ? "" : chapters.get(0).chapterId();
         String chapterUrl = chapters.isEmpty() ? "" : chapters.get(0).url();
         return new ParsedBookSnapshot(title, cleanAuthor(author), cover, intro, seed.url(), sourceBookId,
-                wordCount, chapterId, chapterUrl, chapters);
+                wordCount, categoryName, chapterId, chapterUrl, chapters);
     }
 
     private List<ParsedBookSeed> parseRuleBookSeeds(CrawlerRuleConfig rules, Document document, String rankUrl, int maxBooks) {

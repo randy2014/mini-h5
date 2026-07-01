@@ -246,7 +246,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "Unknown", 64);
         book.intro = snapshot.intro();
         book.coverUrl = limit(snapshot.coverUrl(), 512);
-        book.categoryName = limit(StringUtils.hasText(snapshot.categoryName()) ? snapshot.categoryName() : "Unknown", 64);
+        book.categoryName = limit(firstNonBlank(snapshot.categoryName(), rank.rankName, "Unknown"), 64);
         book.bookStatus = "UNKNOWN";
         book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;
@@ -650,6 +650,18 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return "";
         }
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private String limit(String value, int maxLength) {
