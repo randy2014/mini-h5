@@ -11,6 +11,7 @@
 
     <div class="reader-toolbar">
       <van-button plain hairline size="small" @click="$router.back()">目录</van-button>
+      <van-button plain hairline size="small" :loading="nextLoading" @click="readNext">下一章</van-button>
       <van-button plain hairline size="small" to="/h5/vip">VIP</van-button>
       <van-button plain hairline size="small" to="/h5/home">首页</van-button>
     </div>
@@ -18,17 +19,19 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog } from 'vant';
-import { fetchChapter } from '../services/book';
+import { fetchChapter, fetchNextChapter } from '../services/book';
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
+const nextLoading = ref(false);
 const chapter = ref({});
 
-onMounted(async () => {
+async function loadChapter() {
+  loading.value = true;
   try {
     chapter.value = await fetchChapter(route.params.id);
   } catch (error) {
@@ -41,5 +44,18 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+
+onMounted(loadChapter);
+watch(() => route.params.id, loadChapter);
+
+async function readNext() {
+  nextLoading.value = true;
+  try {
+    const next = await fetchNextChapter(route.params.id);
+    router.push(`/h5/read/${next.id}?bookId=${next.novelId}`);
+  } finally {
+    nextLoading.value = false;
+  }
+}
 </script>

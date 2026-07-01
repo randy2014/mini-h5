@@ -15,7 +15,10 @@
 
       <p class="book-intro">{{ book.intro }}</p>
 
-      <van-button block round color="#2f6f73" @click="readFirst">开始阅读</van-button>
+      <div class="detail-actions">
+        <van-button block round color="#2f6f73" @click="readFirst">开始阅读</van-button>
+        <van-button block round plain color="#2f6f73" @click="addToBookshelf">加入书架</van-button>
+      </div>
 
       <div class="section-title">
         <h2>目录</h2>
@@ -42,6 +45,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { fetchBook, fetchChapters } from '../services/book';
+import { addBookshelf } from '../services/user';
 
 const route = useRoute();
 const router = useRouter();
@@ -69,5 +73,10 @@ function readFirst() {
 
 function read(chapter) {
   router.push(`/h5/read/${chapter.id}?bookId=${book.value.id}`);
+}
+
+async function addToBookshelf() {
+  await addBookshelf(book.value.id);
+  showToast('已加入书架');
 }
 </script>

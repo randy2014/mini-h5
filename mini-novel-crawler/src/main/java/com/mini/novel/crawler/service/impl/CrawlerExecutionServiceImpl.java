@@ -246,7 +246,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "Unknown", 64);
         book.intro = snapshot.intro();
         book.coverUrl = limit(snapshot.coverUrl(), 512);
-        book.categoryName = "Unknown";
+        book.categoryName = limit(StringUtils.hasText(snapshot.categoryName()) ? snapshot.categoryName() : "Unknown", 64);
         book.bookStatus = "UNKNOWN";
         book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;

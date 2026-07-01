@@ -11,3 +11,11 @@ export function fetchProfile() {
 export function fetchBookshelf() {
   return http.get('/user/bookshelf');
 }
+
+export function addBookshelf(novelId) {
+  return http.post(`/user/bookshelf/${novelId}`);
+}
+
+export function removeBookshelf(novelId) {
+  return http.delete(`/user/bookshelf/${novelId}`);
+}

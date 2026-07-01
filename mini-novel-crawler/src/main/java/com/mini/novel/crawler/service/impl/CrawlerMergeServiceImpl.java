@@ -1,11 +1,13 @@
 package com.mini.novel.crawler.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.mini.novel.book.entity.Category;
 import com.mini.novel.book.entity.Chapter;
 import com.mini.novel.book.entity.ChapterSourceMapping;
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.book.entity.NovelIdentity;
 import com.mini.novel.book.entity.NovelSourceMapping;
+import com.mini.novel.book.mapper.CategoryMapper;
 import com.mini.novel.book.mapper.ChapterMapper;
 import com.mini.novel.book.mapper.ChapterSourceMappingMapper;
 import com.mini.novel.book.mapper.NovelIdentityMapper;
@@ -42,6 +44,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     private final ChapterSourceMappingMapper chapterSourceMappingMapper;
     private final NovelMapper novelMapper;
     private final ChapterMapper chapterMapper;
+    private final CategoryMapper categoryMapper;
 
     public CrawlerMergeServiceImpl(CrawlMergeTaskMapper mergeTaskMapper,
                                    CrawlMergeItemMapper mergeItemMapper,
@@ -52,7 +55,8 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                                    NovelSourceMappingMapper novelSourceMappingMapper,
                                    ChapterSourceMappingMapper chapterSourceMappingMapper,
                                    NovelMapper novelMapper,
-                                   ChapterMapper chapterMapper) {
+                                   ChapterMapper chapterMapper,
+                                   CategoryMapper categoryMapper) {
         this.mergeTaskMapper = mergeTaskMapper;
         this.mergeItemMapper = mergeItemMapper;
         this.bookRawMapper = bookRawMapper;
@@ -63,6 +67,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         this.chapterSourceMappingMapper = chapterSourceMappingMapper;
         this.novelMapper = novelMapper;
         this.chapterMapper = chapterMapper;
+        this.categoryMapper = categoryMapper;
     }
 
     @Override
@@ -364,7 +369,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         novel.setAuthor(limit(StringUtils.hasText(book.author) ? book.author : "未知作者", 64));
         novel.setCoverUrl(limit(book.coverUrl, 512));
         novel.setIntro(book.intro);
-        novel.setCategoryId(1L);
+        novel.setCategoryId(resolveCategoryId(book.categoryName, now));
         novel.setStatus("COMPLETED".equals(book.bookStatus) ? 2 : 1);
         novel.setVipRequired(false);
         novel.setFreeChapterCount(999999);
@@ -382,6 +387,24 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         mapping.novelId = novel.getId();
         novelSourceMappingMapper.updateById(mapping);
         return novel;
+    }
+
+    private Long resolveCategoryId(String sourceCategoryName, LocalDateTime now) {
+        String name = StringUtils.hasText(sourceCategoryName) ? sourceCategoryName.trim() : "";
+        if (!StringUtils.hasText(name) || "Unknown".equalsIgnoreCase(name)) {
+            return 1L;
+        }
+        Category category = categoryMapper.selectOne(new QueryWrapper<Category>()
+                .eq("name", limit(name, 64))
+                .last("LIMIT 1"));
+        if (category != null) {
+            return category.getId();
+        }
+        category = new Category();
+        category.setName(limit(name, 64));
+        category.setSort(100);
+        categoryMapper.insert(category);
+        return category.getId();
     }
 
     private Chapter upsertChapter(Novel novel, CrawlChapterRaw rawChapter, String content, LocalDateTime now) {
