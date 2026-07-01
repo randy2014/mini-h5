@@ -49,6 +49,18 @@ WHERE @shuqi_source_id IS NOT NULL
       AND name = '书旗榜单免费章节采集'
   );
 
+DELETE s
+FROM crawl_schedule s
+JOIN (
+  SELECT MIN(id) AS keep_id
+  FROM crawl_schedule
+  WHERE source_id = @shuqi_source_id
+    AND name = '书旗榜单免费章节采集'
+) k
+WHERE s.source_id = @shuqi_source_id
+  AND s.name = '书旗榜单免费章节采集'
+  AND s.id <> k.keep_id;
+
 UPDATE crawl_rank_source
 SET rank_type = 'STORE_ALL',
     rank_url = 'https://www.shuqi.com/store?sz=0&fc=0&wd=10&tm=0&st=0',
