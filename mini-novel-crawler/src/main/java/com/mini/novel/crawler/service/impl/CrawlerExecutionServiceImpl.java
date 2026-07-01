@@ -417,8 +417,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
         }
         if (StringUtils.hasText(attr)) {
+            String finalAttr = attr;
             return document.select(selector).stream()
-                    .map(element -> element.attr(attr))
+                    .map(element -> element.attr(finalAttr))
                     .filter(StringUtils::hasText)
                     .reduce("", (left, right) -> left + (left.isEmpty() ? "" : "\n") + right.trim());
         }
