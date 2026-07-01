@@ -51,6 +51,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private static final int DEFAULT_MAX_BOOKS = 20;
     private static final int DEFAULT_MAX_CHAPTER_PAGES = 8;
     private static final int MAX_CHAPTER_PAGES_CAP = 30;
+    private static final int FETCH_TIMEOUT_MILLIS = 45000;
 
     private final CrawlTaskRecordMapper taskMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
@@ -196,11 +197,31 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     private Document fetch(String url) throws IOException {
         validateUrl(url);
-        return Jsoup.connect(url)
-                .userAgent(url.contains("m.qidian.com") ? MOBILE_USER_AGENT : USER_AGENT)
-                .header("Accept-Language", "zh-CN,zh;q=0.9")
-                .timeout(18000)
-                .get();
+        IOException lastException = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                return Jsoup.connect(url)
+                        .userAgent(url.contains("m.qidian.com") ? MOBILE_USER_AGENT : USER_AGENT)
+                        .header("Accept-Language", "zh-CN,zh;q=0.9")
+                        .timeout(FETCH_TIMEOUT_MILLIS)
+                        .get();
+            } catch (IOException ex) {
+                lastException = ex;
+                sleepBeforeRetry(attempt);
+            }
+        }
+        throw lastException;
+    }
+
+    private void sleepBeforeRetry(int attempt) {
+        if (attempt >= 3) {
+            return;
+        }
+        try {
+            Thread.sleep(attempt * 1000L);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private CrawlBookRaw upsertBookRaw(CrawlTaskRecord task, CrawlerSourceConfig source, CrawlRankSource rank,

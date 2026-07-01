@@ -28,6 +28,7 @@ public class ShuqiCrawlerSiteParser implements CrawlerSiteParser {
             + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
     private static final Pattern BOOK_ID_PATTERN = Pattern.compile("/book/(\\d+)\\.html|[?&]bid=(\\d+)");
     private static final int MAX_FREE_CHAPTERS_PER_BOOK = 80;
+    private static final int CONTENT_TIMEOUT_MILLIS = 45000;
 
     private final ObjectMapper objectMapper;
 
@@ -143,19 +144,40 @@ public class ShuqiCrawlerSiteParser implements CrawlerSiteParser {
     }
 
     private String fetchFreeContent(String url, String referer) throws IOException {
-        String body = Jsoup.connect(url)
-                .ignoreContentType(true)
-                .userAgent(USER_AGENT)
-                .header("Accept", "application/json,text/plain,*/*")
-                .header("Referer", referer)
-                .timeout(18000)
-                .execute()
-                .body();
-        JsonNode response = objectMapper.readTree(body);
-        if (!"200".equals(text(response, "state"))) {
-            return "";
+        IOException lastException = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                String body = Jsoup.connect(url)
+                        .ignoreContentType(true)
+                        .userAgent(USER_AGENT)
+                        .header("Accept", "application/json,text/plain,*/*")
+                        .header("Accept-Language", "zh-CN,zh;q=0.9")
+                        .header("Referer", referer)
+                        .timeout(CONTENT_TIMEOUT_MILLIS)
+                        .execute()
+                        .body();
+                JsonNode response = objectMapper.readTree(body);
+                if (!"200".equals(text(response, "state"))) {
+                    return "";
+                }
+                return decodeChapterContent(text(response, "ChapterContent"));
+            } catch (IOException ex) {
+                lastException = ex;
+                sleepBeforeRetry(attempt);
+            }
         }
-        return decodeChapterContent(text(response, "ChapterContent"));
+        throw lastException;
+    }
+
+    private void sleepBeforeRetry(int attempt) {
+        if (attempt >= 3) {
+            return;
+        }
+        try {
+            Thread.sleep(attempt * 1000L);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private JsonNode extractReaderPageData(Document document) {
