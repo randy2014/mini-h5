@@ -45,9 +45,16 @@
         <span>第 {{ chapterPage.current || pageNo }} / {{ chapterPage.pages || 1 }} 页</span>
       </div>
 
+      <div class="chapter-tools">
+        <van-search v-model="chapterKeyword" placeholder="搜索本页章节" shape="round" />
+        <van-button size="small" round plain color="#1f6f64" @click="reverseCatalog = !reverseCatalog">
+          {{ reverseCatalog ? '倒序' : '正序' }}
+        </van-button>
+      </div>
+
       <div class="chapter-list">
         <button
-          v-for="chapter in chapters"
+          v-for="chapter in displayedChapters"
           :id="`chapter-${chapter.id}`"
           :key="chapter.id"
           type="button"
@@ -61,6 +68,7 @@
           <van-tag v-if="chapter.vip" color="#9b7a2f">VIP</van-tag>
         </button>
       </div>
+      <van-empty v-if="chapters.length && displayedChapters.length === 0" description="本页没有匹配章节" />
 
       <div v-if="chapterPage.pages > 1" class="chapter-pager">
         <van-button size="small" plain :disabled="pageNo <= 1" @click="loadChapters(pageNo - 1)">
@@ -93,6 +101,8 @@ const pageNo = ref(1);
 const chapterPage = ref({ current: 1, pages: 1, total: 0, records: [] });
 const activeChapterId = ref(Number(route.query.chapterId || 0));
 const pendingScrollChapterId = ref(0);
+const chapterKeyword = ref('');
+const reverseCatalog = ref(false);
 const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+Novel';
 
 const wordCountLabel = computed(() => {
@@ -112,6 +122,13 @@ const progressTitle = computed(() => {
   }
   const progress = readProgress();
   return progress.chapterNo ? `第 ${progress.chapterNo} 章` : '已记录阅读进度';
+});
+const displayedChapters = computed(() => {
+  const keyword = chapterKeyword.value.trim();
+  const rows = keyword
+    ? chapters.value.filter((chapter) => `${chapter.title} ${chapter.chapterNo}`.includes(keyword))
+    : [...chapters.value];
+  return reverseCatalog.value ? [...rows].reverse() : rows;
 });
 
 onMounted(async () => {

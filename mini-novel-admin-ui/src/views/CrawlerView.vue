@@ -318,6 +318,7 @@
             <el-table-column prop="createdAt" label="创建时间" width="180" />
             <el-table-column label="操作" width="190" fixed="right">
               <template #default="{ row }">
+                <el-button link type="primary" @click="openTaskDetail(row)">详情</el-button>
                 <el-button link type="primary" :disabled="row.status === 'RUNNING'" @click="rerunTask(row)">继续执行</el-button>
                 <el-button link type="danger" :disabled="!['PENDING', 'RUNNING'].includes(row.status)" @click="interruptTask(row)">标记中断</el-button>
               </template>
@@ -382,6 +383,33 @@
         </el-card>
       </el-tab-pane>
     </el-tabs>
+
+    <el-drawer v-model="taskDetailOpen" size="72%" :title="taskDetailTitle">
+      <div class="task-detail-metrics">
+        <el-statistic title="原始书籍" :value="taskBookRows.length" />
+        <el-statistic title="章节总数" :value="taskDetailSummary.chapterCount" />
+        <el-statistic title="正文已抓" :value="taskDetailSummary.contentCount" />
+        <el-statistic title="疑似缺章" :value="taskDetailSummary.gapCount" />
+      </div>
+      <el-table :data="taskBookRows" v-loading="loading.taskBooks" height="calc(100vh - 230px)">
+        <el-table-column prop="id" label="Raw ID" width="90" />
+        <el-table-column prop="title" label="书名" min-width="180" />
+        <el-table-column prop="author" label="作者" width="120" />
+        <el-table-column prop="bookStatus" label="状态" width="110" />
+        <el-table-column prop="contentStatus" label="正文状态" width="130" />
+        <el-table-column label="完整率" width="150">
+          <template #default="{ row }">
+            <el-progress :percentage="bookCompletePercent(row)" :status="row.gapCount > 0 ? 'warning' : undefined" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="chapterCount" label="章节" width="80" />
+        <el-table-column prop="contentCount" label="正文" width="80" />
+        <el-table-column prop="minChapterNo" label="首章" width="80" />
+        <el-table-column prop="maxChapterNo" label="末章" width="80" />
+        <el-table-column prop="gapCount" label="缺口" width="80" />
+        <el-table-column prop="sourceUrl" label="来源地址" min-width="260" show-overflow-tooltip />
+      </el-table>
+    </el-drawer>
   </section>
 </template>
 
@@ -398,7 +426,10 @@ const schedules = ref([]);
 const tasks = ref([]);
 const mergeTasks = ref([]);
 const mergeItems = ref([]);
-const loading = reactive({ sources: false, credentials: false, ranks: false, schedules: false, tasks: false, merge: false, mergeItems: false });
+const taskBookRows = ref([]);
+const selectedTask = ref(null);
+const taskDetailOpen = ref(false);
+const loading = reactive({ sources: false, credentials: false, ranks: false, schedules: false, tasks: false, taskBooks: false, merge: false, mergeItems: false });
 
 const sourceForm = reactive(defaultSource());
 const credentialForm = reactive(defaultCredential());
@@ -406,6 +437,13 @@ const rankForm = reactive(defaultRank());
 const scheduleForm = reactive(defaultSchedule());
 
 const enabledCredentials = computed(() => credentials.value.filter((item) => item.enabled));
+const taskDetailTitle = computed(() => selectedTask.value ? `采集任务 #${selectedTask.value.id} 明细` : '采集任务明细');
+const taskDetailSummary = computed(() => taskBookRows.value.reduce((summary, row) => {
+  summary.chapterCount += Number(row.chapterCount || 0);
+  summary.contentCount += Number(row.contentCount || 0);
+  summary.gapCount += Number(row.gapCount || 0);
+  return summary;
+}, { chapterCount: 0, contentCount: 0, gapCount: 0 }));
 
 function defaultSource() {
   return {
@@ -495,6 +533,12 @@ function progressStatus(status) {
   return undefined;
 }
 
+function bookCompletePercent(row) {
+  const total = Number(row.chapterCount || 0);
+  if (!total) return 0;
+  return Math.min(100, Math.round((Number(row.contentCount || 0) / total) * 100));
+}
+
 async function loadSources() {
   loading.sources = true;
   try {
@@ -542,6 +586,22 @@ async function loadTasks() {
   } finally {
     loading.tasks = false;
   }
+}
+
+async function loadTaskBooks(taskId) {
+  loading.taskBooks = true;
+  try {
+    taskBookRows.value = await crawlerApi.get(`/config/tasks/${taskId}/books`);
+  } finally {
+    loading.taskBooks = false;
+  }
+}
+
+async function openTaskDetail(row) {
+  selectedTask.value = row;
+  taskDetailOpen.value = true;
+  taskBookRows.value = [];
+  await loadTaskBooks(row.id);
 }
 
 async function loadMergeTasks() {

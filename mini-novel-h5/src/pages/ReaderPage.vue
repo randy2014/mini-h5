@@ -9,6 +9,8 @@
       <div>{{ formatTextLineBreaks(chapter.content) }}</div>
     </article>
 
+    <div v-if="!loading" class="reader-progress-pill">{{ readingProgressText }}</div>
+
     <div class="reader-toolbar">
       <van-button plain hairline size="small" icon="bars" @click="openCatalog">目录</van-button>
       <van-button plain hairline size="small" icon="arrow-left" :loading="prevLoading" @click="readPrevious">上一章</van-button>
@@ -113,6 +115,10 @@ const readerClass = computed(() => `reader-theme-${settings.theme}`);
 const readerStyle = computed(() => ({
   '--reader-font-size': `${settings.fontSize}px`
 }));
+const readingProgressText = computed(() => {
+  const title = chapter.value.title ? ` · ${chapter.value.title}` : '';
+  return `第 ${chapter.value.chapterNo || '-'} 章${title}`;
+});
 
 onMounted(() => {
   loadChapter();

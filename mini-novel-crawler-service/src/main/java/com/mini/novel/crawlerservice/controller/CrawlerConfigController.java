@@ -5,6 +5,8 @@ import com.mini.novel.common.result.Result;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
 import com.mini.novel.crawler.entity.CrawlMergeItem;
 import com.mini.novel.crawler.entity.CrawlBookRaw;
+import com.mini.novel.crawler.entity.CrawlChapterRaw;
+import com.mini.novel.crawler.entity.CrawlContentRaw;
 import com.mini.novel.crawler.entity.CrawlRankSource;
 import com.mini.novel.crawler.entity.CrawlSchedule;
 import com.mini.novel.crawler.entity.CrawlSourceCredential;
@@ -13,6 +15,8 @@ import com.mini.novel.crawler.entity.CrawlerSourceConfig;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlMergeItemMapper;
 import com.mini.novel.crawler.mapper.CrawlBookRawMapper;
+import com.mini.novel.crawler.mapper.CrawlChapterRawMapper;
+import com.mini.novel.crawler.mapper.CrawlContentRawMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlSourceCredentialMapper;
@@ -48,6 +52,8 @@ public class CrawlerConfigController {
     private final CrawlMergeTaskMapper mergeTaskMapper;
     private final CrawlMergeItemMapper mergeItemMapper;
     private final CrawlBookRawMapper bookRawMapper;
+    private final CrawlChapterRawMapper chapterRawMapper;
+    private final CrawlContentRawMapper contentRawMapper;
     private final CrawlerExecutionService crawlerExecutionService;
     private final CrawlerMergeService crawlerMergeService;
 
@@ -59,6 +65,8 @@ public class CrawlerConfigController {
                                    CrawlMergeTaskMapper mergeTaskMapper,
                                    CrawlMergeItemMapper mergeItemMapper,
                                    CrawlBookRawMapper bookRawMapper,
+                                   CrawlChapterRawMapper chapterRawMapper,
+                                   CrawlContentRawMapper contentRawMapper,
                                    CrawlerExecutionService crawlerExecutionService,
                                    CrawlerMergeService crawlerMergeService) {
         this.sourceMapper = sourceMapper;
@@ -69,6 +77,8 @@ public class CrawlerConfigController {
         this.mergeTaskMapper = mergeTaskMapper;
         this.mergeItemMapper = mergeItemMapper;
         this.bookRawMapper = bookRawMapper;
+        this.chapterRawMapper = chapterRawMapper;
+        this.contentRawMapper = contentRawMapper;
         this.crawlerExecutionService = crawlerExecutionService;
         this.crawlerMergeService = crawlerMergeService;
     }
@@ -262,6 +272,60 @@ public class CrawlerConfigController {
     @GetMapping("/tasks")
     public Result<List<CrawlTaskRecord>> tasks() {
         return Result.ok(taskRecordMapper.selectList(new QueryWrapper<CrawlTaskRecord>().orderByDesc("id").last("LIMIT 100")));
+    }
+
+    @GetMapping("/tasks/{id}/books")
+    public Result<List<Map<String, Object>>> taskBooks(@PathVariable Long id) {
+        List<CrawlBookRaw> books = bookRawMapper.selectList(new QueryWrapper<CrawlBookRaw>()
+                .eq("crawl_task_id", id)
+                .orderByDesc("id")
+                .last("LIMIT 500"));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (CrawlBookRaw book : books) {
+            Long chapterCount = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
+                    .eq("book_raw_id", book.id));
+            Long readyChapterCount = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
+                    .eq("book_raw_id", book.id)
+                    .eq("content_status", "CONTENT_READY"));
+            Long contentCount = contentRawMapper.selectCount(new QueryWrapper<CrawlContentRaw>()
+                    .inSql("chapter_raw_id", "SELECT id FROM mini_novel_crawler.crawl_chapter_raw WHERE book_raw_id = " + book.id)
+                    .gt("content_length", 0));
+            Integer minNo = chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
+                            .select("chapter_no")
+                            .eq("book_raw_id", book.id)
+                            .orderByAsc("chapter_no")
+                            .last("LIMIT 1"))
+                    .stream()
+                    .findFirst()
+                    .map(row -> row.chapterNo)
+                    .orElse(0);
+            Integer maxNo = chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
+                            .select("chapter_no")
+                            .eq("book_raw_id", book.id)
+                            .orderByDesc("chapter_no")
+                            .last("LIMIT 1"))
+                    .stream()
+                    .findFirst()
+                    .map(row -> row.chapterNo)
+                    .orElse(0);
+            long gapCount = Math.max(0L, (long) maxNo - minNo + 1L - (chapterCount == null ? 0L : chapterCount));
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", book.id);
+            row.put("title", book.title);
+            row.put("author", book.author);
+            row.put("bookStatus", book.bookStatus);
+            row.put("contentStatus", book.contentStatus);
+            row.put("chapterCount", chapterCount == null ? 0L : chapterCount);
+            row.put("readyChapterCount", readyChapterCount == null ? 0L : readyChapterCount);
+            row.put("contentCount", contentCount == null ? 0L : contentCount);
+            row.put("minChapterNo", minNo);
+            row.put("maxChapterNo", maxNo);
+            row.put("gapCount", gapCount);
+            row.put("sourceUrl", book.sourceUrl);
+            row.put("crawledAt", book.crawledAt);
+            rows.add(row);
+        }
+        return Result.ok(rows);
     }
 
     @GetMapping("/merge-tasks")

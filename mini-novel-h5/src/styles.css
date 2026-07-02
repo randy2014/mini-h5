@@ -606,6 +606,19 @@ a {
   background: var(--panel);
 }
 
+.chapter-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin: -4px 14px 10px;
+}
+
+.chapter-tools .van-search {
+  padding: 0;
+  background: transparent;
+}
+
 .chapter-list button {
   display: flex;
   width: 100%;
@@ -902,6 +915,24 @@ a {
   padding: 24px 20px 104px;
 }
 
+.reader-progress-pill {
+  position: fixed;
+  right: 14px;
+  bottom: 62px;
+  z-index: 8;
+  max-width: min(320px, calc(100vw - 28px));
+  overflow: hidden;
+  padding: 7px 11px;
+  border: 1px solid rgba(138, 111, 76, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 253, 246, 0.88);
+  color: #7a654a;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(31, 37, 40, 0.08);
+}
+
 .reader-content p {
   margin: 0 0 8px;
   color: #8a6f4c;
@@ -940,6 +971,12 @@ a {
 .reader-theme-night .reader-content h1,
 .reader-theme-night .reader-content div {
   color: #ddd6ca;
+}
+
+.reader-theme-night .reader-progress-pill {
+  border-color: rgba(231, 225, 214, 0.12);
+  background: rgba(29, 34, 36, 0.88);
+  color: #c9bda9;
 }
 
 .reader-toolbar {

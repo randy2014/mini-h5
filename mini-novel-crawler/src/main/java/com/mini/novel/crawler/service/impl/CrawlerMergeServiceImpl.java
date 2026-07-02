@@ -225,9 +225,6 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
 
     private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters) {
         LocalDateTime now = LocalDateTime.now();
-        NovelIdentity identity = upsertIdentity(book, now);
-        NovelSourceMapping novelMapping = upsertNovelMapping(identity, book, now);
-
         int acceptableChapters = 0;
         for (CrawlChapterRaw rawChapter : chapters) {
             CrawlContentRaw content = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
@@ -239,30 +236,18 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             }
         }
         if (acceptableChapters == 0) {
-            for (CrawlChapterRaw rawChapter : chapters) {
-                upsertChapterMapping(novelMapping, rawChapter, null, "PENDING_REVIEW", now);
-            }
-            novelMapping.contentStatus = "PENDING_REVIEW";
-            novelMapping.matchStatus = "PENDING_REVIEW";
-            novelMapping.updatedAt = LocalDateTime.now();
-            novelSourceMappingMapper.updateById(novelMapping);
-            upsertMergeItem(task, book, identity, null, "PENDING_REVIEW", "未发现达标正文，已保留映射关系，等待补正文或人工审核。");
-            return MergeOutcome.PENDING_REVIEW;
+            purgeRawBook(book.id);
+            return MergeOutcome.FAILED;
         }
 
         ChapterSequenceIssue sequenceIssue = evaluateChapterSequence(chapters);
         if (sequenceIssue.suspicious) {
-            for (CrawlChapterRaw rawChapter : chapters) {
-                upsertChapterMapping(novelMapping, rawChapter, null, "PENDING_REVIEW", now);
-            }
-            novelMapping.contentStatus = "PENDING_REVIEW";
-            novelMapping.matchStatus = "PENDING_REVIEW";
-            novelMapping.updatedAt = LocalDateTime.now();
-            novelSourceMappingMapper.updateById(novelMapping);
-            upsertMergeItem(task, book, identity, null, "PENDING_REVIEW", sequenceIssue.message);
-            return MergeOutcome.PENDING_REVIEW;
+            purgeRawBook(book.id);
+            return MergeOutcome.FAILED;
         }
 
+        NovelIdentity identity = upsertIdentity(book, now);
+        NovelSourceMapping novelMapping = upsertNovelMapping(identity, book, now);
         Novel novel = ensureNovel(identity, novelMapping, book, now);
 
         int mergedChapters = 0;
@@ -274,7 +259,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                     .last("LIMIT 1"));
             ContentQuality quality = evaluateContent(content == null ? "" : content.content);
             if (!quality.accepted) {
-                upsertChapterMapping(novelMapping, rawChapter, null, "PENDING_REVIEW", now);
+                purgeRawChapter(rawChapter.id);
                 pendingChapters++;
                 continue;
             }
@@ -283,7 +268,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                 upsertChapterMapping(novelMapping, rawChapter, chapter.getId(), "MERGED", now);
                 mergedChapters++;
             } catch (Exception ex) {
-                upsertChapterMapping(novelMapping, rawChapter, null, "FAILED", now);
+                purgeRawChapter(rawChapter.id);
                 failedChapters++;
             }
         }
@@ -298,21 +283,35 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             novelMapping.contentStatus = "CONTENT_READY";
             outcome = MergeOutcome.MERGED;
         } else if (pendingChapters > 0) {
-            status = "PENDING_REVIEW";
-            message = "未发现达标正文，已保留映射关系，等待补正文或人工审核。";
-            novelMapping.contentStatus = "PENDING_REVIEW";
-            outcome = MergeOutcome.PENDING_REVIEW;
+            purgeRawBook(book.id);
+            return MergeOutcome.FAILED;
         } else {
-            status = "FAILED";
-            message = "章节清洗失败。";
-            novelMapping.contentStatus = "FAILED";
-            outcome = MergeOutcome.FAILED;
+            purgeRawBook(book.id);
+            return MergeOutcome.FAILED;
         }
         novelMapping.matchStatus = status;
         novelMapping.updatedAt = LocalDateTime.now();
         novelSourceMappingMapper.updateById(novelMapping);
         upsertMergeItem(task, book, identity, novel, status, message);
         return outcome;
+    }
+
+    private void purgeRawBook(Long bookRawId) {
+        if (bookRawId == null) {
+            return;
+        }
+        contentRawMapper.delete(new QueryWrapper<CrawlContentRaw>()
+                .inSql("chapter_raw_id", "SELECT id FROM mini_novel_crawler.crawl_chapter_raw WHERE book_raw_id = " + bookRawId));
+        chapterRawMapper.delete(new QueryWrapper<CrawlChapterRaw>().eq("book_raw_id", bookRawId));
+        bookRawMapper.deleteById(bookRawId);
+    }
+
+    private void purgeRawChapter(Long chapterRawId) {
+        if (chapterRawId == null) {
+            return;
+        }
+        contentRawMapper.delete(new QueryWrapper<CrawlContentRaw>().eq("chapter_raw_id", chapterRawId));
+        chapterRawMapper.deleteById(chapterRawId);
     }
 
     private NovelIdentity upsertIdentity(CrawlBookRaw book, LocalDateTime now) {
