@@ -1,6 +1,10 @@
 <template>
   <section class="page detail-page">
-    <van-nav-bar title="书籍详情" left-arrow fixed placeholder @click-left="$router.back()" />
+    <van-nav-bar title="书籍详情" left-arrow fixed placeholder @click-left="$router.back()" @click-right="goHome">
+      <template #right>
+        <van-icon name="wap-home-o" size="20" />
+      </template>
+    </van-nav-bar>
 
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
@@ -171,6 +175,10 @@ function readContinue() {
     return;
   }
   read(target);
+}
+
+function goHome() {
+  router.push('/h5/home');
 }
 
 async function jumpToChapterNo() {
