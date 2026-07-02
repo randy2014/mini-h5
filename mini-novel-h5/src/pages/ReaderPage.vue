@@ -1,6 +1,6 @@
 <template>
-  <section class="reader-page" :class="readerClass">
-    <van-nav-bar :title="chapter.title || '阅读'" left-arrow fixed placeholder @click-left="goCatalog" />
+  <section class="reader-page" :class="readerClass" @click="toggleControls">
+    <van-nav-bar v-show="controlsVisible" :title="chapter.title || '阅读'" left-arrow fixed placeholder @click-left.stop="goCatalog" />
 
     <van-loading v-if="loading" class="center-loading" />
     <article v-else class="reader-content" :style="readerStyle">
@@ -10,8 +10,11 @@
     </article>
 
     <div v-if="!loading" class="reader-progress-pill">{{ readingProgressText }}</div>
+    <div v-if="!loading" class="reader-progress-track">
+      <span :style="{ width: `${readingPercent}%` }"></span>
+    </div>
 
-    <div class="reader-toolbar">
+    <div v-show="controlsVisible" class="reader-toolbar" @click.stop>
       <van-button plain hairline size="small" icon="bars" @click="openCatalog">目录</van-button>
       <van-button plain hairline size="small" icon="arrow-left" :loading="prevLoading" @click="readPrevious">上一章</van-button>
       <van-button plain hairline size="small" icon="setting-o" @click="settingsOpen = true">设置</van-button>
@@ -20,7 +23,7 @@
     </div>
 
     <van-popup v-model:show="catalogOpen" position="right" class="catalog-popup">
-      <div class="catalog-drawer">
+      <div class="catalog-drawer" @click.stop>
         <div class="section-title compact">
           <h2>目录</h2>
           <span>{{ catalogPage.current || 1 }} / {{ catalogPage.pages || 1 }}</span>
@@ -47,7 +50,7 @@
     </van-popup>
 
     <van-popup v-model:show="settingsOpen" round position="bottom">
-      <div class="reader-settings">
+      <div class="reader-settings" @click.stop>
         <div class="section-title compact">
           <h2>阅读设置</h2>
           <span>{{ settings.fontSize }}px</span>
@@ -99,10 +102,12 @@ const prevLoading = ref(false);
 const catalogLoading = ref(false);
 const settingsOpen = ref(false);
 const catalogOpen = ref(false);
+const controlsVisible = ref(true);
 const chapter = ref({});
 const catalogChapters = ref([]);
 const catalogPageNo = ref(1);
 const catalogPage = ref({ current: 1, pages: 1, total: 0, records: [] });
+const totalChapters = ref(0);
 const settings = reactive(loadSettings());
 const themes = [
   { value: 'paper', label: '纸', color: '#f7f0e4' },
@@ -116,8 +121,15 @@ const readerStyle = computed(() => ({
   '--reader-font-size': `${settings.fontSize}px`
 }));
 const readingProgressText = computed(() => {
+  const total = totalChapters.value ? ` / ${totalChapters.value}` : '';
   const title = chapter.value.title ? ` · ${chapter.value.title}` : '';
-  return `第 ${chapter.value.chapterNo || '-'} 章${title}`;
+  return `第 ${chapter.value.chapterNo || '-'}${total} 章${title}`;
+});
+const readingPercent = computed(() => {
+  if (!chapter.value.chapterNo || !totalChapters.value) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, Math.round((chapter.value.chapterNo / totalChapters.value) * 100)));
 });
 
 onMounted(() => {
@@ -137,6 +149,7 @@ async function loadChapter() {
   try {
     chapter.value = await fetchChapter(route.params.id);
     saveProgress(chapter.value);
+    loadTotalChapters();
     await nextTick();
     restoreScrollPosition();
   } catch (error) {
@@ -149,6 +162,26 @@ async function loadChapter() {
   } finally {
     loading.value = false;
   }
+}
+
+async function loadTotalChapters() {
+  const bookId = chapter.value.novelId || route.query.bookId;
+  if (!bookId) {
+    return;
+  }
+  try {
+    const data = await fetchChapters(bookId, 1, 1);
+    totalChapters.value = Number(data?.total || totalChapters.value || 0);
+  } catch {
+    totalChapters.value = 0;
+  }
+}
+
+function toggleControls() {
+  if (settingsOpen.value || catalogOpen.value || loading.value) {
+    return;
+  }
+  controlsVisible.value = !controlsVisible.value;
 }
 
 async function readPrevious() {
@@ -241,6 +274,8 @@ function saveProgress(current) {
   localStorage.setItem(`mini_novel_read_${current.novelId}`, JSON.stringify({
     chapterId: current.id,
     chapterNo: current.chapterNo,
+    title: current.title,
+    totalChapters: totalChapters.value || 0,
     updatedAt: Date.now()
   }));
 }

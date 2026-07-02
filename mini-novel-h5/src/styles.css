@@ -608,7 +608,7 @@ a {
 
 .chapter-tools {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 74px auto auto;
   gap: 8px;
   align-items: center;
   margin: -4px 14px 10px;
@@ -617,6 +617,14 @@ a {
 .chapter-tools .van-search {
   padding: 0;
   background: transparent;
+}
+
+.chapter-tools .van-field {
+  overflow: hidden;
+  padding: 0 10px;
+  border: 1px solid rgba(31, 37, 40, 0.08);
+  border-radius: 999px;
+  background: var(--panel);
 }
 
 .chapter-list button {
@@ -695,6 +703,34 @@ a {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.bookshelf-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 2px 0 4px 91px;
+}
+
+.bookshelf-progress span,
+.bookshelf-progress small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookshelf-progress span {
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.bookshelf-progress small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .plan-list {
@@ -912,13 +948,13 @@ a {
 }
 
 .reader-content {
-  padding: 24px 20px 104px;
+  padding: 24px 20px 112px;
 }
 
 .reader-progress-pill {
   position: fixed;
   right: 14px;
-  bottom: 62px;
+  bottom: 70px;
   z-index: 8;
   max-width: min(320px, calc(100vw - 28px));
   overflow: hidden;
@@ -931,6 +967,25 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 8px 22px rgba(31, 37, 40, 0.08);
+}
+
+.reader-progress-track {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 12;
+  width: min(100%, 480px);
+  height: 3px;
+  margin: 0 auto;
+  background: rgba(138, 111, 76, 0.14);
+}
+
+.reader-progress-track span {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transition: width 0.2s ease;
 }
 
 .reader-content p {
@@ -977,6 +1032,14 @@ a {
   border-color: rgba(231, 225, 214, 0.12);
   background: rgba(29, 34, 36, 0.88);
   color: #c9bda9;
+}
+
+.reader-theme-night .reader-progress-track {
+  background: rgba(231, 225, 214, 0.1);
+}
+
+.reader-theme-night .reader-progress-track span {
+  background: #c9b56d;
 }
 
 .reader-toolbar {

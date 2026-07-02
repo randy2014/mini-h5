@@ -47,6 +47,8 @@
 
       <div class="chapter-tools">
         <van-search v-model="chapterKeyword" placeholder="搜索本页章节" shape="round" />
+        <van-field v-model="chapterJumpNo" type="digit" placeholder="章号" />
+        <van-button size="small" round color="#1f6f64" @click="jumpToChapterNo">跳转</van-button>
         <van-button size="small" round plain color="#1f6f64" @click="reverseCatalog = !reverseCatalog">
           {{ reverseCatalog ? '倒序' : '正序' }}
         </van-button>
@@ -102,6 +104,7 @@ const chapterPage = ref({ current: 1, pages: 1, total: 0, records: [] });
 const activeChapterId = ref(Number(route.query.chapterId || 0));
 const pendingScrollChapterId = ref(0);
 const chapterKeyword = ref('');
+const chapterJumpNo = ref('');
 const reverseCatalog = ref(false);
 const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+Novel';
 
@@ -168,6 +171,23 @@ function readContinue() {
     return;
   }
   read(target);
+}
+
+async function jumpToChapterNo() {
+  const no = Number(chapterJumpNo.value || 0);
+  if (!no || no < 1) {
+    showToast('请输入章节号');
+    return;
+  }
+  const targetPage = Math.max(1, Math.ceil(no / PAGE_SIZE));
+  await loadChapters(targetPage);
+  const target = chapters.value.find((chapter) => Number(chapter.chapterNo) === no);
+  if (!target) {
+    showToast('该页未找到章节');
+    return;
+  }
+  activeChapterId.value = target.id;
+  scrollToChapter(target.id);
 }
 
 function read(chapter) {
