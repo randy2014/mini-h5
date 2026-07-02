@@ -25,6 +25,20 @@
       <router-link to="/h5/search">找书</router-link>
     </div>
 
+    <section v-if="recentBooks.length" class="continue-strip">
+      <div class="section-title compact">
+        <h2>继续阅读</h2>
+        <span>最近 {{ recentBooks.length }} 本</span>
+      </div>
+      <button v-for="item in recentBooks" :key="item.book.id" type="button" @click="continueRead(item)">
+        <img :src="item.book.coverUrl || fallbackCover" :alt="item.book.title" />
+        <span>
+          <strong>{{ item.book.title }}</strong>
+          <small>读到第 {{ item.progress.chapterNo }} 章</small>
+        </span>
+      </button>
+    </section>
+
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
       <BookSection title="热榜精选" subtitle="更多" rank-type="hot" :books="sections.hot" @open="openBook" @more="openRank" />
@@ -48,6 +62,22 @@ const sections = ref({ hot: [], completed: [], latest: [], long: [] });
 const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+Novel';
 
 const heroBook = computed(() => sections.value.hot?.[0] || sections.value.latest?.[0]);
+const recentBooks = computed(() => {
+  const pool = [...sections.value.hot, ...sections.value.completed, ...sections.value.latest, ...sections.value.long];
+  const seen = new Set();
+  return pool
+    .filter((book) => {
+      if (!book?.id || seen.has(book.id)) {
+        return false;
+      }
+      seen.add(book.id);
+      return true;
+    })
+    .map((book) => ({ book, progress: readProgress(book.id) }))
+    .filter((item) => item.progress.chapterId)
+    .sort((left, right) => Number(right.progress.updatedAt || 0) - Number(left.progress.updatedAt || 0))
+    .slice(0, 3);
+});
 
 const BookSection = defineComponent({
   name: 'BookSection',
@@ -120,6 +150,18 @@ function openBook(book) {
 
 function openRank(type) {
   router.push(`/h5/rank/${type}`);
+}
+
+function continueRead(item) {
+  router.push(`/h5/read/${item.progress.chapterId}?bookId=${item.book.id}`);
+}
+
+function readProgress(bookId) {
+  try {
+    return JSON.parse(localStorage.getItem(`mini_novel_read_${bookId}`) || '{}');
+  } catch {
+    return {};
+  }
 }
 
 function formatIntro(value) {

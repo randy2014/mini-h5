@@ -1,5 +1,5 @@
 :root {
-  --page-bg: #f4f6f2;
+  --page-bg: #f3f5f1;
   --panel: #fffdfa;
   --reader-bg: #f7f0e4;
   --text: #1f2528;
@@ -8,6 +8,8 @@
   --brand: #1f6f64;
   --brand-strong: #154f4b;
   --gold: #9b7a2f;
+  --coral: #d96a4a;
+  --ink: #22323d;
   --danger: #b44b4b;
   color: var(--text);
   background: var(--page-bg);
@@ -164,6 +166,8 @@ a {
 }
 
 .quick-nav a {
+  position: relative;
+  overflow: hidden;
   min-height: 42px;
   border: 1px solid var(--soft);
   border-radius: 8px;
@@ -173,6 +177,25 @@ a {
   font-weight: 800;
   line-height: 42px;
   text-align: center;
+}
+
+.quick-nav a:nth-child(1) {
+  background: #fff7e8;
+  color: #886126;
+}
+
+.quick-nav a:nth-child(2) {
+  background: #edf6f4;
+}
+
+.quick-nav a:nth-child(3) {
+  background: #fff1ec;
+  color: #a84f34;
+}
+
+.quick-nav a:nth-child(4) {
+  background: #eef2f6;
+  color: #314c5c;
 }
 
 .section-title {
@@ -217,6 +240,60 @@ a {
   font-size: 13px;
 }
 
+.continue-strip {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(31, 37, 40, 0.08);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.continue-strip button {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  align-items: center;
+  padding: 7px 0;
+  border: 0;
+  border-top: 1px solid rgba(31, 37, 40, 0.07);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.continue-strip .section-title + button {
+  border-top: 0;
+}
+
+.continue-strip img {
+  width: 42px;
+  aspect-ratio: 5 / 7;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.continue-strip span,
+.continue-strip strong,
+.continue-strip small {
+  display: block;
+  min-width: 0;
+}
+
+.continue-strip strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.continue-strip small {
+  margin-top: 4px;
+  color: var(--brand);
+  font-size: 12px;
+}
+
 .book-card {
   display: grid;
   grid-template-columns: 78px minmax(0, 1fr);
@@ -230,6 +307,13 @@ a {
   color: var(--text);
   text-align: left;
   box-shadow: 0 8px 24px rgba(31, 37, 40, 0.04);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.book-card:active,
+.daily-card:active,
+.cover-row button:active {
+  transform: scale(0.99);
 }
 
 .book-cover-wrap {
@@ -394,6 +478,7 @@ a {
 
 .detail-page > .center-loading,
 .detail-page > .detail-actions,
+.detail-page > .reading-progress-card,
 .detail-page > .soft-panel,
 .detail-page > .section-title,
 .detail-page > .chapter-list,
@@ -463,6 +548,39 @@ a {
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 10px;
   padding-top: 14px;
+}
+
+.reading-progress-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 1px solid rgba(31, 111, 100, 0.16);
+  border-radius: 8px;
+  background: #eef7f4;
+}
+
+.reading-progress-card span,
+.reading-progress-card strong {
+  display: block;
+  min-width: 0;
+}
+
+.reading-progress-card span {
+  grid-column: 1 / -1;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reading-progress-card strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .soft-panel {
@@ -543,20 +661,29 @@ a {
 
 .bookshelf-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
-  align-items: center;
+  align-items: start;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid rgba(31, 37, 40, 0.08);
+  border-radius: 8px;
+  background: var(--panel);
 }
 
 .bookshelf-row .book-card {
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
 }
 
-.bookshelf-row .van-button {
-  margin-bottom: 12px;
+.bookshelf-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.category-grid,
 .plan-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -564,7 +691,6 @@ a {
   margin-top: 14px;
 }
 
-.category-grid button,
 .plan-card {
   min-height: 86px;
   padding: 14px;
@@ -575,28 +701,104 @@ a {
   text-align: left;
 }
 
-.category-grid button.active {
-  border-color: rgba(31, 111, 100, 0.45);
-  background: #e9f4f0;
-}
-
-.category-grid strong,
 .plan-card strong,
-.category-grid span,
 .plan-card span,
 .plan-card em {
   display: block;
 }
 
-.category-grid strong,
 .plan-card strong {
   margin-bottom: 10px;
   font-size: 17px;
 }
 
-.category-grid span,
 .plan-card span {
   color: var(--muted);
+  font-size: 13px;
+}
+
+.category-strip {
+  display: grid;
+  grid-auto-columns: minmax(84px, 30%);
+  grid-auto-flow: column;
+  gap: 8px;
+  margin: 10px -14px 0;
+  overflow-x: auto;
+  padding: 0 14px 8px;
+  scroll-snap-type: x proximity;
+}
+
+.category-strip button {
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 37, 40, 0.08);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  scroll-snap-align: start;
+  text-align: left;
+}
+
+.category-strip button.active {
+  border-color: rgba(31, 111, 100, 0.45);
+  background: #e9f4f0;
+  color: var(--brand-strong);
+}
+
+.category-strip strong,
+.category-strip span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-strip strong {
+  margin-bottom: 7px;
+  font-size: 15px;
+}
+
+.category-strip span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.category-summary {
+  display: flex;
+  min-height: 96px;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 14px;
+  padding: 18px;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(34, 50, 61, 0.94), rgba(31, 111, 100, 0.82)),
+    url("https://images.unsplash.com/photo-1455885666463-9b2a3c8ec7e0?auto=format&fit=crop&w=900&q=80") center/cover;
+  color: #fffdf6;
+}
+
+.category-summary small,
+.category-summary h1,
+.category-summary span {
+  display: block;
+}
+
+.category-summary small {
+  color: #e8d58e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.category-summary h1 {
+  margin: 7px 0 0;
+  font-size: 25px;
+  line-height: 1.18;
+}
+
+.category-summary span {
+  flex: 0 0 auto;
+  color: rgba(255, 253, 246, 0.78);
   font-size: 13px;
 }
 

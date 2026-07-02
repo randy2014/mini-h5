@@ -3,7 +3,7 @@
     <van-nav-bar title="分类" />
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
-      <div class="category-grid">
+      <div class="category-strip">
         <button
           v-for="item in categories"
           :key="item.id"
@@ -12,16 +12,21 @@
           @click="selectCategory(item)"
         >
           <strong>{{ item.name }}</strong>
-          <span>查看书单</span>
+          <span>{{ item.id === activeCategoryId ? '正在看' : '书单' }}</span>
         </button>
       </div>
 
-      <div class="section-title">
-        <h2>{{ activeCategoryName || '分类书籍' }}</h2>
+      <div class="category-summary">
+        <div>
+          <small>分类书库</small>
+          <h1>{{ activeCategoryName || '分类书籍' }}</h1>
+        </div>
         <span>{{ books.length }} 本</span>
       </div>
 
-      <BookCard v-for="book in books" :key="book.id" :book="book" @open="openBook" />
+      <div class="rank-list">
+        <BookCard v-for="(book, index) in books" :key="book.id" :book="book" :rank="index + 1" @open="openBook" />
+      </div>
       <van-empty v-if="books.length === 0" description="该分类暂无书籍" />
     </template>
   </section>

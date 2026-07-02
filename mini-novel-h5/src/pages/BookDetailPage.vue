@@ -26,6 +26,12 @@
         <van-button block round plain color="#1f6f64" icon="bookmark-o" @click="addToBookshelf">加入书架</van-button>
       </div>
 
+      <div v-if="activeChapterId" class="reading-progress-card">
+        <span>上次读到</span>
+        <strong>{{ progressTitle }}</strong>
+        <van-button size="small" round plain color="#1f6f64" @click="scrollToChapter(activeChapterId)">定位目录</van-button>
+      </div>
+
       <section class="soft-panel">
         <div class="section-title compact">
           <h2>简介</h2>
@@ -98,6 +104,14 @@ const wordCountLabel = computed(() => {
     return `${(count / 10000).toFixed(1).replace('.0', '')}万字`;
   }
   return `${count}字`;
+});
+const progressTitle = computed(() => {
+  const chapter = chapters.value.find((item) => item.id === activeChapterId.value);
+  if (chapter) {
+    return `第 ${chapter.chapterNo} 章 · ${chapter.title}`;
+  }
+  const progress = readProgress();
+  return progress.chapterNo ? `第 ${progress.chapterNo} 章` : '已记录阅读进度';
 });
 
 onMounted(async () => {

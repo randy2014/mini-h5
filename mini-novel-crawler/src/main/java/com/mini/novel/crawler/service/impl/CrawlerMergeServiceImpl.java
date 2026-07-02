@@ -250,6 +250,19 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             return MergeOutcome.PENDING_REVIEW;
         }
 
+        ChapterSequenceIssue sequenceIssue = evaluateChapterSequence(chapters);
+        if (sequenceIssue.suspicious) {
+            for (CrawlChapterRaw rawChapter : chapters) {
+                upsertChapterMapping(novelMapping, rawChapter, null, "PENDING_REVIEW", now);
+            }
+            novelMapping.contentStatus = "PENDING_REVIEW";
+            novelMapping.matchStatus = "PENDING_REVIEW";
+            novelMapping.updatedAt = LocalDateTime.now();
+            novelSourceMappingMapper.updateById(novelMapping);
+            upsertMergeItem(task, book, identity, null, "PENDING_REVIEW", sequenceIssue.message);
+            return MergeOutcome.PENDING_REVIEW;
+        }
+
         Novel novel = ensureNovel(identity, novelMapping, book, now);
 
         int mergedChapters = 0;
@@ -575,6 +588,43 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         return new ContentQuality(true, "OK");
     }
 
+    private ChapterSequenceIssue evaluateChapterSequence(List<CrawlChapterRaw> chapters) {
+        if (chapters == null || chapters.size() < 8) {
+            return new ChapterSequenceIssue(false, "OK");
+        }
+        int min = Integer.MAX_VALUE;
+        int max = 0;
+        int duplicateCount = 0;
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        for (CrawlChapterRaw chapter : chapters) {
+            int no = chapter.chapterNo == null ? 0 : chapter.chapterNo;
+            if (no <= 0) {
+                continue;
+            }
+            if (!seen.add(no)) {
+                duplicateCount++;
+            }
+            min = Math.min(min, no);
+            max = Math.max(max, no);
+        }
+        if (seen.isEmpty()) {
+            return new ChapterSequenceIssue(true, "章节编号缺失，已拦截入库，等待重新采集或人工审核。");
+        }
+        int uniqueCount = seen.size();
+        int missingCount = Math.max(0, max - min + 1 - uniqueCount);
+        int missingLimit = Math.max(5, uniqueCount / 10);
+        if (min > 5) {
+            return new ChapterSequenceIssue(true, "章节目录疑似不是从开头开始，首章编号为 " + min + "，已拦截入库。");
+        }
+        if (duplicateCount > Math.max(3, uniqueCount / 20)) {
+            return new ChapterSequenceIssue(true, "章节编号存在较多重复，重复 " + duplicateCount + " 处，已拦截入库。");
+        }
+        if (missingCount > missingLimit) {
+            return new ChapterSequenceIssue(true, "章节编号不连续，缺口约 " + missingCount + " 章，已拦截入库。");
+        }
+        return new ChapterSequenceIssue(false, "OK");
+    }
+
     private boolean containsBlockedText(String text) {
         return text.contains("登录") || text.contains("付费") || text.contains("订阅")
                 || text.contains("VIP") || text.contains("本章未完") || text.contains("请收藏");
@@ -603,5 +653,8 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     }
 
     private record ContentQuality(boolean accepted, String message) {
+    }
+
+    private record ChapterSequenceIssue(boolean suspicious, String message) {
     }
 }

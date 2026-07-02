@@ -9,7 +9,12 @@
       </div>
       <div v-for="book in books" :key="book.id" class="bookshelf-row">
         <BookCard :book="book" @open="openBook" />
-        <van-button size="small" plain icon="delete-o" type="danger" @click.stop="removeBook(book)">移出</van-button>
+        <div class="bookshelf-actions">
+          <van-button size="small" round color="#1f6f64" icon="play-circle-o" @click.stop="continueRead(book)">
+            {{ progressLabel(book) }}
+          </van-button>
+          <van-button size="small" round plain icon="delete-o" type="danger" @click.stop="removeBook(book)">移出</van-button>
+        </div>
       </div>
       <van-empty v-if="books.length === 0" description="书架还是空的" />
     </template>
@@ -40,6 +45,28 @@ async function loadBookshelf() {
 
 function openBook(book) {
   router.push(`/h5/book/${book.id}`);
+}
+
+function continueRead(book) {
+  const progress = readProgress(book.id);
+  if (progress.chapterId) {
+    router.push(`/h5/read/${progress.chapterId}?bookId=${book.id}`);
+    return;
+  }
+  openBook(book);
+}
+
+function progressLabel(book) {
+  const progress = readProgress(book.id);
+  return progress.chapterNo ? `续读 ${progress.chapterNo}` : '阅读';
+}
+
+function readProgress(bookId) {
+  try {
+    return JSON.parse(localStorage.getItem(`mini_novel_read_${bookId}`) || '{}');
+  } catch {
+    return {};
+  }
 }
 
 async function removeBook(book) {
