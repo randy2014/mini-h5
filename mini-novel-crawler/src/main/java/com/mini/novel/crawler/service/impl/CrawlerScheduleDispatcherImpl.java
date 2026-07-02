@@ -20,6 +20,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -54,6 +56,32 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     public void scheduledDispatch() {
         dispatchDueSchedules();
         runPendingTasks();
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void recoverInterruptedTasksOnStartup() {
+        LocalDateTime now = LocalDateTime.now();
+        List<CrawlTaskRecord> runningTasks = taskRecordMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
+                .in("status", List.of("RUNNING"))
+                .last("LIMIT 200"));
+        for (CrawlTaskRecord task : runningTasks) {
+            task.status = "FAILED";
+            task.finishedAt = now;
+            task.updatedAt = now;
+            task.message = appendMessage(task.message, "采集服务重启，遗留运行中任务已自动收口。");
+            taskRecordMapper.updateById(task);
+        }
+
+        List<CrawlMergeTask> mergingTasks = mergeTaskMapper.selectList(new QueryWrapper<CrawlMergeTask>()
+                .in("status", List.of("MERGING"))
+                .last("LIMIT 200"));
+        for (CrawlMergeTask task : mergingTasks) {
+            task.status = "FAILED";
+            task.finishedAt = now;
+            task.updatedAt = now;
+            task.message = appendMessage(task.message, "采集服务重启，遗留清洗中任务已自动收口。");
+            mergeTaskMapper.updateById(task);
+        }
     }
 
     @Override
@@ -187,5 +215,11 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
             mergeTaskMapper.insert(mergeTask);
         }
         return task;
+    }
+
+    private String appendMessage(String original, String suffix) {
+        String value = StringUtils.hasText(original) ? original : "";
+        String appended = value + (value.isEmpty() ? "" : " | ") + suffix;
+        return appended.length() <= 1000 ? appended : appended.substring(appended.length() - 1000);
     }
 }
