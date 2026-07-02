@@ -13,7 +13,7 @@
         </div>
       </div>
 
-      <p class="book-intro">{{ book.intro }}</p>
+      <p class="book-intro">{{ formatIntro(book.intro) }}</p>
 
       <div class="detail-actions">
         <van-button block round color="#2f6f73" @click="readFirst">开始阅读</van-button>
@@ -140,5 +140,13 @@ function scrollToChapter(chapterId) {
   nextTick(() => {
     document.getElementById(`chapter-${chapterId}`)?.scrollIntoView({ block: 'center' });
   });
+}
+
+function formatIntro(value) {
+  return String(value || '')
+    .replace(/&lt;br\s*\/?&gt;/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 </script>
