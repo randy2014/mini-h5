@@ -23,5 +23,7 @@ public interface BookReadService {
 
     Chapter getChapter(Long chapterId);
 
+    Chapter previousChapter(Long chapterId);
+
     Chapter nextChapter(Long chapterId);
 }

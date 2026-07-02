@@ -240,6 +240,25 @@ public class CrawlerConfigController {
         return Result.ok();
     }
 
+    @PostMapping("/tasks/{id}/interrupt")
+    public Result<CrawlTaskRecord> interruptTask(@PathVariable Long id) {
+        CrawlTaskRecord task = taskRecordMapper.selectById(id);
+        if (task == null) {
+            return new Result<>(404, "采集任务不存在", null);
+        }
+        if (!List.of("PENDING", "RUNNING").contains(task.status)) {
+            return Result.ok(task);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        task.status = "FAILED";
+        task.finishedAt = now;
+        task.updatedAt = now;
+        task.message = (task.message == null ? "" : task.message)
+                + " | Marked interrupted from admin console at " + now + ".";
+        taskRecordMapper.updateById(task);
+        return Result.ok(task);
+    }
+
     @GetMapping("/tasks")
     public Result<List<CrawlTaskRecord>> tasks() {
         return Result.ok(taskRecordMapper.selectList(new QueryWrapper<CrawlTaskRecord>().orderByDesc("id").last("LIMIT 100")));

@@ -10,12 +10,39 @@
     </article>
 
     <div class="reader-toolbar">
-      <van-button plain hairline size="small" icon="bars" @click="goCatalog">目录</van-button>
-      <van-button plain hairline size="small" icon="arrow-left" @click="goCatalog">返回</van-button>
+      <van-button plain hairline size="small" icon="bars" @click="openCatalog">目录</van-button>
+      <van-button plain hairline size="small" icon="arrow-left" :loading="prevLoading" @click="readPrevious">上一章</van-button>
       <van-button plain hairline size="small" icon="setting-o" @click="settingsOpen = true">设置</van-button>
       <van-button plain hairline size="small" icon="arrow" :loading="nextLoading" @click="readNext">下一章</van-button>
       <van-button plain hairline size="small" icon="diamond-o" to="/h5/vip">VIP</van-button>
     </div>
+
+    <van-popup v-model:show="catalogOpen" position="right" class="catalog-popup">
+      <div class="catalog-drawer">
+        <div class="section-title compact">
+          <h2>目录</h2>
+          <span>{{ catalogPage.current || 1 }} / {{ catalogPage.pages || 1 }}</span>
+        </div>
+        <van-loading v-if="catalogLoading" class="center-loading" />
+        <template v-else>
+          <button
+            v-for="item in catalogChapters"
+            :key="item.id"
+            type="button"
+            :class="{ active: item.id === chapter.id }"
+            @click="readCatalog(item)"
+          >
+            <b>{{ item.title }}</b>
+            <small>第 {{ item.chapterNo }} 章</small>
+          </button>
+          <div v-if="catalogPage.pages > 1" class="chapter-pager">
+            <van-button size="small" plain :disabled="catalogPageNo <= 1" @click="loadCatalog(catalogPageNo - 1)">上一页</van-button>
+            <span>{{ catalogPageNo }} / {{ catalogPage.pages }}</span>
+            <van-button size="small" plain :disabled="catalogPageNo >= catalogPage.pages" @click="loadCatalog(catalogPageNo + 1)">下一页</van-button>
+          </div>
+        </template>
+      </div>
+    </van-popup>
 
     <van-popup v-model:show="settingsOpen" round position="bottom">
       <div class="reader-settings">
@@ -55,18 +82,25 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { showConfirmDialog } from 'vant';
-import { fetchChapter, fetchNextChapter } from '../services/book';
+import { showConfirmDialog, showToast } from 'vant';
+import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } from '../services/book';
 import { formatTextLineBreaks } from '../utils/text';
 
+const CATALOG_PAGE_SIZE = 80;
 const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
 const nextLoading = ref(false);
+const prevLoading = ref(false);
+const catalogLoading = ref(false);
 const settingsOpen = ref(false);
+const catalogOpen = ref(false);
 const chapter = ref({});
+const catalogChapters = ref([]);
+const catalogPageNo = ref(1);
+const catalogPage = ref({ current: 1, pages: 1, total: 0, records: [] });
 const settings = reactive(loadSettings());
 const themes = [
   { value: 'paper', label: '纸', color: '#f7f0e4' },
@@ -80,12 +114,25 @@ const readerStyle = computed(() => ({
   '--reader-font-size': `${settings.fontSize}px`
 }));
 
+onMounted(() => {
+  loadChapter();
+  window.addEventListener('scroll', saveScrollPosition, { passive: true });
+});
+onBeforeUnmount(() => {
+  saveScrollPosition();
+  window.removeEventListener('scroll', saveScrollPosition);
+});
+watch(() => route.params.id, loadChapter);
+watch(settings, saveSettings);
+
 async function loadChapter() {
+  saveScrollPosition();
   loading.value = true;
   try {
     chapter.value = await fetchChapter(route.params.id);
     saveProgress(chapter.value);
-    window.scrollTo({ top: 0 });
+    await nextTick();
+    restoreScrollPosition();
   } catch (error) {
     await showConfirmDialog({
       title: '需要 VIP',
@@ -98,18 +145,55 @@ async function loadChapter() {
   }
 }
 
-onMounted(loadChapter);
-watch(() => route.params.id, loadChapter);
-watch(settings, saveSettings);
+async function readPrevious() {
+  prevLoading.value = true;
+  try {
+    const previous = await fetchPreviousChapter(route.params.id);
+    router.push(`/h5/read/${previous.id}?bookId=${previous.novelId}`);
+  } catch (error) {
+    showToast(error.message || '已经是第一章');
+  } finally {
+    prevLoading.value = false;
+  }
+}
 
 async function readNext() {
   nextLoading.value = true;
   try {
     const next = await fetchNextChapter(route.params.id);
     router.push(`/h5/read/${next.id}?bookId=${next.novelId}`);
+  } catch (error) {
+    showToast(error.message || '已经是最后一章');
   } finally {
     nextLoading.value = false;
   }
+}
+
+async function openCatalog() {
+  catalogOpen.value = true;
+  const targetPage = chapter.value.chapterNo ? Math.max(1, Math.ceil(chapter.value.chapterNo / CATALOG_PAGE_SIZE)) : 1;
+  await loadCatalog(targetPage);
+}
+
+async function loadCatalog(page = 1) {
+  const bookId = chapter.value.novelId || route.query.bookId;
+  if (!bookId) {
+    return;
+  }
+  catalogLoading.value = true;
+  try {
+    const data = await fetchChapters(bookId, page, CATALOG_PAGE_SIZE);
+    catalogPage.value = data || { current: page, pages: 1, total: 0, records: [] };
+    catalogChapters.value = catalogPage.value.records || [];
+    catalogPageNo.value = Number(catalogPage.value.current || page);
+  } finally {
+    catalogLoading.value = false;
+  }
+}
+
+function readCatalog(item) {
+  catalogOpen.value = false;
+  router.push(`/h5/read/${item.id}?bookId=${item.novelId}`);
 }
 
 function goCatalog() {
@@ -153,5 +237,20 @@ function saveProgress(current) {
     chapterNo: current.chapterNo,
     updatedAt: Date.now()
   }));
+}
+
+function saveScrollPosition() {
+  const currentId = chapter.value?.id || route.params.id;
+  if (!currentId) {
+    return;
+  }
+  localStorage.setItem(`mini_novel_scroll_${currentId}`, String(Math.max(0, Math.round(window.scrollY || 0))));
+}
+
+function restoreScrollPosition() {
+  const saved = Number(localStorage.getItem(`mini_novel_scroll_${chapter.value.id}`) || 0);
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: Math.max(0, saved), behavior: saved > 0 ? 'smooth' : 'auto' });
+  });
 }
 </script>

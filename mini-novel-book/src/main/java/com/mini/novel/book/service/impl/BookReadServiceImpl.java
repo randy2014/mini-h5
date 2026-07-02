@@ -112,6 +112,20 @@ public class BookReadServiceImpl implements BookReadService {
     }
 
     @Override
+    public Chapter previousChapter(Long chapterId) {
+        Chapter current = getChapter(chapterId);
+        Chapter previous = chapterMapper.selectOne(new LambdaQueryWrapper<Chapter>()
+                .eq(Chapter::getNovelId, current.getNovelId())
+                .lt(Chapter::getChapterNo, current.getChapterNo())
+                .orderByDesc(Chapter::getChapterNo)
+                .last("LIMIT 1"));
+        if (previous == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "已经是第一章");
+        }
+        return previous;
+    }
+
+    @Override
     public Chapter nextChapter(Long chapterId) {
         Chapter current = getChapter(chapterId);
         Chapter next = chapterMapper.selectOne(new LambdaQueryWrapper<Chapter>()

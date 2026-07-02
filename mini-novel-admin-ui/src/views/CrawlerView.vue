@@ -306,11 +306,22 @@
             <el-table-column label="状态" width="130">
               <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
             </el-table-column>
+            <el-table-column label="进度" width="170">
+              <template #default="{ row }">
+                <el-progress :percentage="taskPercent(row)" :status="progressStatus(row.status)" />
+              </template>
+            </el-table-column>
             <el-table-column prop="totalCount" label="总数" width="80" />
             <el-table-column prop="successCount" label="成功" width="80" />
             <el-table-column prop="failCount" label="失败" width="80" />
             <el-table-column prop="message" label="信息" min-width="260" />
             <el-table-column prop="createdAt" label="创建时间" width="180" />
+            <el-table-column label="操作" width="190" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" :disabled="row.status === 'RUNNING'" @click="rerunTask(row)">继续执行</el-button>
+                <el-button link type="danger" :disabled="!['PENDING', 'RUNNING'].includes(row.status)" @click="interruptTask(row)">标记中断</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
       </el-tab-pane>
@@ -471,6 +482,19 @@ function statusType(status) {
         : 'info';
 }
 
+function taskPercent(row) {
+  const total = Number(row.totalCount || 0);
+  if (!total) return 0;
+  const done = Number(row.successCount || 0) + Number(row.failCount || 0);
+  return Math.min(100, Math.round((done / total) * 100));
+}
+
+function progressStatus(status) {
+  if (status === 'SUCCESS' || status === 'MERGED') return 'success';
+  if (status === 'FAILED') return 'exception';
+  return undefined;
+}
+
 async function loadSources() {
   loading.sources = true;
   try {
@@ -606,6 +630,23 @@ async function runSchedule(row) {
   ElMessage.success('采集任务已创建');
   activeTab.value = 'tasks';
   await Promise.all([loadSchedules(), loadTasks(), loadMergeTasks()]);
+}
+
+async function rerunTask(row) {
+  await crawlerApi.post(`/config/tasks/${row.id}/run`);
+  ElMessage.success('采集任务已重新提交执行');
+  await Promise.all([loadTasks(), loadMergeTasks()]);
+}
+
+async function interruptTask(row) {
+  await ElMessageBox.confirm(`确认将采集任务 #${row.id} 标记为中断？`, '标记中断', {
+    confirmButtonText: '确认中断',
+    cancelButtonText: '取消',
+    type: 'warning'
+  });
+  await crawlerApi.post(`/config/tasks/${row.id}/interrupt`);
+  ElMessage.success('采集任务已标记为中断');
+  await Promise.all([loadTasks(), loadMergeTasks()]);
 }
 
 async function runPendingMergeTasks() {

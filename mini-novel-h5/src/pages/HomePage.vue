@@ -27,10 +27,10 @@
 
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
-      <BookSection title="热榜精选" subtitle="近期活跃" :books="sections.hot" @open="openBook" />
-      <BookSection title="完结优先" subtitle="一口气读完" :books="sections.completed" layout="cover" @open="openBook" />
-      <BookSection title="最近更新" subtitle="追更入口" :books="sections.latest" @open="openBook" />
-      <BookSection title="长篇精选" subtitle="字数充足" :books="sections.long" layout="cover" @open="openBook" />
+      <BookSection title="热榜精选" subtitle="更多" rank-type="hot" :books="sections.hot" @open="openBook" @more="openRank" />
+      <BookSection title="完结优先" subtitle="更多" rank-type="completed" :books="sections.completed" layout="cover" @open="openBook" @more="openRank" />
+      <BookSection title="最近更新" subtitle="更多" rank-type="latest" :books="sections.latest" @open="openBook" @more="openRank" />
+      <BookSection title="长篇精选" subtitle="更多" rank-type="long" :books="sections.long" layout="cover" @open="openBook" @more="openRank" />
     </template>
   </section>
 </template>
@@ -54,16 +54,17 @@ const BookSection = defineComponent({
   props: {
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },
+    rankType: { type: String, required: true },
     books: { type: Array, default: () => [] },
     layout: { type: String, default: 'list' }
   },
-  emits: ['open'],
+  emits: ['open', 'more'],
   setup(props, { emit }) {
     return () => {
       if (!props.books.length) {
         return null;
       }
-      const title = h('div', { class: 'section-title' }, [
+      const title = h('button', { class: 'section-title section-title-link', type: 'button', onClick: () => emit('more', props.rankType) }, [
         h('h2', props.title),
         h('span', props.subtitle || `${props.books.length} 本`)
       ]);
@@ -115,6 +116,10 @@ onMounted(async () => {
 
 function openBook(book) {
   router.push(`/h5/book/${book.id}`);
+}
+
+function openRank(type) {
+  router.push(`/h5/rank/${type}`);
 }
 
 function formatIntro(value) {

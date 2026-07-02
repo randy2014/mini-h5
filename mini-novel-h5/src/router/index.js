@@ -14,6 +14,7 @@ const routes = [
       { path: 'bookshelf', name: 'bookshelf', component: () => import('../pages/BookshelfPage.vue'), meta: { title: '书架', tab: true, auth: true } },
       { path: 'profile', name: 'profile', component: () => import('../pages/ProfilePage.vue'), meta: { title: '我的', tab: true } },
       { path: 'search', name: 'search', component: () => import('../pages/SearchPage.vue'), meta: { title: '搜索' } },
+      { path: 'rank/:type', name: 'rank', component: () => import('../pages/RankPage.vue'), meta: { title: '榜单' } },
       { path: 'book/:id', name: 'book-detail', component: () => import('../pages/BookDetailPage.vue'), meta: { title: '书籍详情' } },
       { path: 'read/:id', name: 'reader', component: () => import('../pages/ReaderPage.vue'), meta: { title: '阅读' } },
       { path: 'login', name: 'login', component: () => import('../pages/LoginPage.vue'), meta: { title: '登录' } },
@@ -25,7 +26,10 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior() {
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition;
+    }
     return { top: 0 };
   }
 });

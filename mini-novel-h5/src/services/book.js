@@ -36,6 +36,10 @@ export function fetchChapter(chapterId) {
   return http.get(`/novels/chapters/${chapterId}`);
 }
 
+export function fetchPreviousChapter(chapterId) {
+  return http.get(`/novels/chapters/${chapterId}/previous`);
+}
+
 export function fetchNextChapter(chapterId) {
   return http.get(`/novels/chapters/${chapterId}/next`);
 }

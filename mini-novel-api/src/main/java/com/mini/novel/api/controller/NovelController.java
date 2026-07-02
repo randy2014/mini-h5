@@ -61,6 +61,16 @@ public class NovelController {
         return Result.ok(chapter);
     }
 
+    @GetMapping("/chapters/{chapterId}/previous")
+    public Result<Chapter> previousChapter(@PathVariable("chapterId") Long chapterId,
+                                           @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Chapter chapter = bookReadService.previousChapter(chapterId);
+        if (Boolean.TRUE.equals(chapter.getVip()) && !vipAccessService.hasActiveVip(userId)) {
+            throw new BusinessException(ErrorCode.VIP_REQUIRED, "上一章需要开通 VIP 后阅读");
+        }
+        return Result.ok(chapter);
+    }
+
     @GetMapping("/chapters/{chapterId}/next")
     public Result<Chapter> nextChapter(@PathVariable("chapterId") Long chapterId,
                                        @RequestHeader(value = "X-User-Id", required = false) Long userId) {
