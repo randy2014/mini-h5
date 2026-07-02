@@ -15,17 +15,80 @@
       <van-cell title="阅读历史" value="待接入" />
       <van-cell title="账号设置" value="待接入" />
     </div>
+
+    <section class="soft-panel profile-reader-settings">
+      <div class="section-title compact">
+        <h2>阅读设置</h2>
+        <span>{{ settings.fontSize }}px</span>
+      </div>
+
+      <div class="setting-row">
+        <span>字号</span>
+        <div class="setting-actions">
+          <van-button size="small" plain @click="changeFont(-1)">A-</van-button>
+          <van-button size="small" plain @click="changeFont(1)">A+</van-button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <span>背景</span>
+        <div class="theme-swatches">
+          <button
+            v-for="theme in themes"
+            :key="theme.value"
+            type="button"
+            :class="{ active: settings.theme === theme.value }"
+            :style="{ background: theme.color }"
+            @click="setTheme(theme.value)"
+          >
+            {{ theme.label }}
+          </button>
+        </div>
+      </div>
+    </section>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, reactive, watch } from 'vue';
 import { useUserStore } from '../stores/user';
 
 const userStore = useUserStore();
 const profile = computed(() => userStore.profile);
+const settings = reactive(loadSettings());
+const themes = [
+  { value: 'paper', label: '纸', color: '#f7f0e4' },
+  { value: 'green', label: '绿', color: '#e8f2ea' },
+  { value: 'white', label: '白', color: '#f8faf7' },
+  { value: 'night', label: '夜', color: '#1d2224' }
+];
 
 onMounted(() => {
   userStore.loadProfile();
 });
+
+watch(settings, saveSettings);
+
+function changeFont(step) {
+  settings.fontSize = Math.max(16, Math.min(24, settings.fontSize + step));
+}
+
+function setTheme(theme) {
+  settings.theme = theme;
+}
+
+function loadSettings() {
+  try {
+    return { fontSize: 20, theme: 'paper', ...JSON.parse(localStorage.getItem('mini_novel_reader_settings') || '{}') };
+  } catch {
+    return { fontSize: 20, theme: 'paper' };
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem('mini_novel_reader_settings', JSON.stringify({
+    fontSize: settings.fontSize,
+    theme: settings.theme
+  }));
+}
 </script>

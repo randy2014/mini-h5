@@ -89,6 +89,25 @@ a {
   line-height: 1.12;
 }
 
+.home-search-link {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(31, 37, 40, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 253, 250, 0.88);
+  color: var(--brand-strong);
+  font-size: 20px;
+  box-shadow: 0 8px 22px rgba(31, 37, 40, 0.06);
+}
+
+.home-search-link:active {
+  transform: scale(0.96);
+}
+
 .daily-card {
   position: relative;
   display: grid;
@@ -861,6 +880,10 @@ a {
   color: #fffdf6;
 }
 
+.profile-reader-settings {
+  margin-top: 14px;
+}
+
 .profile-card {
   display: flex;
   align-items: center;
@@ -1048,7 +1071,7 @@ a {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   width: min(100%, 480px);
   margin: 0 auto;
@@ -1113,11 +1136,6 @@ a {
 
 .reader-theme-night .reader-toolbar {
   background: rgba(29, 34, 36, 0.96);
-}
-
-.reader-settings {
-  padding: 18px 16px max(18px, env(safe-area-inset-bottom));
-  background: var(--panel);
 }
 
 .setting-row {

@@ -5,7 +5,9 @@
         <p>Mini Novel</p>
         <h1>今天读点好故事</h1>
       </div>
-      <van-button round size="small" color="#1f6f64" icon="search" to="/h5/search">搜索</van-button>
+      <router-link class="home-search-link" to="/h5/search" aria-label="搜索">
+        <van-icon name="search" />
+      </router-link>
     </header>
 
     <button v-if="heroBook" class="daily-card" type="button" @click="openBook(heroBook)">

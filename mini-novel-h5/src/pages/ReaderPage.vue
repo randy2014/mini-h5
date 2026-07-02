@@ -27,7 +27,6 @@
       <van-button plain hairline size="small" icon="wap-home-o" @click="goHome">首页</van-button>
       <van-button plain hairline size="small" icon="bars" @click="openCatalog">目录</van-button>
       <van-button plain hairline size="small" icon="arrow-left" :loading="prevLoading" @click="readPrevious">上一章</van-button>
-      <van-button plain hairline size="small" icon="setting-o" @click="settingsOpen = true">设置</van-button>
       <van-button plain hairline size="small" icon="arrow" :loading="nextLoading" @click="readNext">下一章</van-button>
     </div>
 
@@ -58,40 +57,6 @@
       </div>
     </van-popup>
 
-    <van-popup v-model:show="settingsOpen" round position="bottom">
-      <div class="reader-settings" @click.stop>
-        <div class="section-title compact">
-          <h2>阅读设置</h2>
-          <span>{{ settings.fontSize }}px</span>
-        </div>
-
-        <div class="setting-row">
-          <span>字号</span>
-          <div class="setting-actions">
-            <van-button size="small" plain @click="changeFont(-1)">A-</van-button>
-            <van-button size="small" plain @click="changeFont(1)">A+</van-button>
-          </div>
-        </div>
-
-        <div class="setting-row">
-          <span>背景</span>
-          <div class="theme-swatches">
-            <button
-              v-for="theme in themes"
-              :key="theme.value"
-              type="button"
-              :class="{ active: settings.theme === theme.value }"
-              :style="{ background: theme.color }"
-              @click="setTheme(theme.value)"
-            >
-              {{ theme.label }}
-            </button>
-          </div>
-        </div>
-
-        <van-button block round color="#1f6f64" @click="settingsOpen = false">完成</van-button>
-      </div>
-    </van-popup>
   </section>
 </template>
 
@@ -109,7 +74,6 @@ const loading = ref(true);
 const nextLoading = ref(false);
 const prevLoading = ref(false);
 const catalogLoading = ref(false);
-const settingsOpen = ref(false);
 const catalogOpen = ref(false);
 const controlsVisible = ref(true);
 const chapter = ref({});
@@ -118,12 +82,6 @@ const catalogPageNo = ref(1);
 const catalogPage = ref({ current: 1, pages: 1, total: 0, records: [] });
 const totalChapters = ref(0);
 const settings = reactive(loadSettings());
-const themes = [
-  { value: 'paper', label: '纸', color: '#f7f0e4' },
-  { value: 'green', label: '绿', color: '#e8f2ea' },
-  { value: 'white', label: '白', color: '#f8faf7' },
-  { value: 'night', label: '夜', color: '#1d2224' }
-];
 
 const readerClass = computed(() => `reader-theme-${settings.theme}`);
 const readerStyle = computed(() => ({
@@ -187,7 +145,7 @@ async function loadTotalChapters() {
 }
 
 function toggleControls() {
-  if (settingsOpen.value || catalogOpen.value || loading.value) {
+  if (catalogOpen.value || loading.value) {
     return;
   }
   controlsVisible.value = !controlsVisible.value;
@@ -256,14 +214,6 @@ function goCatalog() {
 function goHome() {
   saveScrollPosition();
   router.push('/h5/home');
-}
-
-function changeFont(step) {
-  settings.fontSize = Math.max(16, Math.min(24, settings.fontSize + step));
-}
-
-function setTheme(theme) {
-  settings.theme = theme;
 }
 
 function loadSettings() {
