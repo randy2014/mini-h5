@@ -72,6 +72,7 @@ const chapters = ref([]);
 const pageNo = ref(1);
 const chapterPage = ref({ current: 1, pages: 1, total: 0, records: [] });
 const activeChapterId = ref(Number(route.query.chapterId || 0));
+const pendingScrollChapterId = ref(0);
 const fallbackCover = 'https://dummyimage.com/300x420/20232a/ffffff&text=Mini+Novel';
 
 onMounted(async () => {
@@ -82,9 +83,14 @@ onMounted(async () => {
     const targetChapterNo = Number(route.query.chapterNo || progress.chapterNo || 0);
     activeChapterId.value = targetChapterId;
     const targetPage = targetChapterNo ? Math.max(1, Math.ceil(targetChapterNo / PAGE_SIZE)) : 1;
-    await loadChapters(targetPage, targetChapterId);
+    await loadChapters(targetPage);
+    pendingScrollChapterId.value = targetChapterId;
   } finally {
     loading.value = false;
+    if (pendingScrollChapterId.value) {
+      scrollToChapter(pendingScrollChapterId.value);
+      pendingScrollChapterId.value = 0;
+    }
   }
 });
 
@@ -139,7 +145,14 @@ function progressKey(bookId) {
 
 function scrollToChapter(chapterId) {
   nextTick(() => {
-    document.getElementById(`chapter-${chapterId}`)?.scrollIntoView({ block: 'center' });
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(`chapter-${chapterId}`);
+      if (!target) {
+        return;
+      }
+      const top = target.getBoundingClientRect().top + window.scrollY - 96;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    });
   });
 }
 
