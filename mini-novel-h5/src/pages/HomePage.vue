@@ -27,54 +27,87 @@
 
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
-      <div class="section-title">
-        <h2>热榜精选</h2>
-        <span>{{ books.length }} 本</span>
-      </div>
-      <div class="rank-list">
-        <BookCard
-          v-for="(book, index) in rankBooks"
-          :key="book.id"
-          :book="book"
-          :rank="index + 1"
-          @open="openBook"
-        />
-      </div>
-
-      <div v-if="completedBooks.length" class="section-title">
-        <h2>完结优先</h2>
-        <span>一口气读完</span>
-      </div>
-      <div v-if="completedBooks.length" class="cover-row">
-        <button v-for="book in completedBooks" :key="book.id" type="button" @click="openBook(book)">
-          <img :src="book.coverUrl || fallbackCover" :alt="book.title" />
-          <strong>{{ book.title }}</strong>
-          <small>{{ book.author || '佚名' }}</small>
-        </button>
-      </div>
+      <BookSection title="热榜精选" subtitle="近期活跃" :books="sections.hot" @open="openBook" />
+      <BookSection title="完结优先" subtitle="一口气读完" :books="sections.completed" layout="cover" @open="openBook" />
+      <BookSection title="最近更新" subtitle="追更入口" :books="sections.latest" @open="openBook" />
+      <BookSection title="长篇精选" subtitle="字数充足" :books="sections.long" layout="cover" @open="openBook" />
     </template>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, defineComponent, h, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
-import { fetchHome } from '../services/book';
+import { fetchHome, fetchHomeSections } from '../services/book';
 import { formatTextLineBreaks } from '../utils/text';
 
 const router = useRouter();
 const loading = ref(true);
-const books = ref([]);
+const sections = ref({ hot: [], completed: [], latest: [], long: [] });
 const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+Novel';
 
-const heroBook = computed(() => books.value[0]);
-const rankBooks = computed(() => books.value.slice(0, 12));
-const completedBooks = computed(() => books.value.filter((book) => book.status === 2).slice(0, 8));
+const heroBook = computed(() => sections.value.hot?.[0] || sections.value.latest?.[0]);
+
+const BookSection = defineComponent({
+  name: 'BookSection',
+  props: {
+    title: { type: String, required: true },
+    subtitle: { type: String, default: '' },
+    books: { type: Array, default: () => [] },
+    layout: { type: String, default: 'list' }
+  },
+  emits: ['open'],
+  setup(props, { emit }) {
+    return () => {
+      if (!props.books.length) {
+        return null;
+      }
+      const title = h('div', { class: 'section-title' }, [
+        h('h2', props.title),
+        h('span', props.subtitle || `${props.books.length} 本`)
+      ]);
+      if (props.layout === 'cover') {
+        return h('section', { class: 'book-section' }, [
+          title,
+          h('div', { class: 'cover-row' }, props.books.map((book) => h('button', {
+            key: book.id,
+            type: 'button',
+            onClick: () => emit('open', book)
+          }, [
+            h('img', { src: book.coverUrl || fallbackCover, alt: book.title }),
+            h('strong', book.title),
+            h('small', book.author || '佚名')
+          ])))
+        ]);
+      }
+      return h('section', { class: 'book-section' }, [
+        title,
+        h('div', { class: 'rank-list' }, props.books.map((book, index) => h(BookCard, {
+          key: book.id,
+          book,
+          rank: index + 1,
+          onOpen: () => emit('open', book)
+        })))
+      ]);
+    };
+  }
+});
 
 onMounted(async () => {
   try {
-    books.value = await fetchHome();
+    try {
+      const data = await fetchHomeSections();
+      sections.value = {
+        hot: data.hot || [],
+        completed: data.completed || [],
+        latest: data.latest || [],
+        long: data.long || []
+      };
+    } catch {
+      const latest = await fetchHome();
+      sections.value = { hot: latest.slice(0, 12), completed: latest.filter((book) => book.status === 2).slice(0, 8), latest, long: [] };
+    }
   } finally {
     loading.value = false;
   }

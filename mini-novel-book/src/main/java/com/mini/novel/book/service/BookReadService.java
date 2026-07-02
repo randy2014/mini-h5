@@ -1,13 +1,17 @@
 package com.mini.novel.book.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mini.novel.book.entity.Chapter;
 import com.mini.novel.book.entity.Category;
 import com.mini.novel.book.entity.Novel;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import java.util.List;
 
 public interface BookReadService {
     List<Novel> latestNovels(int limit);
+
+    List<Novel> searchNovels(String keyword, int limit);
+
+    List<Novel> rankNovels(String rankType, int limit);
 
     List<Category> listCategories();
 

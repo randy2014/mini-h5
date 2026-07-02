@@ -13,6 +13,7 @@ import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class BookReadServiceImpl implements BookReadService {
@@ -28,10 +29,36 @@ public class BookReadServiceImpl implements BookReadService {
 
     @Override
     public List<Novel> latestNovels(int limit) {
-        return novelMapper.selectPage(Page.of(1, limit),
-                new LambdaQueryWrapper<Novel>()
-                        .ne(Novel::getStatus, 0)
-                        .orderByDesc(Novel::getUpdatedAt)).getRecords();
+        return rankNovels("LATEST", limit);
+    }
+
+    @Override
+    public List<Novel> searchNovels(String keyword, int limit) {
+        int pageSize = normalizeLimit(limit, 50);
+        LambdaQueryWrapper<Novel> wrapper = baseOnlineWrapper().orderByDesc(Novel::getUpdatedAt);
+        if (StringUtils.hasText(keyword)) {
+            String trimmed = keyword.trim();
+            wrapper.and(query -> query.like(Novel::getTitle, trimmed).or().like(Novel::getAuthor, trimmed));
+        }
+        return novelMapper.selectPage(Page.of(1, pageSize), wrapper).getRecords();
+    }
+
+    @Override
+    public List<Novel> rankNovels(String rankType, int limit) {
+        int pageSize = normalizeLimit(limit, 100);
+        String type = StringUtils.hasText(rankType) ? rankType.trim().toUpperCase() : "HOT";
+        LambdaQueryWrapper<Novel> wrapper = baseOnlineWrapper();
+        switch (type) {
+            case "COMPLETED" -> wrapper.eq(Novel::getStatus, 2)
+                    .orderByDesc(Novel::getWordCount)
+                    .orderByDesc(Novel::getUpdatedAt);
+            case "LATEST" -> wrapper.orderByDesc(Novel::getUpdatedAt);
+            case "LONG" -> wrapper.orderByDesc(Novel::getWordCount)
+                    .orderByDesc(Novel::getUpdatedAt);
+            default -> wrapper.orderByDesc(Novel::getUpdatedAt)
+                    .orderByDesc(Novel::getWordCount);
+        }
+        return novelMapper.selectPage(Page.of(1, pageSize), wrapper).getRecords();
     }
 
     @Override
@@ -43,10 +70,9 @@ public class BookReadServiceImpl implements BookReadService {
 
     @Override
     public List<Novel> novelsByCategory(Long categoryId, int limit) {
-        return novelMapper.selectPage(Page.of(1, Math.max(1, Math.min(limit, 100))),
-                new LambdaQueryWrapper<Novel>()
+        return novelMapper.selectPage(Page.of(1, normalizeLimit(limit, 100)),
+                baseOnlineWrapper()
                         .eq(Novel::getCategoryId, categoryId)
-                        .ne(Novel::getStatus, 0)
                         .orderByDesc(Novel::getUpdatedAt)).getRecords();
     }
 
@@ -97,5 +123,13 @@ public class BookReadServiceImpl implements BookReadService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "已经是最后一章");
         }
         return next;
+    }
+
+    private LambdaQueryWrapper<Novel> baseOnlineWrapper() {
+        return new LambdaQueryWrapper<Novel>().ne(Novel::getStatus, 0);
+    }
+
+    private int normalizeLimit(int limit, int max) {
+        return Math.max(1, Math.min(limit, max));
     }
 }

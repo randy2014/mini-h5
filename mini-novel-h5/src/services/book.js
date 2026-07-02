@@ -4,6 +4,18 @@ export function fetchHome() {
   return http.get('/home');
 }
 
+export function fetchHomeSections() {
+  return http.get('/home/sections');
+}
+
+export function searchNovels(keyword, limit = 50) {
+  return http.get('/novels/search', { params: { keyword, limit } });
+}
+
+export function fetchRankNovels(type = 'HOT', limit = 50) {
+  return http.get('/novels/rank', { params: { type, limit } });
+}
+
 export function fetchCategories() {
   return http.get('/categories');
 }

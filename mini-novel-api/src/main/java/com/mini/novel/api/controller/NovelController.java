@@ -8,11 +8,12 @@ import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.vip.service.VipAccessService;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -24,6 +25,18 @@ public class NovelController {
     public NovelController(BookReadService bookReadService, VipAccessService vipAccessService) {
         this.bookReadService = bookReadService;
         this.vipAccessService = vipAccessService;
+    }
+
+    @GetMapping("/search")
+    public Result<List<Novel>> search(@RequestParam(value = "keyword", required = false) String keyword,
+                                      @RequestParam(value = "limit", defaultValue = "50") int limit) {
+        return Result.ok(bookReadService.searchNovels(keyword, limit));
+    }
+
+    @GetMapping("/rank")
+    public Result<List<Novel>> rank(@RequestParam(value = "type", defaultValue = "HOT") String type,
+                                    @RequestParam(value = "limit", defaultValue = "50") int limit) {
+        return Result.ok(bookReadService.rankNovels(type, limit));
     }
 
     @GetMapping("/{novelId}")
