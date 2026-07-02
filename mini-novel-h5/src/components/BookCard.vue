@@ -13,6 +13,8 @@
 </template>
 
 <script setup>
+import { formatTextLineBreaks } from '../utils/text';
+
 defineProps({
   book: {
     type: Object,
@@ -25,10 +27,6 @@ defineEmits(['open']);
 const fallbackCover = 'https://dummyimage.com/300x420/20232a/ffffff&text=Mini+Novel';
 
 function formatIntro(value) {
-  return String(value || '')
-    .replace(/&lt;br\s*\/?&gt;/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return formatTextLineBreaks(value);
 }
 </script>

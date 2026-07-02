@@ -61,6 +61,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { fetchBook, fetchChapters } from '../services/book';
 import { addBookshelf } from '../services/user';
+import { formatTextLineBreaks } from '../utils/text';
 
 const PAGE_SIZE = 80;
 const route = useRoute();
@@ -143,10 +144,6 @@ function scrollToChapter(chapterId) {
 }
 
 function formatIntro(value) {
-  return String(value || '')
-    .replace(/&lt;br\s*\/?&gt;/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return formatTextLineBreaks(value);
 }
 </script>

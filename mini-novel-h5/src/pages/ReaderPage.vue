@@ -6,7 +6,7 @@
     <article v-else class="reader-content">
       <p>第 {{ chapter.chapterNo }} 章</p>
       <h1>{{ chapter.title }}</h1>
-      <div>{{ chapter.content }}</div>
+      <div>{{ formatTextLineBreaks(chapter.content) }}</div>
     </article>
 
     <div class="reader-toolbar">
@@ -23,6 +23,7 @@ import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog } from 'vant';
 import { fetchChapter, fetchNextChapter } from '../services/book';
+import { formatTextLineBreaks } from '../utils/text';
 
 const route = useRoute();
 const router = useRouter();
