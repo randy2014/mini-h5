@@ -1,6 +1,6 @@
 <template>
   <section class="reader-page">
-    <van-nav-bar :title="chapter.title || '阅读'" left-arrow fixed placeholder @click-left="$router.back()" />
+    <van-nav-bar :title="chapter.title || '阅读'" left-arrow fixed placeholder @click-left="goCatalog" />
 
     <van-loading v-if="loading" class="center-loading" />
     <article v-else class="reader-content">
@@ -10,7 +10,7 @@
     </article>
 
     <div class="reader-toolbar">
-      <van-button plain hairline size="small" @click="$router.back()">目录</van-button>
+      <van-button plain hairline size="small" @click="goCatalog">目录</van-button>
       <van-button plain hairline size="small" :loading="nextLoading" @click="readNext">下一章</van-button>
       <van-button plain hairline size="small" to="/h5/vip">VIP</van-button>
       <van-button plain hairline size="small" to="/h5/home">首页</van-button>
@@ -34,6 +34,7 @@ async function loadChapter() {
   loading.value = true;
   try {
     chapter.value = await fetchChapter(route.params.id);
+    saveProgress(chapter.value);
   } catch (error) {
     await showConfirmDialog({
       title: '需要 VIP',
@@ -57,5 +58,25 @@ async function readNext() {
   } finally {
     nextLoading.value = false;
   }
+}
+
+function goCatalog() {
+  const bookId = chapter.value.novelId || route.query.bookId;
+  if (!bookId) {
+    router.back();
+    return;
+  }
+  router.push(`/h5/book/${bookId}?chapterId=${chapter.value.id || route.params.id}&chapterNo=${chapter.value.chapterNo || ''}`);
+}
+
+function saveProgress(current) {
+  if (!current?.novelId || !current?.id) {
+    return;
+  }
+  localStorage.setItem(`mini_novel_read_${current.novelId}`, JSON.stringify({
+    chapterId: current.id,
+    chapterNo: current.chapterNo,
+    updatedAt: Date.now()
+  }));
 }
 </script>

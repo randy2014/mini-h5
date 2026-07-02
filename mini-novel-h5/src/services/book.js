@@ -16,8 +16,8 @@ export function fetchBook(id) {
   return http.get(`/novels/${id}`);
 }
 
-export function fetchChapters(bookId) {
-  return http.get(`/novels/${bookId}/chapters`);
+export function fetchChapters(bookId, page = 1, size = 80) {
+  return http.get(`/novels/${bookId}/chapters`, { params: { page, size } });
 }
 
 export function fetchChapter(chapterId) {

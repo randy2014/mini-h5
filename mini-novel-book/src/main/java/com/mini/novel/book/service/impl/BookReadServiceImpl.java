@@ -63,9 +63,14 @@ public class BookReadServiceImpl implements BookReadService {
     }
 
     @Override
-    public List<Chapter> listChapters(Long novelId) {
+    public Page<Chapter> listChapters(Long novelId, long page, long size) {
         getNovel(novelId);
-        return chapterMapper.selectList(new LambdaQueryWrapper<Chapter>()
+        long current = Math.max(1, page);
+        long pageSize = Math.max(1, Math.min(size, 100));
+        return chapterMapper.selectPage(Page.of(current, pageSize), new LambdaQueryWrapper<Chapter>()
+                .select(Chapter::getId, Chapter::getNovelId, Chapter::getChapterNo, Chapter::getTitle,
+                        Chapter::getVip, Chapter::getPriceCoin, Chapter::getSourceUrl, Chapter::getCreatedAt,
+                        Chapter::getUpdatedAt)
                 .eq(Chapter::getNovelId, novelId)
                 .orderByAsc(Chapter::getChapterNo));
     }

@@ -3,6 +3,7 @@ package com.mini.novel.book.service;
 import com.mini.novel.book.entity.Chapter;
 import com.mini.novel.book.entity.Category;
 import com.mini.novel.book.entity.Novel;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import java.util.List;
 
 public interface BookReadService {
@@ -14,7 +15,7 @@ public interface BookReadService {
 
     Novel getNovel(Long novelId);
 
-    List<Chapter> listChapters(Long novelId);
+    Page<Chapter> listChapters(Long novelId, long page, long size);
 
     Chapter getChapter(Long chapterId);
 
