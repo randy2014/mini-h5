@@ -4,9 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
 import com.mini.novel.crawler.entity.CrawlSchedule;
 import com.mini.novel.crawler.entity.CrawlTaskRecord;
+import com.mini.novel.crawler.entity.CrawlerSourceConfig;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
+import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
 import com.mini.novel.crawler.service.CrawlerMergeService;
 import com.mini.novel.crawler.service.CrawlerScheduleDispatcher;
@@ -15,7 +17,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -23,21 +27,25 @@ import org.springframework.util.StringUtils;
 @Service
 public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher {
     private static final DateTimeFormatter MINUTE_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final String PRIMARY_SOURCE_CODE = "23qb_public";
 
     private final CrawlScheduleMapper scheduleMapper;
     private final CrawlTaskRecordMapper taskRecordMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
+    private final CrawlerSourceConfigMapper sourceMapper;
     private final CrawlerExecutionService executionService;
     private final CrawlerMergeService mergeService;
 
     public CrawlerScheduleDispatcherImpl(CrawlScheduleMapper scheduleMapper,
                                          CrawlTaskRecordMapper taskRecordMapper,
                                          CrawlMergeTaskMapper mergeTaskMapper,
+                                         CrawlerSourceConfigMapper sourceMapper,
                                          CrawlerExecutionService executionService,
                                          CrawlerMergeService mergeService) {
         this.scheduleMapper = scheduleMapper;
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
+        this.sourceMapper = sourceMapper;
         this.executionService = executionService;
         this.mergeService = mergeService;
     }
@@ -54,7 +62,9 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .eq("enabled", true)
                 .last("LIMIT 200"));
         for (CrawlSchedule schedule : schedules) {
-            if (!isDue(schedule)) {
+            if (!isDue(schedule)
+                    || !isPrimarySource(schedule.sourceId)
+                    || hasActiveSourceTask(schedule.sourceId, null)) {
                 continue;
             }
             CrawlTaskRecord task = createTask(schedule, "SCHEDULE");
@@ -71,7 +81,14 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .eq("status", "PENDING")
                 .orderByAsc("id")
                 .last("LIMIT 10"));
+        Set<Long> dispatchedSourceIds = new HashSet<>();
         for (CrawlTaskRecord task : tasks) {
+            if (!isPrimarySource(task.sourceId)
+                    || dispatchedSourceIds.contains(task.sourceId)
+                    || hasRunningSourceTask(task.sourceId, task.id)) {
+                continue;
+            }
+            dispatchedSourceIds.add(task.sourceId);
             executionService.executeAsync(task.id);
         }
         mergeService.mergePending();
@@ -99,6 +116,44 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .ge("created_at", now)
                 .lt("created_at", now.plusMinutes(1)));
         return existing == null || existing == 0;
+    }
+
+    private boolean isPrimarySource(Long sourceId) {
+        if (sourceId == null) {
+            return false;
+        }
+        CrawlerSourceConfig source = sourceMapper.selectById(sourceId);
+        return source != null
+                && Boolean.TRUE.equals(source.enabled)
+                && PRIMARY_SOURCE_CODE.equals(source.sourceCode);
+    }
+
+    private boolean hasActiveSourceTask(Long sourceId, Long excludedTaskId) {
+        if (sourceId == null) {
+            return false;
+        }
+        QueryWrapper<CrawlTaskRecord> wrapper = new QueryWrapper<CrawlTaskRecord>()
+                .eq("source_id", sourceId)
+                .in("status", List.of("PENDING", "RUNNING"));
+        if (excludedTaskId != null) {
+            wrapper.ne("id", excludedTaskId);
+        }
+        Long count = taskRecordMapper.selectCount(wrapper);
+        return count != null && count > 0;
+    }
+
+    private boolean hasRunningSourceTask(Long sourceId, Long excludedTaskId) {
+        if (sourceId == null) {
+            return false;
+        }
+        QueryWrapper<CrawlTaskRecord> wrapper = new QueryWrapper<CrawlTaskRecord>()
+                .eq("source_id", sourceId)
+                .eq("status", "RUNNING");
+        if (excludedTaskId != null) {
+            wrapper.ne("id", excludedTaskId);
+        }
+        Long count = taskRecordMapper.selectCount(wrapper);
+        return count != null && count > 0;
     }
 
     private CrawlTaskRecord createTask(CrawlSchedule schedule, String triggerType) {

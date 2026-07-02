@@ -128,12 +128,24 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 total += seeds.size();
                 for (ParsedBookSeed seed : seeds) {
                     try {
+                        CrawlBookRaw completedBook = completedReadyBook(source, seed);
+                        if (completedBook != null) {
+                            success++;
+                            updateRunningProgress(task, total, success, failed, rank, seed);
+                            continue;
+                        }
                         ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
                         if (!StringUtils.hasText(snapshot.title())) {
                             failed++;
                             continue;
                         }
                         CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
+                        if (isCompletedBookReady(book)) {
+                            success++;
+                            updateRunningProgress(task, total, success, failed, rank, seed);
+                            updateMergeTask(task, true);
+                            continue;
+                        }
                         upsertChaptersAndContent(source, book, snapshot);
                         success++;
                         updateRunningProgress(task, total, success, failed, rank, seed);
@@ -264,7 +276,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.intro = snapshot.intro();
         book.coverUrl = limit(snapshot.coverUrl(), 512);
         book.categoryName = limit(firstNonBlank(snapshot.categoryName(), rank.rankName, "Unknown"), 64);
-        book.bookStatus = "UNKNOWN";
+        book.bookStatus = normalizeBookStatus(snapshot.bookStatus());
         book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;
         book.rankType = rank.rankType;
@@ -278,6 +290,55 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             bookRawMapper.updateById(book);
         }
         return book;
+    }
+
+    private CrawlBookRaw completedReadyBook(CrawlerSourceConfig source, ParsedBookSeed seed) {
+        if (source == null || seed == null || !StringUtils.hasText(seed.url())) {
+            return null;
+        }
+        CrawlBookRaw book = bookRawMapper.selectOne(new QueryWrapper<CrawlBookRaw>()
+                .eq("source_code", source.sourceCode)
+                .eq("source_url", limit(seed.url(), 512))
+                .eq("book_status", "COMPLETED")
+                .last("LIMIT 1"));
+        return isCompletedBookReady(book) ? book : null;
+    }
+
+    private boolean isCompletedBookReady(CrawlBookRaw book) {
+        return book != null && "COMPLETED".equals(book.bookStatus) && isBookFullyContentReady(book);
+    }
+
+    private boolean isBookFullyContentReady(CrawlBookRaw book) {
+        if (book == null || book.id == null) {
+            return false;
+        }
+        Long chapterCount = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
+                .eq("book_raw_id", book.id));
+        if (chapterCount == null || chapterCount <= 0) {
+            return false;
+        }
+        Long readyChapterCount = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
+                .eq("book_raw_id", book.id)
+                .eq("content_status", "CONTENT_READY"));
+        if (!chapterCount.equals(readyChapterCount)) {
+            return false;
+        }
+        Long readyContentCount = contentRawMapper.selectCount(new QueryWrapper<CrawlContentRaw>()
+                .inSql("chapter_raw_id", "SELECT id FROM mini_novel_crawler.crawl_chapter_raw WHERE book_raw_id = " + book.id)
+                .gt("content_length", 0));
+        return chapterCount.equals(readyContentCount);
+    }
+
+    private String normalizeBookStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "UNKNOWN";
+        }
+        String value = status.trim().toUpperCase();
+        return switch (value) {
+            case "COMPLETED", "FINISHED" -> "COMPLETED";
+            case "SERIALIZING", "ONGOING" -> "SERIALIZING";
+            default -> "UNKNOWN";
+        };
     }
 
     private void upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
@@ -326,6 +387,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 .eq("book_raw_id", book.id)
                 .eq("source_chapter_id", sourceChapterId)
                 .last("LIMIT 1"));
+        if (isContentReady(chapter)) {
+            return;
+        }
         if (chapter == null) {
             chapter = new CrawlChapterRaw();
             chapter.bookRawId = book.id;
@@ -364,6 +428,20 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (StringUtils.hasText(content)) {
             upsertContent(chapter, content);
         }
+    }
+
+    private boolean isContentReady(CrawlChapterRaw chapter) {
+        if (chapter == null || chapter.id == null || !"CONTENT_READY".equals(chapter.contentStatus)) {
+            return false;
+        }
+        CrawlContentRaw raw = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
+                .select("id", "chapter_raw_id", "content_hash", "content_length")
+                .eq("chapter_raw_id", chapter.id)
+                .last("LIMIT 1"));
+        if (raw == null || raw.contentLength == null || raw.contentLength <= 0) {
+            return false;
+        }
+        return !StringUtils.hasText(chapter.contentHash) || chapter.contentHash.equals(raw.contentHash);
     }
 
     private String fetchPublicChapterContent(String url, CrawlerSourceConfig source) {

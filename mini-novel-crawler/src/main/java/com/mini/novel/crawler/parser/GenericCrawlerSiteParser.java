@@ -87,6 +87,9 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         String categoryName = firstNonBlank(
                 firstRuleValue(detail, rules.text("bookRules.categoryName", "book.categoryName", "detail.categoryName")),
                 firstText(detail, "meta[property=og:novel:category]", ".category", ".book-category"));
+        String bookStatus = normalizeBookStatus(firstNonBlank(
+                firstRuleValue(detail, rules.text("bookRules.status", "book.status", "detail.status")),
+                firstText(detail, "meta[property=og:novel:status]", ".status", ".book-status", ".book-meta", ".book-info")));
         String cover = firstNonBlank(
                 firstRuleValue(detail, rules.text("bookRules.cover", "book.cover", "detail.cover")),
                 firstImage(detail));
@@ -124,7 +127,7 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
         String chapterId = chapters.isEmpty() ? "" : chapters.get(0).chapterId();
         String chapterUrl = chapters.isEmpty() ? "" : chapters.get(0).url();
         return new ParsedBookSnapshot(title, cleanAuthor(author), cover, intro, seed.url(), sourceBookId,
-                wordCount, categoryName, chapterId, chapterUrl, chapters);
+                wordCount, categoryName, bookStatus, chapterId, chapterUrl, chapters);
     }
 
     private List<ParsedBookSeed> parseRuleBookSeeds(CrawlerRuleConfig rules, Document document, String rankUrl, int maxBooks) {
@@ -485,6 +488,27 @@ public class GenericCrawlerSiteParser implements CrawlerSiteParser {
             value *= 1000D;
         }
         return Math.round(value);
+    }
+
+    private String normalizeBookStatus(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "UNKNOWN";
+        }
+        String value = text.replaceAll("\\s+", "");
+        if (value.contains("\u5b8c\u7ed3")
+                || value.contains("\u5df2\u5b8c\u7ed3")
+                || value.contains("\u5168\u672c")
+                || value.equalsIgnoreCase("completed")
+                || value.equalsIgnoreCase("finished")) {
+            return "COMPLETED";
+        }
+        if (value.contains("\u8fde\u8f7d")
+                || value.contains("\u66f4\u65b0\u4e2d")
+                || value.equalsIgnoreCase("serializing")
+                || value.equalsIgnoreCase("ongoing")) {
+            return "SERIALIZING";
+        }
+        return "UNKNOWN";
     }
 
     private boolean isVipHint(String text, String href) {

@@ -38,6 +38,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/crawler/config")
 public class CrawlerConfigController {
+    private static final String PRIMARY_SOURCE_CODE = "23qb_public";
+
     private final CrawlerSourceConfigMapper sourceMapper;
     private final CrawlRankSourceMapper rankSourceMapper;
     private final CrawlScheduleMapper scheduleMapper;
@@ -181,6 +183,15 @@ public class CrawlerConfigController {
             return new Result<>(404, "采集计划不存在", null);
         }
 
+        CrawlerSourceConfig source = sourceMapper.selectById(schedule.sourceId);
+        if (!isPrimarySource(source)) {
+            return new Result<>(400, "Only 23qb_public is enabled as the stable crawler source.", null);
+        }
+        CrawlTaskRecord activeTask = activeTaskForSource(schedule.sourceId);
+        if (activeTask != null) {
+            return new Result<>(409, "A crawler task for this source is already running.", activeTask);
+        }
+
         LocalDateTime now = LocalDateTime.now();
         CrawlTaskRecord task = new CrawlTaskRecord();
         task.scheduleId = schedule.id;
@@ -305,6 +316,23 @@ public class CrawlerConfigController {
         if (source.priority == null) {
             source.priority = 100;
         }
+    }
+
+    private boolean isPrimarySource(CrawlerSourceConfig source) {
+        return source != null
+                && Boolean.TRUE.equals(source.enabled)
+                && PRIMARY_SOURCE_CODE.equals(source.sourceCode);
+    }
+
+    private CrawlTaskRecord activeTaskForSource(Long sourceId) {
+        if (sourceId == null) {
+            return null;
+        }
+        return taskRecordMapper.selectOne(new QueryWrapper<CrawlTaskRecord>()
+                .eq("source_id", sourceId)
+                .in("status", List.of("PENDING", "RUNNING"))
+                .orderByDesc("id")
+                .last("LIMIT 1"));
     }
 
     private void normalizeRankSource(CrawlRankSource rankSource) {
