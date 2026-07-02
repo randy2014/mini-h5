@@ -1,6 +1,15 @@
 <template>
   <section class="reader-page" :class="readerClass" @click="toggleControls">
-    <van-nav-bar v-show="controlsVisible" :title="chapter.title || '阅读'" left-arrow fixed placeholder @click-left.stop="goCatalog" />
+    <van-nav-bar
+      v-show="controlsVisible"
+      :title="chapter.title || '阅读'"
+      left-arrow
+      right-text="首页"
+      fixed
+      placeholder
+      @click-left.stop="goCatalog"
+      @click-right.stop="goHome"
+    />
 
     <van-loading v-if="loading" class="center-loading" />
     <article v-else class="reader-content" :style="readerStyle">
@@ -15,11 +24,11 @@
     </div>
 
     <div v-show="controlsVisible" class="reader-toolbar" @click.stop>
+      <van-button plain hairline size="small" icon="wap-home-o" @click="goHome">首页</van-button>
       <van-button plain hairline size="small" icon="bars" @click="openCatalog">目录</van-button>
       <van-button plain hairline size="small" icon="arrow-left" :loading="prevLoading" @click="readPrevious">上一章</van-button>
       <van-button plain hairline size="small" icon="setting-o" @click="settingsOpen = true">设置</van-button>
       <van-button plain hairline size="small" icon="arrow" :loading="nextLoading" @click="readNext">下一章</van-button>
-      <van-button plain hairline size="small" icon="diamond-o" to="/h5/vip">VIP</van-button>
     </div>
 
     <van-popup v-model:show="catalogOpen" position="right" class="catalog-popup">
@@ -242,6 +251,11 @@ function goCatalog() {
     return;
   }
   router.push(`/h5/book/${bookId}?chapterId=${chapter.value.id || route.params.id}&chapterNo=${chapter.value.chapterNo || ''}`);
+}
+
+function goHome() {
+  saveScrollPosition();
+  router.push('/h5/home');
 }
 
 function changeFont(step) {
