@@ -12,7 +12,7 @@
         <small v-if="book.categoryName">{{ book.categoryName }}</small>
       </span>
       <strong>{{ book.title }}</strong>
-      <small>{{ book.author || '佚名' }} · {{ wordCountLabel }}</small>
+      <small>{{ bookMetaLine }}</small>
       <em>{{ formatIntro(book.intro) || '暂无简介' }}</em>
       <span v-if="book.latestChapterTitle" class="latest-line">{{ book.latestChapterTitle }}</span>
     </span>
@@ -45,12 +45,16 @@ const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+No
 const wordCountLabel = computed(() => {
   const count = Number(props.book.wordCount || 0);
   if (!count) {
-    return '字数待补充';
+    return '';
   }
   if (count >= 10000) {
     return `${(count / 10000).toFixed(1).replace('.0', '')}万字`;
   }
   return `${count}字`;
+});
+
+const bookMetaLine = computed(() => {
+  return [props.book.author || '佚名', wordCountLabel.value].filter(Boolean).join(' · ');
 });
 
 function formatIntro(value) {

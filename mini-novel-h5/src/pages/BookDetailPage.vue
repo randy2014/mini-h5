@@ -111,7 +111,7 @@ const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+No
 const wordCountLabel = computed(() => {
   const count = Number(book.value.wordCount || 0);
   if (!count) {
-    return '字数待补充';
+    return '字数统计中';
   }
   if (count >= 10000) {
     return `${(count / 10000).toFixed(1).replace('.0', '')}万字`;

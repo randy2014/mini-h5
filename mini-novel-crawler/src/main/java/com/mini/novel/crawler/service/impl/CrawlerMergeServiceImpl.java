@@ -226,6 +226,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters) {
         LocalDateTime now = LocalDateTime.now();
         int acceptableChapters = 0;
+        long estimatedWordCount = 0L;
         for (CrawlChapterRaw rawChapter : chapters) {
             CrawlContentRaw content = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
                     .eq("chapter_raw_id", rawChapter.id)
@@ -233,6 +234,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             ContentQuality quality = evaluateContent(content == null ? "" : content.content);
             if (quality.accepted) {
                 acceptableChapters++;
+                estimatedWordCount += contentLength(content);
             }
         }
         if (acceptableChapters == 0) {
@@ -248,7 +250,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
 
         NovelIdentity identity = upsertIdentity(book, now);
         NovelSourceMapping novelMapping = upsertNovelMapping(identity, book, now);
-        Novel novel = ensureNovel(identity, novelMapping, book, now);
+        Novel novel = ensureNovel(identity, novelMapping, book, estimatedWordCount, now);
 
         int mergedChapters = 0;
         int pendingChapters = 0;
@@ -365,7 +367,8 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         return mapping;
     }
 
-    private Novel ensureNovel(NovelIdentity identity, NovelSourceMapping mapping, CrawlBookRaw book, LocalDateTime now) {
+    private Novel ensureNovel(NovelIdentity identity, NovelSourceMapping mapping, CrawlBookRaw book,
+                              long estimatedWordCount, LocalDateTime now) {
         Novel novel = identity.novelId == null ? null : novelMapper.selectById(identity.novelId);
         if (novel == null) {
             novel = novelMapper.selectOne(new QueryWrapper<Novel>()
@@ -385,7 +388,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         novel.setStatus("COMPLETED".equals(book.bookStatus) ? 2 : 1);
         novel.setVipRequired(false);
         novel.setFreeChapterCount(999999);
-        novel.setWordCount(book.wordCount == null ? 0L : book.wordCount);
+        novel.setWordCount(resolveWordCount(book.wordCount, estimatedWordCount, novel.getWordCount()));
         novel.setSourceUrl(limit(book.sourceUrl, 512));
         novel.setUpdatedAt(now);
         if (novel.getId() == null) {
@@ -399,6 +402,26 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         mapping.novelId = novel.getId();
         novelSourceMappingMapper.updateById(mapping);
         return novel;
+    }
+
+    private long resolveWordCount(Long sourceWordCount, long estimatedWordCount, Long existingWordCount) {
+        if (sourceWordCount != null && sourceWordCount > 0) {
+            return sourceWordCount;
+        }
+        if (estimatedWordCount > 0) {
+            return estimatedWordCount;
+        }
+        return existingWordCount == null ? 0L : existingWordCount;
+    }
+
+    private int contentLength(CrawlContentRaw content) {
+        if (content == null) {
+            return 0;
+        }
+        if (content.contentLength != null && content.contentLength > 0) {
+            return content.contentLength;
+        }
+        return StringUtils.hasText(content.content) ? content.content.trim().length() : 0;
     }
 
     private Long resolveCategoryId(String sourceCategoryName, LocalDateTime now) {
