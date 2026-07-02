@@ -126,7 +126,13 @@ public class BookReadServiceImpl implements BookReadService {
     }
 
     private LambdaQueryWrapper<Novel> baseOnlineWrapper() {
-        return new LambdaQueryWrapper<Novel>().ne(Novel::getStatus, 0);
+        return new LambdaQueryWrapper<Novel>()
+                .ne(Novel::getStatus, 0)
+                .and(query -> query.like(Novel::getSourceUrl, "23qb.net")
+                        .or()
+                        .isNull(Novel::getSourceUrl)
+                        .or()
+                        .eq(Novel::getSourceUrl, ""));
     }
 
     private int normalizeLimit(int limit, int max) {
