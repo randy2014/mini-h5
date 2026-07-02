@@ -1,5 +1,5 @@
 <template>
-  <section class="page with-tab">
+  <section class="page with-tab category-page">
     <van-nav-bar title="分类" />
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
@@ -12,7 +12,7 @@
           @click="selectCategory(item)"
         >
           <strong>{{ item.name }}</strong>
-          <span>点击查看</span>
+          <span>查看书单</span>
         </button>
       </div>
 

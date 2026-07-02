@@ -1,11 +1,15 @@
 <template>
-  <section class="page with-tab">
-    <van-nav-bar title="书架" />
+  <section class="page with-tab bookshelf-page">
+    <van-nav-bar title="我的书架" />
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
+      <div class="section-title first">
+        <h2>继续阅读</h2>
+        <span>{{ books.length }} 本</span>
+      </div>
       <div v-for="book in books" :key="book.id" class="bookshelf-row">
         <BookCard :book="book" @open="openBook" />
-        <van-button size="small" plain type="danger" @click.stop="removeBook(book)">取消</van-button>
+        <van-button size="small" plain icon="delete-o" type="danger" @click.stop="removeBook(book)">移出</van-button>
       </div>
       <van-empty v-if="books.length === 0" description="书架还是空的" />
     </template>

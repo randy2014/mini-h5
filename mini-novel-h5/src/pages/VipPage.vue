@@ -1,5 +1,5 @@
 <template>
-  <section class="page">
+  <section class="page vip-page">
     <van-nav-bar title="VIP 会员" left-arrow @click-left="$router.back()" />
     <div class="vip-banner">
       <p>会员权益</p>
@@ -12,7 +12,7 @@
       <button v-for="plan in plans" :key="plan.id" type="button" class="plan-card">
         <strong>{{ plan.name }}</strong>
         <span>{{ plan.durationDays }} 天</span>
-        <em>￥{{ plan.price }}</em>
+        <em>¥{{ plan.price }}</em>
       </button>
       <van-empty v-if="plans.length === 0" description="暂无套餐" />
     </div>

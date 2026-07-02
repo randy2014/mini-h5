@@ -10,10 +10,10 @@
     </article>
 
     <div class="reader-toolbar">
-      <van-button plain hairline size="small" @click="goCatalog">目录</van-button>
-      <van-button plain hairline size="small" :loading="nextLoading" @click="readNext">下一章</van-button>
-      <van-button plain hairline size="small" to="/h5/vip">VIP</van-button>
-      <van-button plain hairline size="small" to="/h5/home">首页</van-button>
+      <van-button plain hairline size="small" icon="bars" @click="goCatalog">目录</van-button>
+      <van-button plain hairline size="small" icon="arrow-left" @click="goCatalog">返回</van-button>
+      <van-button plain hairline size="small" icon="arrow" :loading="nextLoading" @click="readNext">下一章</van-button>
+      <van-button plain hairline size="small" icon="diamond-o" to="/h5/vip">VIP</van-button>
     </div>
   </section>
 </template>
@@ -36,6 +36,7 @@ async function loadChapter() {
   try {
     chapter.value = await fetchChapter(route.params.id);
     saveProgress(chapter.value);
+    window.scrollTo({ top: 0 });
   } catch (error) {
     await showConfirmDialog({
       title: '需要 VIP',
