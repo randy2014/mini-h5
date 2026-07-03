@@ -1,6 +1,12 @@
 package com.mini.novel.crawler.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.mini.novel.book.entity.Chapter;
+import com.mini.novel.book.entity.ChapterSourceMapping;
+import com.mini.novel.book.entity.NovelSourceMapping;
+import com.mini.novel.book.mapper.ChapterMapper;
+import com.mini.novel.book.mapper.ChapterSourceMappingMapper;
+import com.mini.novel.book.mapper.NovelSourceMappingMapper;
 import com.mini.novel.crawler.entity.CrawlBookRaw;
 import com.mini.novel.crawler.entity.CrawlChapterRaw;
 import com.mini.novel.crawler.entity.CrawlContentRaw;
@@ -37,6 +43,8 @@ import java.util.Set;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
@@ -44,6 +52,7 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
+    private static final Logger log = LoggerFactory.getLogger(CrawlerExecutionServiceImpl.class);
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
     private static final String MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
@@ -60,6 +69,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private final CrawlChapterRawMapper chapterRawMapper;
     private final CrawlContentRawMapper contentRawMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
+    private final NovelSourceMappingMapper novelSourceMappingMapper;
+    private final ChapterSourceMappingMapper chapterSourceMappingMapper;
+    private final ChapterMapper chapterMapper;
     private final CrawlerMergeService mergeService;
     private final List<CrawlerSiteParser> siteParsers;
     private final TaskExecutor applicationTaskExecutor;
@@ -71,6 +83,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                                        CrawlChapterRawMapper chapterRawMapper,
                                        CrawlContentRawMapper contentRawMapper,
                                        CrawlMergeTaskMapper mergeTaskMapper,
+                                       NovelSourceMappingMapper novelSourceMappingMapper,
+                                       ChapterSourceMappingMapper chapterSourceMappingMapper,
+                                       ChapterMapper chapterMapper,
                                        CrawlerMergeService mergeService,
                                        List<CrawlerSiteParser> siteParsers,
                                        @Qualifier("applicationTaskExecutor") TaskExecutor applicationTaskExecutor) {
@@ -81,6 +96,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         this.chapterRawMapper = chapterRawMapper;
         this.contentRawMapper = contentRawMapper;
         this.mergeTaskMapper = mergeTaskMapper;
+        this.novelSourceMappingMapper = novelSourceMappingMapper;
+        this.chapterSourceMappingMapper = chapterSourceMappingMapper;
+        this.chapterMapper = chapterMapper;
         this.mergeService = mergeService;
         this.siteParsers = siteParsers;
         this.applicationTaskExecutor = applicationTaskExecutor;
@@ -125,36 +143,57 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     seeds = parser.parseBookSeeds(source, mobilePage, "https://m.qidian.com/", maxBooks(rank));
                 }
 
+                int rankDiscovered = seeds.size();
+                int rankSaved = 0;
+                int rankFailed = 0;
+                log.info("Crawler rank started: taskId={}, rank={}, discovered={}",
+                        task.id, rankLabel(rank), rankDiscovered);
                 total += seeds.size();
                 for (ParsedBookSeed seed : seeds) {
                     try {
                         CrawlBookRaw completedBook = completedReadyBook(source, seed);
                         if (completedBook != null) {
                             success++;
+                            rankSaved++;
                             updateRunningProgress(task, total, success, failed, rank, seed);
                             continue;
                         }
                         ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
                         if (!StringUtils.hasText(snapshot.title())) {
                             failed++;
+                            rankFailed++;
+                            updateRunningProgress(task, total, success, failed, rank, seed);
+                            continue;
+                        }
+                        if (isSnapshotFullyMapped(source, snapshot)) {
+                            success++;
+                            rankSaved++;
+                            updateRunningProgress(task, total, success, failed, rank, seed);
                             continue;
                         }
                         CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
                         if (isCompletedBookReady(book)) {
                             success++;
+                            rankSaved++;
                             updateRunningProgress(task, total, success, failed, rank, seed);
                             updateMergeTask(task, true);
                             continue;
                         }
                         upsertChaptersAndContent(source, book, snapshot);
                         success++;
+                        rankSaved++;
                         updateRunningProgress(task, total, success, failed, rank, seed);
                         updateMergeTask(task, true);
                     } catch (Exception itemEx) {
                         failed++;
+                        rankFailed++;
                         updateRunningProgress(task, total, success, failed, rank, seed);
+                        log.warn("Crawler book failed: taskId={}, rank={}, bookUrl={}, message={}",
+                                task.id, rankLabel(rank), seed.url(), itemEx.getMessage());
                     }
                 }
+                log.info("Crawler rank finished: taskId={}, rank={}, discovered={}, saved={}, failed={}",
+                        task.id, rankLabel(rank), rankDiscovered, rankSaved, rankFailed);
             }
 
             if (total == 0) {
@@ -162,7 +201,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 task.message = "Crawler finished, but no book was parsed. Check rank URL or source rules.";
             } else {
                 task.status = failed == 0 ? "SUCCESS" : "PARTIAL_SUCCESS";
-                task.message = "Crawler finished: discovered " + total + ", saved " + success + ", failed " + failed + ".";
+                task.message = "Crawler finished: discovered " + total + ", saved " + success
+                        + ", failed " + failed + ", merge task reports merged counts.";
             }
         } catch (Exception ex) {
             task.status = "FAILED";
@@ -187,7 +227,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         task.message = "Crawler is running: discovered " + total
                 + ", saved " + success
                 + ", failed " + failed
-                + ", current rank " + limit(rank.rankName, 64)
+                + ", current rank " + limit(rankLabel(rank), 96)
                 + ", current book " + limit(seed.url(), 160) + ".";
         taskMapper.updateById(task);
     }
@@ -195,7 +235,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private List<CrawlRankSource> loadRanks(CrawlTaskRecord task, CrawlerSourceConfig source) {
         if (task.rankSourceId != null) {
             CrawlRankSource rank = rankSourceMapper.selectById(task.rankSourceId);
-            return rank == null ? new ArrayList<>() : new ArrayList<>(List.of(rank));
+            if (rank == null || !task.sourceId.equals(rank.sourceId) || !Boolean.TRUE.equals(rank.enabled)) {
+                return new ArrayList<>();
+            }
+            return new ArrayList<>(List.of(rank));
         }
         List<CrawlRankSource> ranks = rankSourceMapper.selectList(new QueryWrapper<CrawlRankSource>()
                 .eq("source_id", task.sourceId)
@@ -304,6 +347,66 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return isCompletedBookReady(book) ? book : null;
     }
 
+    private boolean isSnapshotFullyMapped(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
+        if (source == null || snapshot == null || !StringUtils.hasText(snapshot.sourceBookId())) {
+            return false;
+        }
+        List<ParsedChapterSnapshot> chapters = snapshot.chapters();
+        if (chapters == null || chapters.isEmpty()) {
+            return false;
+        }
+        NovelSourceMapping mapping = mappedReadyNovel(source.sourceCode, snapshot.sourceBookId());
+        if (mapping == null) {
+            return false;
+        }
+        for (ParsedChapterSnapshot chapter : chapters) {
+            String sourceChapterId = StringUtils.hasText(chapter.chapterId())
+                    ? chapter.chapterId()
+                    : sha256(chapter.url()).substring(0, 24);
+            if (!isChapterMappedWithContent(mapping, sourceChapterId)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isChapterMappedWithContent(CrawlerSourceConfig source, CrawlBookRaw book, String sourceChapterId) {
+        if (source == null || book == null || !StringUtils.hasText(book.sourceBookId)
+                || !StringUtils.hasText(sourceChapterId)) {
+            return false;
+        }
+        NovelSourceMapping mapping = mappedReadyNovel(source.sourceCode, book.sourceBookId);
+        return isChapterMappedWithContent(mapping, sourceChapterId);
+    }
+
+    private NovelSourceMapping mappedReadyNovel(String sourceCode, String sourceBookId) {
+        if (!StringUtils.hasText(sourceCode) || !StringUtils.hasText(sourceBookId)) {
+            return null;
+        }
+        NovelSourceMapping mapping = novelSourceMappingMapper.selectOne(new QueryWrapper<NovelSourceMapping>()
+                .eq("source_code", sourceCode)
+                .eq("source_book_id", sourceBookId)
+                .eq("content_status", "CONTENT_READY")
+                .last("LIMIT 1"));
+        return mapping != null && mapping.novelId != null ? mapping : null;
+    }
+
+    private boolean isChapterMappedWithContent(NovelSourceMapping mapping, String sourceChapterId) {
+        if (mapping == null || mapping.id == null || !StringUtils.hasText(sourceChapterId)) {
+            return false;
+        }
+        ChapterSourceMapping chapterMapping = chapterSourceMappingMapper.selectOne(new QueryWrapper<ChapterSourceMapping>()
+                .eq("novel_mapping_id", mapping.id)
+                .eq("source_chapter_id", sourceChapterId)
+                .eq("content_status", "MERGED")
+                .last("LIMIT 1"));
+        if (chapterMapping == null || chapterMapping.chapterId == null) {
+            return false;
+        }
+        Chapter chapter = chapterMapper.selectById(chapterMapping.chapterId);
+        return chapter != null && StringUtils.hasText(chapter.getContent());
+    }
+
     private boolean isCompletedBookReady(CrawlBookRaw book) {
         return book != null && "COMPLETED".equals(book.bookStatus) && isBookFullyContentReady(book);
     }
@@ -383,6 +486,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         String sourceChapterId = StringUtils.hasText(snapshot.chapterId())
                 ? snapshot.chapterId()
                 : sha256(snapshot.chapterUrl()).substring(0, 24);
+        if (isChapterMappedWithContent(source, book, sourceChapterId)) {
+            return;
+        }
         CrawlChapterRaw chapter = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
                 .eq("book_raw_id", book.id)
                 .eq("source_chapter_id", sourceChapterId)
@@ -706,6 +812,15 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     private int maxBooks(CrawlRankSource rank) {
         return rank.maxBooks == null || rank.maxBooks <= 0 ? DEFAULT_MAX_BOOKS : Math.min(rank.maxBooks, 100);
+    }
+
+    private String rankLabel(CrawlRankSource rank) {
+        if (rank == null) {
+            return "unknown rank";
+        }
+        String type = StringUtils.hasText(rank.rankType) ? rank.rankType : "rank-" + rank.id;
+        String name = StringUtils.hasText(rank.rankName) ? rank.rankName : "";
+        return name.isEmpty() ? type : type + "/" + name;
     }
 
     private boolean containsBlockedText(String text, CrawlerRuleConfig rules) {

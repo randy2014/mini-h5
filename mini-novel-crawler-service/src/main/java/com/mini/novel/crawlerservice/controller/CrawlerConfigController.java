@@ -106,7 +106,7 @@ public class CrawlerConfigController {
     public Result<CrawlSourceCredential> updateCredential(@PathVariable Long id, @RequestBody CrawlSourceCredential credential) {
         CrawlSourceCredential existing = credentialMapper.selectById(id);
         if (existing == null) {
-            return new Result<>(404, "采集账号不存在", null);
+            return new Result<>(404, "Crawler credential does not exist.", null);
         }
         credential.id = id;
         normalizeCredential(credential, existing);
@@ -187,64 +187,33 @@ public class CrawlerConfigController {
     }
 
     @PostMapping("/schedules/{id}/run-now")
-    public Result<CrawlTaskRecord> runNow(@PathVariable Long id) {
+    public Result<CrawlTaskRecord> runNow(@PathVariable Long id,
+                                          @RequestParam(required = false) Long rankSourceId,
+                                          @RequestParam(required = false) String rankType) {
         CrawlSchedule schedule = scheduleMapper.selectById(id);
         if (schedule == null) {
-            return new Result<>(404, "采集计划不存在", null);
+            return new Result<>(404, "Crawler schedule does not exist.", null);
         }
-
         CrawlerSourceConfig source = sourceMapper.selectById(schedule.sourceId);
         if (!isPrimarySource(source)) {
             return new Result<>(400, "Only 23qb_public is enabled as the stable crawler source.", null);
         }
-        CrawlTaskRecord activeTask = activeTaskForSource(schedule.sourceId);
-        if (activeTask != null) {
-            return new Result<>(409, "A crawler task for this source is already running.", activeTask);
+        List<CrawlTaskRecord> createdTasks = createRankTasks(schedule, rankSourceId, rankType, "MANUAL");
+        if (createdTasks.isEmpty()) {
+            return new Result<>(409, "No rank task was created; matched ranks may already be pending or running.", null);
         }
-
-        LocalDateTime now = LocalDateTime.now();
-        CrawlTaskRecord task = new CrawlTaskRecord();
-        task.scheduleId = schedule.id;
-        task.sourceId = schedule.sourceId;
-        task.credentialId = schedule.credentialId;
-        task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
-        task.triggerType = "MANUAL";
-        task.status = "PENDING";
-        task.totalCount = 0;
-        task.successCount = 0;
-        task.failCount = 0;
-        task.message = "任务已创建，采集执行器即将拉取榜单、章节目录和公开正文。";
-        task.createdAt = now;
-        task.updatedAt = now;
-        taskRecordMapper.insert(task);
-
-        schedule.lastRunAt = now;
-        schedule.updatedAt = now;
-        scheduleMapper.updateById(schedule);
-
-        if (schedule.autoMerge == null || schedule.autoMerge) {
-            CrawlMergeTask mergeTask = new CrawlMergeTask();
-            mergeTask.crawlTaskId = task.id;
-            mergeTask.status = "PENDING";
-            mergeTask.totalCount = 0;
-            mergeTask.mergedCount = 0;
-            mergeTask.pendingReviewCount = 0;
-            mergeTask.failedCount = 0;
-            mergeTask.message = "采集完成后自动进入清洗入库队列。";
-            mergeTask.createdAt = now;
-            mergeTask.updatedAt = now;
-            mergeTaskMapper.insert(mergeTask);
+        if (!hasRunningTaskForSource(schedule.sourceId)) {
+            crawlerExecutionService.executeAsync(createdTasks.get(0).id);
         }
-
-        crawlerExecutionService.executeAsync(task.id);
-        return Result.ok(task);
+        return Result.ok(createdTasks.get(0));
     }
+
 
     @PostMapping("/tasks/{id}/run")
     public Result<Void> runTask(@PathVariable Long id) {
         CrawlTaskRecord task = taskRecordMapper.selectById(id);
         if (task == null) {
-            return new Result<>(404, "采集任务不存在", null);
+            return new Result<>(404, "Crawler task does not exist.", null);
         }
         crawlerExecutionService.executeAsync(id);
         return Result.ok();
@@ -254,7 +223,7 @@ public class CrawlerConfigController {
     public Result<CrawlTaskRecord> interruptTask(@PathVariable Long id) {
         CrawlTaskRecord task = taskRecordMapper.selectById(id);
         if (task == null) {
-            return new Result<>(404, "采集任务不存在", null);
+            return new Result<>(404, "Crawler task does not exist.", null);
         }
         if (!List.of("PENDING", "RUNNING").contains(task.status)) {
             return Result.ok(task);
@@ -407,15 +376,98 @@ public class CrawlerConfigController {
                 && PRIMARY_SOURCE_CODE.equals(source.sourceCode);
     }
 
-    private CrawlTaskRecord activeTaskForSource(Long sourceId) {
-        if (sourceId == null) {
+    private List<CrawlTaskRecord> createRankTasks(CrawlSchedule schedule, Long rankSourceId, String rankType, String triggerType) {
+        List<CrawlRankSource> ranks = runnableRanks(schedule.sourceId, rankSourceId, rankType);
+        LocalDateTime now = LocalDateTime.now();
+        List<CrawlTaskRecord> createdTasks = new ArrayList<>();
+        for (CrawlRankSource rank : ranks) {
+            if (activeTaskForRank(schedule.sourceId, rank.id) != null) {
+                continue;
+            }
+            CrawlTaskRecord task = new CrawlTaskRecord();
+            task.scheduleId = schedule.id;
+            task.sourceId = schedule.sourceId;
+            task.rankSourceId = rank.id;
+            task.credentialId = schedule.credentialId;
+            task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
+            task.triggerType = triggerType;
+            task.status = "PENDING";
+            task.targetUrl = rank.rankUrl;
+            task.totalCount = 0;
+            task.successCount = 0;
+            task.failCount = 0;
+            task.message = "Rank task queued: " + rankLabel(rank) + ".";
+            task.createdAt = now;
+            task.updatedAt = now;
+            taskRecordMapper.insert(task);
+            createdTasks.add(task);
+
+            if (schedule.autoMerge == null || schedule.autoMerge) {
+                CrawlMergeTask mergeTask = new CrawlMergeTask();
+                mergeTask.crawlTaskId = task.id;
+                mergeTask.status = "PENDING";
+                mergeTask.totalCount = 0;
+                mergeTask.mergedCount = 0;
+                mergeTask.pendingReviewCount = 0;
+                mergeTask.failedCount = 0;
+                mergeTask.message = "Merge will run when this rank task has ready books.";
+                mergeTask.createdAt = now;
+                mergeTask.updatedAt = now;
+                mergeTaskMapper.insert(mergeTask);
+            }
+        }
+        if (!createdTasks.isEmpty()) {
+            schedule.lastRunAt = now;
+            schedule.updatedAt = now;
+            scheduleMapper.updateById(schedule);
+        }
+        return createdTasks;
+    }
+
+    private List<CrawlRankSource> runnableRanks(Long sourceId, Long rankSourceId, String rankType) {
+        QueryWrapper<CrawlRankSource> wrapper = new QueryWrapper<CrawlRankSource>()
+                .eq("source_id", sourceId)
+                .eq("enabled", true)
+                .orderByAsc("id");
+        if (rankSourceId != null) {
+            wrapper.eq("id", rankSourceId);
+        }
+        if (StringUtils.hasText(rankType)) {
+            wrapper.eq("rank_type", rankType.trim());
+        }
+        wrapper.last("LIMIT 100");
+        return rankSourceMapper.selectList(wrapper);
+    }
+
+    private CrawlTaskRecord activeTaskForRank(Long sourceId, Long rankSourceId) {
+        if (sourceId == null || rankSourceId == null) {
             return null;
         }
         return taskRecordMapper.selectOne(new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", sourceId)
+                .eq("rank_source_id", rankSourceId)
                 .in("status", List.of("PENDING", "RUNNING"))
                 .orderByDesc("id")
                 .last("LIMIT 1"));
+    }
+
+    private boolean hasRunningTaskForSource(Long sourceId) {
+        if (sourceId == null) {
+            return false;
+        }
+        Long count = taskRecordMapper.selectCount(new QueryWrapper<CrawlTaskRecord>()
+                .eq("source_id", sourceId)
+                .eq("status", "RUNNING"));
+        return count != null && count > 0;
+    }
+
+    private String rankLabel(CrawlRankSource rank) {
+        if (rank == null) {
+            return "unknown rank";
+        }
+        String type = StringUtils.hasText(rank.rankType) ? rank.rankType : "rank-" + rank.id;
+        String name = StringUtils.hasText(rank.rankName) ? rank.rankName : "";
+        return name.isEmpty() ? type : type + "/" + name;
     }
 
     private void normalizeRankSource(CrawlRankSource rankSource) {
@@ -456,7 +508,7 @@ public class CrawlerConfigController {
 
     private void normalizeCredential(CrawlSourceCredential credential, CrawlSourceCredential existing) {
         if (!StringUtils.hasText(credential.name)) {
-            credential.name = "采集账号";
+            credential.name = "Crawler credential";
         }
         if (!StringUtils.hasText(credential.authMode)) {
             credential.authMode = "PASSWORD";

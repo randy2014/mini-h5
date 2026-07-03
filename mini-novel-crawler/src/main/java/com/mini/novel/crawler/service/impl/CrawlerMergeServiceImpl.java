@@ -26,12 +26,15 @@ import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
 public class CrawlerMergeServiceImpl implements CrawlerMergeService {
+    private static final Logger log = LoggerFactory.getLogger(CrawlerMergeServiceImpl.class);
     private static final int MIN_CONTENT_LENGTH = 80;
 
     private final CrawlMergeTaskMapper mergeTaskMapper;
@@ -220,6 +223,8 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             task.finishedAt = LocalDateTime.now();
             task.updatedAt = task.finishedAt;
             mergeTaskMapper.updateById(task);
+            log.info("Crawler merge task finished: mergeTaskId={}, crawlTaskId={}, status={}, total={}, merged={}, pending={}, failed={}",
+                    task.id, task.crawlTaskId, task.status, total, merged, pending, failed);
         }
     }
 

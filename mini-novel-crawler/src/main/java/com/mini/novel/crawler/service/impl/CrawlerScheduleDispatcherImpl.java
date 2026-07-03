@@ -2,10 +2,12 @@ package com.mini.novel.crawler.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
+import com.mini.novel.crawler.entity.CrawlRankSource;
 import com.mini.novel.crawler.entity.CrawlSchedule;
 import com.mini.novel.crawler.entity.CrawlTaskRecord;
 import com.mini.novel.crawler.entity.CrawlerSourceConfig;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
+import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
@@ -34,6 +36,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     private final CrawlScheduleMapper scheduleMapper;
     private final CrawlTaskRecordMapper taskRecordMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
+    private final CrawlRankSourceMapper rankSourceMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
     private final CrawlerExecutionService executionService;
     private final CrawlerMergeService mergeService;
@@ -41,12 +44,14 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     public CrawlerScheduleDispatcherImpl(CrawlScheduleMapper scheduleMapper,
                                          CrawlTaskRecordMapper taskRecordMapper,
                                          CrawlMergeTaskMapper mergeTaskMapper,
+                                         CrawlRankSourceMapper rankSourceMapper,
                                          CrawlerSourceConfigMapper sourceMapper,
                                          CrawlerExecutionService executionService,
                                          CrawlerMergeService mergeService) {
         this.scheduleMapper = scheduleMapper;
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
+        this.rankSourceMapper = rankSourceMapper;
         this.sourceMapper = sourceMapper;
         this.executionService = executionService;
         this.mergeService = mergeService;
@@ -68,7 +73,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
             task.status = "FAILED";
             task.finishedAt = now;
             task.updatedAt = now;
-            task.message = appendMessage(task.message, "采集服务重启，遗留运行中任务已自动收口。");
+            task.message = appendMessage(task.message, "Crawler service restarted; interrupted running task was closed.");
             taskRecordMapper.updateById(task);
         }
 
@@ -79,7 +84,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
             task.status = "FAILED";
             task.finishedAt = now;
             task.updatedAt = now;
-            task.message = appendMessage(task.message, "采集服务重启，遗留清洗中任务已自动收口。");
+            task.message = appendMessage(task.message, "Crawler service restarted; interrupted merge task was closed.");
             mergeTaskMapper.updateById(task);
         }
     }
@@ -90,16 +95,25 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .eq("enabled", true)
                 .last("LIMIT 200"));
         for (CrawlSchedule schedule : schedules) {
-            if (!isDue(schedule)
-                    || !isPrimarySource(schedule.sourceId)
-                    || hasActiveSourceTask(schedule.sourceId, null)) {
+            if (!isDue(schedule) || !isPrimarySource(schedule.sourceId)) {
                 continue;
             }
-            CrawlTaskRecord task = createTask(schedule, "SCHEDULE");
+
+            int createdCount = 0;
+            for (CrawlRankSource rank : loadEnabledRanks(schedule.sourceId)) {
+                if (hasActiveRankTask(schedule.sourceId, rank.id, null)) {
+                    continue;
+                }
+                createTask(schedule, rank, "SCHEDULE");
+                createdCount++;
+            }
+            if (createdCount == 0) {
+                continue;
+            }
+
             schedule.lastRunAt = LocalDateTime.now();
             schedule.updatedAt = schedule.lastRunAt;
             scheduleMapper.updateById(schedule);
-            executionService.executeAsync(task.id);
         }
     }
 
@@ -156,13 +170,26 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 && PRIMARY_SOURCE_CODE.equals(source.sourceCode);
     }
 
-    private boolean hasActiveSourceTask(Long sourceId, Long excludedTaskId) {
+    private List<CrawlRankSource> loadEnabledRanks(Long sourceId) {
+        return rankSourceMapper.selectList(new QueryWrapper<CrawlRankSource>()
+                .eq("source_id", sourceId)
+                .eq("enabled", true)
+                .orderByAsc("id")
+                .last("LIMIT 100"));
+    }
+
+    private boolean hasActiveRankTask(Long sourceId, Long rankSourceId, Long excludedTaskId) {
         if (sourceId == null) {
             return false;
         }
         QueryWrapper<CrawlTaskRecord> wrapper = new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", sourceId)
                 .in("status", List.of("PENDING", "RUNNING"));
+        if (rankSourceId == null) {
+            wrapper.isNull("rank_source_id");
+        } else {
+            wrapper.eq("rank_source_id", rankSourceId);
+        }
         if (excludedTaskId != null) {
             wrapper.ne("id", excludedTaskId);
         }
@@ -184,19 +211,21 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         return count != null && count > 0;
     }
 
-    private CrawlTaskRecord createTask(CrawlSchedule schedule, String triggerType) {
+    private CrawlTaskRecord createTask(CrawlSchedule schedule, CrawlRankSource rank, String triggerType) {
         LocalDateTime now = LocalDateTime.now();
         CrawlTaskRecord task = new CrawlTaskRecord();
         task.scheduleId = schedule.id;
         task.sourceId = schedule.sourceId;
+        task.rankSourceId = rank.id;
         task.credentialId = schedule.credentialId;
         task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
         task.triggerType = triggerType;
         task.status = "PENDING";
+        task.targetUrl = rank.rankUrl;
         task.totalCount = 0;
         task.successCount = 0;
         task.failCount = 0;
-        task.message = "定时调度已创建采集任务，等待执行器处理。";
+        task.message = "Rank task queued: " + rankLabel(rank) + ".";
         task.createdAt = now;
         task.updatedAt = now;
         taskRecordMapper.insert(task);
@@ -209,12 +238,21 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
             mergeTask.mergedCount = 0;
             mergeTask.pendingReviewCount = 0;
             mergeTask.failedCount = 0;
-            mergeTask.message = "采集完成后自动进入清洗入库队列。";
+            mergeTask.message = "Merge will run when this rank task has ready books.";
             mergeTask.createdAt = now;
             mergeTask.updatedAt = now;
             mergeTaskMapper.insert(mergeTask);
         }
         return task;
+    }
+
+    private String rankLabel(CrawlRankSource rank) {
+        if (rank == null) {
+            return "unknown rank";
+        }
+        String type = StringUtils.hasText(rank.rankType) ? rank.rankType : "rank-" + rank.id;
+        String name = StringUtils.hasText(rank.rankName) ? rank.rankName : "";
+        return name.isEmpty() ? type : type + "/" + name;
     }
 
     private String appendMessage(String original, String suffix) {
