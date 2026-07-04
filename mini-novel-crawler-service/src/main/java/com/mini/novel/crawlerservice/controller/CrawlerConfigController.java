@@ -189,7 +189,8 @@ public class CrawlerConfigController {
     @PostMapping("/schedules/{id}/run-now")
     public Result<CrawlTaskRecord> runNow(@PathVariable Long id,
                                           @RequestParam(required = false) Long rankSourceId,
-                                          @RequestParam(required = false) String rankType) {
+                                          @RequestParam(required = false) String rankType,
+                                          @RequestParam(required = false) Integer maxBooks) {
         CrawlSchedule schedule = scheduleMapper.selectById(id);
         if (schedule == null) {
             return new Result<>(404, "Crawler schedule does not exist.", null);
@@ -198,7 +199,7 @@ public class CrawlerConfigController {
         if (!isPrimarySource(source)) {
             return new Result<>(400, "Only 23qb_public is enabled as the stable crawler source.", null);
         }
-        List<CrawlTaskRecord> createdTasks = createRankTasks(schedule, rankSourceId, rankType, "MANUAL");
+        List<CrawlTaskRecord> createdTasks = createRankTasks(schedule, rankSourceId, rankType, maxBooks, "MANUAL");
         if (createdTasks.isEmpty()) {
             return new Result<>(409, "No rank task was created; matched ranks may already be pending or running.", null);
         }
@@ -376,7 +377,8 @@ public class CrawlerConfigController {
                 && PRIMARY_SOURCE_CODE.equals(source.sourceCode);
     }
 
-    private List<CrawlTaskRecord> createRankTasks(CrawlSchedule schedule, Long rankSourceId, String rankType, String triggerType) {
+    private List<CrawlTaskRecord> createRankTasks(CrawlSchedule schedule, Long rankSourceId, String rankType,
+                                                  Integer maxBooks, String triggerType) {
         List<CrawlRankSource> ranks = runnableRanks(schedule.sourceId, rankSourceId, rankType);
         LocalDateTime now = LocalDateTime.now();
         List<CrawlTaskRecord> createdTasks = new ArrayList<>();
@@ -392,7 +394,7 @@ public class CrawlerConfigController {
             task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
             task.triggerType = triggerType;
             task.status = "PENDING";
-            task.targetUrl = rank.rankUrl;
+            task.targetUrl = taskTargetUrl(rank, maxBooks);
             task.totalCount = 0;
             task.successCount = 0;
             task.failCount = 0;
@@ -422,6 +424,21 @@ public class CrawlerConfigController {
             scheduleMapper.updateById(schedule);
         }
         return createdTasks;
+    }
+
+    private String taskTargetUrl(CrawlRankSource rank, Integer maxBooks) {
+        if (rank == null || !StringUtils.hasText(rank.rankUrl)) {
+            return null;
+        }
+        Integer scopedMaxBooks = scopedMaxBooks(maxBooks);
+        return scopedMaxBooks == null ? rank.rankUrl : rank.rankUrl + "#maxBooks=" + scopedMaxBooks;
+    }
+
+    private Integer scopedMaxBooks(Integer maxBooks) {
+        if (maxBooks == null) {
+            return null;
+        }
+        return Math.max(1, Math.min(maxBooks, 100));
     }
 
     private List<CrawlRankSource> runnableRanks(Long sourceId, Long rankSourceId, String rankType) {

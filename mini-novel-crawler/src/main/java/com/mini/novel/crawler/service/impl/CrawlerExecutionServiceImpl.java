@@ -238,7 +238,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             if (rank == null || !task.sourceId.equals(rank.sourceId) || !Boolean.TRUE.equals(rank.enabled)) {
                 return new ArrayList<>();
             }
-            return new ArrayList<>(List.of(rank));
+            return new ArrayList<>(List.of(scopedRank(rank, task)));
         }
         List<CrawlRankSource> ranks = rankSourceMapper.selectList(new QueryWrapper<CrawlRankSource>()
                 .eq("source_id", task.sourceId)
@@ -812,6 +812,47 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     private int maxBooks(CrawlRankSource rank) {
         return rank.maxBooks == null || rank.maxBooks <= 0 ? DEFAULT_MAX_BOOKS : Math.min(rank.maxBooks, 100);
+    }
+
+    private CrawlRankSource scopedRank(CrawlRankSource rank, CrawlTaskRecord task) {
+        Integer scopedMaxBooks = taskMaxBooks(task);
+        if (scopedMaxBooks == null) {
+            return rank;
+        }
+        CrawlRankSource scoped = new CrawlRankSource();
+        scoped.id = rank.id;
+        scoped.sourceId = rank.sourceId;
+        scoped.rankName = rank.rankName;
+        scoped.rankType = rank.rankType;
+        scoped.rankUrl = rank.rankUrl;
+        scoped.preferCompleted = rank.preferCompleted;
+        scoped.maxBooks = scopedMaxBooks;
+        scoped.enabled = rank.enabled;
+        scoped.createdAt = rank.createdAt;
+        scoped.updatedAt = rank.updatedAt;
+        return scoped;
+    }
+
+    private Integer taskMaxBooks(CrawlTaskRecord task) {
+        if (task == null || !StringUtils.hasText(task.targetUrl)) {
+            return null;
+        }
+        String marker = "#maxBooks=";
+        int index = task.targetUrl.indexOf(marker);
+        if (index < 0) {
+            return null;
+        }
+        String value = task.targetUrl.substring(index + marker.length()).trim();
+        int ampIndex = value.indexOf('&');
+        if (ampIndex >= 0) {
+            value = value.substring(0, ampIndex);
+        }
+        try {
+            int parsed = Integer.parseInt(value);
+            return Math.max(1, Math.min(parsed, 100));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private String rankLabel(CrawlRankSource rank) {
