@@ -1,4 +1,4 @@
-﻿package com.mini.novel.api.controller;
+package com.mini.novel.api.controller;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.InputStream;
