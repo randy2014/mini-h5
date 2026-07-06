@@ -127,7 +127,7 @@ WHERE @source_id IS NOT NULL
 ORDER BY t.sort_no;
 
 UPDATE crawl_schedule
-SET schedule_times = '00:00,08:00,14:00',
+SET schedule_times = '04:00',
     timezone = 'Asia/Shanghai',
     crawl_public = 1,
     crawl_vip = 0,
@@ -152,7 +152,7 @@ SELECT
   '铅笔小说13分类公开章节采集',
   @source_id,
   NULL,
-  '00:00,08:00,14:00',
+  '04:00',
   'Asia/Shanghai',
   1,
   0,

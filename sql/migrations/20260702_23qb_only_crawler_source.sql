@@ -20,8 +20,12 @@ WHERE @keep_source_id IS NOT NULL
   AND (source_id IS NULL OR source_id <> @keep_source_id);
 
 UPDATE crawl_schedule
-SET enabled = 0,
+SET schedule_times = '04:00',
+    timezone = 'Asia/Shanghai',
+    crawl_public = 1,
+    crawl_vip = 0,
+    auto_merge = 1,
+    enabled = 1,
     updated_at = CURRENT_TIMESTAMP
 WHERE @keep_source_id IS NOT NULL
-  AND source_id = @keep_source_id
-  AND name = '铅笔小说13分类公开章节采集';
+  AND source_id = @keep_source_id;
