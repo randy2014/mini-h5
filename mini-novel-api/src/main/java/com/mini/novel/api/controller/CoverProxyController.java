@@ -1,4 +1,4 @@
-package com.mini.novel.api.controller;
+锘縫ackage com.mini.novel.api.controller;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.InputStream;
@@ -15,10 +15,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/cover")
 public class CoverProxyController {
 
-    // 23qb.net 的真实服务器 IP（Cloudflare CDN），因 DNS 被劫持需要直连
-    private static final String TWENTY_THREE_QB_HOST = "www.23qb.net";
-    private static final String TWENTY_THREE_QB_IP = "104.21.70.191";
-
     @GetMapping
     public void proxy(@RequestParam("url") String url, HttpServletResponse response) {
         if (url == null || (!url.startsWith("http://") && !url.startsWith("https://"))) {
@@ -27,20 +23,13 @@ public class CoverProxyController {
         }
 
         try {
-            // DNS 被劫持时，替换域名为真实 IP 并保留 Host 头
-            String resolvedUrl = url;
-            if (url.contains(TWENTY_THREE_QB_HOST)) {
-                resolvedUrl = url.replace(TWENTY_THREE_QB_HOST, TWENTY_THREE_QB_IP);
-            }
-
-            URL targetUrl = URI.create(resolvedUrl).toURL();
+            URL targetUrl = URI.create(url).toURL();
             HttpURLConnection conn = (HttpURLConnection) targetUrl.openConnection();
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(10000);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(15000);
             conn.setInstanceFollowRedirects(true);
 
-            conn.setRequestProperty("Host", TWENTY_THREE_QB_HOST);
-            conn.setRequestProperty("Referer", "https://" + TWENTY_THREE_QB_HOST + "/");
+            conn.setRequestProperty("Referer", "https://www.23qb.net/");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
             int statusCode = conn.getResponseCode();
