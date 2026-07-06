@@ -1,6 +1,7 @@
 package com.mini.novel.api.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.book.entity.Chapter;
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.book.service.BookReadService;
@@ -21,10 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class NovelController {
     private final BookReadService bookReadService;
     private final VipAccessService vipAccessService;
+    private final CurrentUserResolver currentUserResolver;
 
-    public NovelController(BookReadService bookReadService, VipAccessService vipAccessService) {
+    public NovelController(BookReadService bookReadService, VipAccessService vipAccessService,
+                           CurrentUserResolver currentUserResolver) {
         this.bookReadService = bookReadService;
         this.vipAccessService = vipAccessService;
+        this.currentUserResolver = currentUserResolver;
     }
 
     @GetMapping("/search")
@@ -55,7 +59,8 @@ public class NovelController {
     public Result<Chapter> chapter(@PathVariable("chapterId") Long chapterId,
                                    @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Chapter chapter = bookReadService.getChapter(chapterId);
-        if (Boolean.TRUE.equals(chapter.getVip()) && !vipAccessService.hasActiveVip(userId)) {
+        Long resolvedUserId = currentUserResolver.resolveUserId(userId);
+        if (Boolean.TRUE.equals(chapter.getVip()) && !vipAccessService.hasActiveVip(resolvedUserId)) {
             throw new BusinessException(ErrorCode.VIP_REQUIRED, "该章节需要开通 VIP 后阅读");
         }
         return Result.ok(chapter);
@@ -65,7 +70,8 @@ public class NovelController {
     public Result<Chapter> previousChapter(@PathVariable("chapterId") Long chapterId,
                                            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Chapter chapter = bookReadService.previousChapter(chapterId);
-        if (Boolean.TRUE.equals(chapter.getVip()) && !vipAccessService.hasActiveVip(userId)) {
+        Long resolvedUserId = currentUserResolver.resolveUserId(userId);
+        if (Boolean.TRUE.equals(chapter.getVip()) && !vipAccessService.hasActiveVip(resolvedUserId)) {
             throw new BusinessException(ErrorCode.VIP_REQUIRED, "上一章需要开通 VIP 后阅读");
         }
         return Result.ok(chapter);
@@ -75,7 +81,8 @@ public class NovelController {
     public Result<Chapter> nextChapter(@PathVariable("chapterId") Long chapterId,
                                        @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Chapter chapter = bookReadService.nextChapter(chapterId);
-        if (Boolean.TRUE.equals(chapter.getVip()) && !vipAccessService.hasActiveVip(userId)) {
+        Long resolvedUserId = currentUserResolver.resolveUserId(userId);
+        if (Boolean.TRUE.equals(chapter.getVip()) && !vipAccessService.hasActiveVip(resolvedUserId)) {
             throw new BusinessException(ErrorCode.VIP_REQUIRED, "下一章需要开通 VIP 后阅读");
         }
         return Result.ok(chapter);

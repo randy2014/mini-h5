@@ -3,11 +3,14 @@
     <van-nav-bar title="我的" />
     <div class="profile-card">
       <div>
-        <p>{{ profile?.vipActive ? 'VIP 会员' : '普通用户' }}</p>
+        <p>{{ statusLabel }}</p>
         <h1>{{ profile?.nickname || '未登录' }}</h1>
-        <span>{{ profile?.vipActive ? '会员权益已生效' : '登录后同步书架和阅读记录' }}</span>
+        <span>{{ statusText }}</span>
       </div>
-      <van-button round size="small" color="#1f6f64" to="/h5/login">切换登录</van-button>
+      <div class="profile-actions">
+        <van-button v-if="isAuthenticated" round size="small" plain color="#fffdf6" @click="signOut">退出</van-button>
+        <van-button v-else round size="small" color="#1f6f64" to="/h5/login">登录</van-button>
+      </div>
     </div>
 
     <div class="setting-list">
@@ -51,10 +54,22 @@
 
 <script setup>
 import { computed, onMounted, reactive, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { showToast } from 'vant';
 import { useUserStore } from '../stores/user';
 
+const router = useRouter();
 const userStore = useUserStore();
 const profile = computed(() => userStore.profile);
+const isAuthenticated = computed(() => userStore.isAuthenticated);
+const statusLabel = computed(() => {
+  if (!isAuthenticated.value) return '未登录';
+  return profile.value?.vipActive ? 'VIP 会员' : '普通用户';
+});
+const statusText = computed(() => {
+  if (!isAuthenticated.value) return '登录后同步书架和阅读记录';
+  return profile.value?.vipActive ? '会员权益已生效' : '可同步书架和阅读记录';
+});
 const settings = reactive(loadSettings());
 const themes = [
   { value: 'paper', label: '纸', color: '#f7f0e4' },
@@ -64,7 +79,9 @@ const themes = [
 ];
 
 onMounted(() => {
-  userStore.loadProfile();
+  if (userStore.isAuthenticated) {
+    userStore.loadProfile();
+  }
 });
 
 watch(settings, saveSettings);
@@ -75,6 +92,12 @@ function changeFont(step) {
 
 function setTheme(theme) {
   settings.theme = theme;
+}
+
+async function signOut() {
+  await userStore.signOut();
+  showToast('已退出登录');
+  router.replace('/h5/home');
 }
 
 function loadSettings() {

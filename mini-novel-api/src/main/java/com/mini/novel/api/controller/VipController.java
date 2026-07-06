@@ -2,11 +2,9 @@ package com.mini.novel.api.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mini.novel.api.model.VipStatusVo;
-import com.mini.novel.common.exception.BusinessException;
-import com.mini.novel.common.exception.ErrorCode;
+import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
-import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.vip.entity.VipPlan;
 import com.mini.novel.vip.mapper.VipPlanMapper;
 import com.mini.novel.vip.service.VipAccessService;
@@ -20,12 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/vip")
 public class VipController {
     private final VipPlanMapper vipPlanMapper;
-    private final AppUserMapper appUserMapper;
+    private final CurrentUserResolver currentUserResolver;
     private final VipAccessService vipAccessService;
 
-    public VipController(VipPlanMapper vipPlanMapper, AppUserMapper appUserMapper, VipAccessService vipAccessService) {
+    public VipController(VipPlanMapper vipPlanMapper, CurrentUserResolver currentUserResolver, VipAccessService vipAccessService) {
         this.vipPlanMapper = vipPlanMapper;
-        this.appUserMapper = appUserMapper;
+        this.currentUserResolver = currentUserResolver;
         this.vipAccessService = vipAccessService;
     }
 
@@ -38,15 +36,9 @@ public class VipController {
 
     @GetMapping("/status")
     public Result<VipStatusVo> status(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "请先登录");
-        }
-        AppUser user = appUserMapper.selectById(userId);
-        if (user == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户不存在");
-        }
+        AppUser user = currentUserResolver.requireUser(userId);
         VipStatusVo vo = new VipStatusVo();
-        vo.setActive(vipAccessService.hasActiveVip(userId));
+        vo.setActive(vipAccessService.hasActiveVip(user.getId()));
         vo.setVipExpireTime(user.getVipExpireTime());
         return Result.ok(vo);
     }

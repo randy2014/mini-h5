@@ -22,16 +22,19 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { fetchVipPlans, fetchVipStatus } from '../services/vip';
+import { useUserStore } from '../stores/user';
 
+const userStore = useUserStore();
 const loading = ref(true);
 const plans = ref([]);
-const status = ref({});
+const status = ref({ active: false });
 
 onMounted(async () => {
   try {
-    const [planData, statusData] = await Promise.all([fetchVipPlans(), fetchVipStatus()]);
-    plans.value = planData;
-    status.value = statusData;
+    plans.value = await fetchVipPlans();
+    if (userStore.isAuthenticated) {
+      status.value = await fetchVipStatus();
+    }
   } finally {
     loading.value = false;
   }

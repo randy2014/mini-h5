@@ -95,11 +95,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { fetchBook, fetchChapters } from '../services/book';
 import { addBookshelf } from '../services/user';
+import { useUserStore } from '../stores/user';
 import { formatTextLineBreaks } from '../utils/text';
 
 const PAGE_SIZE = 80;
 const route = useRoute();
 const router = useRouter();
+const userStore = useUserStore();
 const loading = ref(true);
 const book = ref({});
 const chapters = ref([]);
@@ -204,6 +206,10 @@ function read(chapter) {
 }
 
 async function addToBookshelf() {
+  if (!userStore.isAuthenticated) {
+    router.push({ path: '/h5/login', query: { redirect: route.fullPath } });
+    return;
+  }
   await addBookshelf(book.value.id);
   showToast('已加入书架');
 }

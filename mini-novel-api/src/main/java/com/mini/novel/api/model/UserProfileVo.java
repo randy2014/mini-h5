@@ -9,6 +9,8 @@ public class UserProfileVo {
     private String mobile;
     private boolean vipActive;
     private LocalDateTime vipExpireTime;
+    private String tokenName;
+    private String tokenValue;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -22,4 +24,8 @@ public class UserProfileVo {
     public void setVipActive(boolean vipActive) { this.vipActive = vipActive; }
     public LocalDateTime getVipExpireTime() { return vipExpireTime; }
     public void setVipExpireTime(LocalDateTime vipExpireTime) { this.vipExpireTime = vipExpireTime; }
+    public String getTokenName() { return tokenName; }
+    public void setTokenName(String tokenName) { this.tokenName = tokenName; }
+    public String getTokenValue() { return tokenValue; }
+    public void setTokenValue(String tokenValue) { this.tokenValue = tokenValue; }
 }

@@ -2,15 +2,13 @@ package com.mini.novel.api.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mini.novel.api.model.UserProfileVo;
+import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.book.mapper.NovelMapper;
 import com.mini.novel.book.service.BookReadService;
-import com.mini.novel.common.exception.BusinessException;
-import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.entity.UserBookshelf;
-import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.user.mapper.UserBookshelfMapper;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -26,14 +24,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/user")
 public class UserController {
-    private final AppUserMapper appUserMapper;
+    private final CurrentUserResolver currentUserResolver;
     private final BookReadService bookReadService;
     private final UserBookshelfMapper bookshelfMapper;
     private final NovelMapper novelMapper;
 
-    public UserController(AppUserMapper appUserMapper, BookReadService bookReadService,
+    public UserController(CurrentUserResolver currentUserResolver, BookReadService bookReadService,
                           UserBookshelfMapper bookshelfMapper, NovelMapper novelMapper) {
-        this.appUserMapper = appUserMapper;
+        this.currentUserResolver = currentUserResolver;
         this.bookReadService = bookReadService;
         this.bookshelfMapper = bookshelfMapper;
         this.novelMapper = novelMapper;
@@ -41,15 +39,15 @@ public class UserController {
 
     @GetMapping("/profile")
     public Result<UserProfileVo> profile(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        AppUser user = loadUser(userId);
+        AppUser user = currentUserResolver.requireUser(userId);
         return Result.ok(AuthController.toProfile(user));
     }
 
     @GetMapping("/bookshelf")
     public Result<List<Novel>> bookshelf(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        loadUser(userId);
+        AppUser user = currentUserResolver.requireUser(userId);
         List<UserBookshelf> rows = bookshelfMapper.selectList(new QueryWrapper<UserBookshelf>()
-                .eq("user_id", userId)
+                .eq("user_id", user.getId())
                 .orderByDesc("updated_at")
                 .last("LIMIT 100"));
         List<Novel> novels = new ArrayList<>();
@@ -65,16 +63,16 @@ public class UserController {
     @PostMapping("/bookshelf/{novelId}")
     public Result<Void> addBookshelf(@PathVariable("novelId") Long novelId,
                                      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        loadUser(userId);
+        AppUser user = currentUserResolver.requireUser(userId);
         bookReadService.getNovel(novelId);
         LocalDateTime now = LocalDateTime.now();
         UserBookshelf bookshelf = bookshelfMapper.selectOne(new QueryWrapper<UserBookshelf>()
-                .eq("user_id", userId)
+                .eq("user_id", user.getId())
                 .eq("novel_id", novelId)
                 .last("LIMIT 1"));
         if (bookshelf == null) {
             bookshelf = new UserBookshelf();
-            bookshelf.setUserId(userId);
+            bookshelf.setUserId(user.getId());
             bookshelf.setNovelId(novelId);
             bookshelf.setProgress(0);
             bookshelf.setCreatedAt(now);
@@ -91,21 +89,10 @@ public class UserController {
     @DeleteMapping("/bookshelf/{novelId}")
     public Result<Void> removeBookshelf(@PathVariable("novelId") Long novelId,
                                         @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        loadUser(userId);
+        AppUser user = currentUserResolver.requireUser(userId);
         bookshelfMapper.delete(new QueryWrapper<UserBookshelf>()
-                .eq("user_id", userId)
+                .eq("user_id", user.getId())
                 .eq("novel_id", novelId));
         return Result.ok(null);
-    }
-
-    private AppUser loadUser(Long userId) {
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "请先登录");
-        }
-        AppUser user = appUserMapper.selectById(userId);
-        if (user == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户不存在");
-        }
-        return user;
     }
 }

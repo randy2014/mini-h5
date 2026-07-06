@@ -36,6 +36,12 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   document.title = `${to.meta.title || 'Mini Novel'} - Mini Novel`;
+  if (to.meta.auth && !localStorage.getItem('mini_novel_auth_token')) {
+    return {
+      path: '/h5/login',
+      query: { redirect: to.fullPath }
+    };
+  }
 });
 
 export default router;
