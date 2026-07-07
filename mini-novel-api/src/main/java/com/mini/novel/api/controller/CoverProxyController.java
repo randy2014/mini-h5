@@ -1,5 +1,6 @@
 package com.mini.novel.api.controller;
 
+import com.mini.novel.api.support.CoverService;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -7,6 +8,7 @@ import java.net.URI;
 import java.net.URL;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -14,6 +16,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/cover")
 public class CoverProxyController {
+
+    private final CoverService coverService;
+
+    public CoverProxyController(CoverService coverService) {
+        this.coverService = coverService;
+    }
+
+    @GetMapping("/{novelId}")
+    public void proxyById(@PathVariable("novelId") Long novelId, HttpServletResponse response) {
+        coverService.streamCover(novelId, response);
+    }
 
     @GetMapping
     public void proxy(@RequestParam("url") String url, HttpServletResponse response) {

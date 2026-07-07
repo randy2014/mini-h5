@@ -2,6 +2,8 @@ package com.mini.novel.api.support;
 
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.common.result.Result;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
@@ -16,7 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 public class CoverProxyAdvice implements ResponseBodyAdvice<Object> {
 
     private static final String COVER_PREFIX = "https://www.23qb.net/";
-    private static final String COVER_PROXY = "/api/cover?url=";
+    private static final String COVER_PROXY = "/api/cover/";
 
     @Override
     public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {
@@ -45,7 +47,7 @@ public class CoverProxyAdvice implements ResponseBodyAdvice<Object> {
     private void replaceNovelCover(Novel novel) {
         String cover = novel.getCoverUrl();
         if (cover != null && cover.startsWith(COVER_PREFIX)) {
-            novel.setCoverUrl(COVER_PROXY + java.net.URLEncoder.encode(cover, java.nio.charset.StandardCharsets.UTF_8));
+            novel.setCoverUrl(COVER_PROXY + novel.getId());
         }
     }
 }

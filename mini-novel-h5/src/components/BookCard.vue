@@ -1,7 +1,7 @@
 <template>
   <button class="book-card" :class="[`book-card--${variant}`]" type="button" @click="$emit('open', book)">
     <span class="book-cover-wrap">
-      <img :src="book.coverUrl || fallbackCover" :alt="book.title" />
+      <img :src="book.coverUrl || fallbackCover" :alt="book.title" @error="handleImgError" />
       <i v-if="rank" class="rank-badge">{{ rank }}</i>
     </span>
     <span class="book-card-body">
@@ -13,7 +13,7 @@
       </span>
       <strong>{{ book.title }}</strong>
       <small>{{ bookMetaLine }}</small>
-      <em>{{ formatIntro(book.intro) || '暂无简介' }}</em>
+      <em>{{ formatIntro(book.intro) || '暂无简�? }}</em>
       <span v-if="book.latestChapterTitle" class="latest-line">{{ book.latestChapterTitle }}</span>
     </span>
   </button>
@@ -21,6 +21,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { formatTextLineBreaks } from '../utils/text';
 
 const props = defineProps({
@@ -40,7 +41,7 @@ const props = defineProps({
 
 defineEmits(['open']);
 
-const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+Novel';
+const fallbackCover = FALLBACK_COVER;
 
 const wordCountLabel = computed(() => {
   const count = Number(props.book.wordCount || 0);

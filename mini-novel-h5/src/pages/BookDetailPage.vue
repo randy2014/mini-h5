@@ -11,21 +11,21 @@
       <header class="detail-hero">
         <div class="detail-backdrop" :style="{ backgroundImage: `url(${book.coverUrl || fallbackCover})` }"></div>
         <div class="detail-hero-main">
-          <img :src="book.coverUrl || fallbackCover" :alt="book.title" />
+          <img :src="book.coverUrl || fallbackCover" :alt="book.title" @error="handleImgError" />
           <div>
             <i class="book-status" :class="{ completed: book.status === 2 }">
               {{ book.status === 2 ? '完结' : '连载' }}
             </i>
             <h1>{{ book.title }}</h1>
             <p>{{ book.author || '佚名' }}</p>
-            <span>{{ wordCountLabel }} · 共 {{ chapterPage.total || 0 }} 章</span>
+            <span>{{ wordCountLabel }} · �?{{ chapterPage.total || 0 }} �?/span>
           </div>
         </div>
       </header>
 
       <div class="detail-actions">
         <van-button block round color="#1f6f64" icon="play-circle-o" @click="readContinue">
-          {{ activeChapterId ? '继续阅读' : '开始阅读' }}
+          {{ activeChapterId ? '继续阅读' : '开始阅�? }}
         </van-button>
         <van-button block round plain color="#1f6f64" icon="bookmark-o" @click="addToBookshelf">加入书架</van-button>
       </div>
@@ -38,15 +38,15 @@
 
       <section class="soft-panel">
         <div class="section-title compact">
-          <h2>简介</h2>
-          <span>{{ book.status === 2 ? '已完结' : '持续更新' }}</span>
+          <h2>简�?/h2>
+          <span>{{ book.status === 2 ? '已完�? : '持续更新' }}</span>
         </div>
-        <p class="book-intro">{{ formatIntro(book.intro) || '暂无简介' }}</p>
+        <p class="book-intro">{{ formatIntro(book.intro) || '暂无简�? }}</p>
       </section>
 
       <div class="section-title">
         <h2>目录</h2>
-        <span>第 {{ chapterPage.current || pageNo }} / {{ chapterPage.pages || 1 }} 页</span>
+        <span>�?{{ chapterPage.current || pageNo }} / {{ chapterPage.pages || 1 }} �?/span>
       </div>
 
       <div class="chapter-tools">
@@ -69,7 +69,7 @@
         >
           <span>
             <b>{{ chapter.title }}</b>
-            <small>第 {{ chapter.chapterNo }} 章</small>
+            <small>�?{{ chapter.chapterNo }} �?/small>
           </span>
           <van-tag v-if="chapter.vip" color="#9b7a2f">VIP</van-tag>
         </button>
@@ -78,12 +78,10 @@
 
       <div v-if="chapterPage.pages > 1" class="chapter-pager">
         <van-button size="small" plain :disabled="pageNo <= 1" @click="loadChapters(pageNo - 1)">
-          上一页
-        </van-button>
+          上一�?        </van-button>
         <span>{{ pageNo }} / {{ chapterPage.pages }}</span>
         <van-button size="small" plain :disabled="pageNo >= chapterPage.pages" @click="loadChapters(pageNo + 1)">
-          下一页
-        </van-button>
+          下一�?        </van-button>
       </div>
     </template>
   </section>
@@ -96,6 +94,7 @@ import { showToast } from 'vant';
 import { fetchBook, fetchChapters } from '../services/book';
 import { addBookshelf } from '../services/user';
 import { useUserStore } from '../stores/user';
+import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { formatTextLineBreaks } from '../utils/text';
 
 const PAGE_SIZE = 80;
@@ -112,12 +111,12 @@ const pendingScrollChapterId = ref(0);
 const chapterKeyword = ref('');
 const chapterJumpNo = ref('');
 const reverseCatalog = ref(false);
-const fallbackCover = 'https://dummyimage.com/300x420/1f2933/ffffff&text=Mini+Novel';
+const fallbackCover = FALLBACK_COVER;
 
 const wordCountLabel = computed(() => {
   const count = Number(book.value.wordCount || 0);
   if (!count) {
-    return '字数统计中';
+    return '字数统计�?;
   }
   if (count >= 10000) {
     return `${(count / 10000).toFixed(1).replace('.0', '')}万字`;
@@ -127,10 +126,10 @@ const wordCountLabel = computed(() => {
 const progressTitle = computed(() => {
   const chapter = chapters.value.find((item) => item.id === activeChapterId.value);
   if (chapter) {
-    return `第 ${chapter.chapterNo} 章 · ${chapter.title}`;
+    return `�?${chapter.chapterNo} �?· ${chapter.title}`;
   }
   const progress = readProgress();
-  return progress.chapterNo ? `第 ${progress.chapterNo} 章` : '已记录阅读进度';
+  return progress.chapterNo ? `�?${progress.chapterNo} 章` : '已记录阅读进�?;
 });
 const displayedChapters = computed(() => {
   const keyword = chapterKeyword.value.trim();
@@ -193,7 +192,7 @@ async function jumpToChapterNo() {
   await loadChapters(targetPage);
   const target = chapters.value.find((chapter) => Number(chapter.chapterNo) === no);
   if (!target) {
-    showToast('该页未找到章节');
+    showToast('该页未找到章�?);
     return;
   }
   activeChapterId.value = target.id;
@@ -211,7 +210,7 @@ async function addToBookshelf() {
     return;
   }
   await addBookshelf(book.value.id);
-  showToast('已加入书架');
+  showToast('已加入书�?);
 }
 
 function saveProgress(chapter) {

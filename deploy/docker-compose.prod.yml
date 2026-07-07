@@ -51,6 +51,8 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
+    volumes:
+      - mini-novel-cover-cache:/var/cache/covers
 
   mini-novel-h5:
     build:
@@ -95,3 +97,4 @@ services:
 volumes:
   mini-novel-mysql-data:
   mini-novel-redis-data:
+  mini-novel-cover-cache:
