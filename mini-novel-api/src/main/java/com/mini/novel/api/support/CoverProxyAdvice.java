@@ -2,9 +2,8 @@ package com.mini.novel.api.support;
 
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.common.result.Result;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -30,18 +29,23 @@ public class CoverProxyAdvice implements ResponseBodyAdvice<Object> {
                                    Class<? extends HttpMessageConverter<?>> selectedConverterType,
                                    ServerHttpRequest request, ServerHttpResponse response) {
         if (body instanceof Result<?> result) {
-            Object data = result.data();
-            if (data instanceof Novel novel) {
-                replaceNovelCover(novel);
-            } else if (data instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Novel novel) {
-                        replaceNovelCover(novel);
-                    }
-                }
-            }
+            replaceCover(result.data());
         }
         return body;
+    }
+
+    private void replaceCover(Object value) {
+        if (value instanceof Novel novel) {
+            replaceNovelCover(novel);
+        } else if (value instanceof List<?> list) {
+            for (Object item : list) {
+                replaceCover(item);
+            }
+        } else if (value instanceof Map<?, ?> map) {
+            for (Object item : map.values()) {
+                replaceCover(item);
+            }
+        }
     }
 
     private void replaceNovelCover(Novel novel) {
