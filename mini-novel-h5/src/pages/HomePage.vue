@@ -3,7 +3,7 @@
     <header class="home-top">
       <div>
         <p>Mini Novel</p>
-        <h1>今天读点好故�?/h1>
+        <h1>今天读点好故事</h1>
       </div>
       <router-link class="home-search-link" to="/h5/search" aria-label="搜索">
         <van-icon name="search" />
@@ -16,7 +16,7 @@
         <small>今日推荐</small>
         <strong>{{ heroBook.title }}</strong>
         <em>{{ heroBook.author || '佚名' }} · {{ heroBook.status === 2 ? '完结' : '连载' }}</em>
-        <b>{{ formatIntro(heroBook.intro) || '进入详情开始阅�? }}</b>
+        <b>{{ formatIntro(heroBook.intro) || '进入详情开始阅读' }}</b>
       </span>
     </button>
 
@@ -30,23 +30,23 @@
     <section v-if="recentBooks.length" class="continue-strip">
       <div class="section-title compact">
         <h2>继续阅读</h2>
-        <span>最�?{{ recentBooks.length }} �?/span>
+        <span>最近 {{ recentBooks.length }} 本</span>
       </div>
       <button v-for="item in recentBooks" :key="item.book.id" type="button" @click="continueRead(item)">
         <img :src="item.book.coverUrl || fallbackCover" :alt="item.book.title" @error="handleImgError" />
         <span>
           <strong>{{ item.book.title }}</strong>
-          <small>读到�?{{ item.progress.chapterNo }} �?/small>
+          <small>读到第 {{ item.progress.chapterNo }} 章</small>
         </span>
       </button>
     </section>
 
     <van-loading v-if="loading" class="center-loading" />
     <template v-else>
-      <BookSection title="热榜精�? subtitle="更多" rank-type="hot" :books="sections.hot" @open="openBook" @more="openRank" />
+      <BookSection title="热榜精选" subtitle="更多" rank-type="hot" :books="sections.hot" @open="openBook" @more="openRank" />
       <BookSection title="完结优先" subtitle="更多" rank-type="completed" :books="sections.completed" layout="cover" @open="openBook" @more="openRank" />
-      <BookSection title="最近更�? subtitle="更多" rank-type="latest" :books="sections.latest" @open="openBook" @more="openRank" />
-      <BookSection title="长篇精�? subtitle="更多" rank-type="long" :books="sections.long" layout="cover" @open="openBook" @more="openRank" />
+      <BookSection title="最近更新" subtitle="更多" rank-type="latest" :books="sections.latest" @open="openBook" @more="openRank" />
+      <BookSection title="长篇精选" subtitle="更多" rank-type="long" :books="sections.long" layout="cover" @open="openBook" @more="openRank" />
     </template>
   </section>
 </template>
@@ -55,8 +55,8 @@
 import { computed, defineComponent, h, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
-import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { fetchHome, fetchHomeSections } from '../services/book';
+import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { formatTextLineBreaks } from '../utils/text';
 
 const router = useRouter();
@@ -109,7 +109,7 @@ const BookSection = defineComponent({
             type: 'button',
             onClick: () => emit('open', book)
           }, [
-            h('img', { src: book.coverUrl || fallbackCover, alt: book.title, onerror: handleImgError }),
+            h('img', { src: book.coverUrl || fallbackCover, alt: book.title, onError: handleImgError }),
             h('strong', book.title),
             h('small', book.author || '佚名')
           ])))

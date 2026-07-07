@@ -37,9 +37,12 @@ public class CoverService {
     public void streamCover(Long novelId, HttpServletResponse response) {
         Path cached = cacheDir.resolve(novelId + ".img");
 
-        if (Files.exists(cached) && Files.size(cached) > 0) {
-            serveFile(cached, response);
-            return;
+        try {
+            if (Files.exists(cached) && Files.size(cached) > 0) {
+                serveFile(cached, response);
+                return;
+            }
+        } catch (IOException ignored) {
         }
 
         Novel novel = novelMapper.selectById(novelId);

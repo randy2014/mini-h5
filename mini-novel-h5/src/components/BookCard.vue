@@ -13,7 +13,7 @@
       </span>
       <strong>{{ book.title }}</strong>
       <small>{{ bookMetaLine }}</small>
-      <em>{{ formatIntro(book.intro) || '暂无简�? }}</em>
+      <em>{{ formatIntro(book.intro) || '暂无简介' }}</em>
       <span v-if="book.latestChapterTitle" class="latest-line">{{ book.latestChapterTitle }}</span>
     </span>
   </button>
