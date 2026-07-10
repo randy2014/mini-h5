@@ -562,16 +562,17 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             int maxPages = Math.max(1, Math.min(rules.intValue(DEFAULT_MAX_CHAPTER_PAGES,
                     "chapterRules.maxPages", "chapter.maxPages", "content.maxPages"), MAX_CHAPTER_PAGES_CAP));
             while (StringUtils.hasText(currentUrl) && visited.size() < maxPages
-                    && visited.add(normalizeFetchUrl(currentUrl))) {
+                && visited.add(normalizeFetchUrl(currentUrl))) {
                 validateUrl(currentUrl);
                 Document document = fetch(currentUrl);
+                String nextUrl = nextChapterPageUrl(document, currentUrl, rules);
                 removeRuleSelectors(document, rules);
                 String pageText = extractChapterText(document, rules);
                 if (!StringUtils.hasText(pageText)) {
                     break;
                 }
                 pageContents.add(pageText);
-                currentUrl = nextChapterPageUrl(document, currentUrl, rules);
+                currentUrl = nextUrl;
             }
             String text = cleanContent(String.join("\n\n", pageContents));
             int minLength = Math.max(1, rules.intValue(80,

@@ -60,7 +60,7 @@ INSERT INTO crawl_source (
       'content', '.article-content',
       'removeSelectors', JSON_ARRAY('script', 'style', '.adsbygoogle', '.readinline', '.article-page'),
       'minContentLength', 80,
-      'maxPages', 1,
+      'maxPages', 8,
       'rejectPatterns', JSON_ARRAY('请登录', '请订阅', '购买本章', '本章未完')
     )
   ),
