@@ -140,12 +140,25 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 throw new IllegalStateException("Crawler source not found: " + task.sourceId);
             }
 
+            boolean authorizedContentTask = "AUTHORIZED_BOOK_CONTENT".equals(task.taskType);
+            if (authorizedContentTask) source = authorizedContentSource(source);
             List<CrawlRankSource> ranks = loadRanks(task, source);
             for (CrawlRankSource rank : ranks) {
                 validateUrl(rank.rankUrl);
                 CrawlerSiteParser parser = selectParser(source, rank.rankUrl);
-                Document rankPage = fetch(rank.rankUrl);
-                List<ParsedBookSeed> seeds = parser.parseBookSeeds(source, rankPage, rank.rankUrl, maxBooks(rank));
+                List<ParsedBookSeed> seeds;
+                if (authorizedContentTask) {
+                    seeds = authorizedBookMapper.selectList(new QueryWrapper<CrawlerAuthorizedBook>()
+                            .eq("source_code", source.sourceCode).eq("authorization_status", "AUTHORIZED")
+                            .eq("review_status", "APPROVED").eq("allow_crawl_chapters", true)
+                            .ne("risk_level", "BLOCKED")).stream()
+                            .filter(b -> StringUtils.hasText(b.bookUrl))
+                            .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, "", 0L, "", rank.rankUrl))
+                            .toList();
+                } else {
+                    Document rankPage = fetch(rank.rankUrl);
+                    seeds = parser.parseBookSeeds(source, rankPage, rank.rankUrl, maxBooks(rank));
+                }
                 if (seeds.isEmpty() && isQidian(source, rank.rankUrl) && !rank.rankUrl.contains("m.qidian.com")) {
                     Document mobilePage = fetch("https://m.qidian.com/");
                     seeds = parser.parseBookSeeds(source, mobilePage, "https://m.qidian.com/", maxBooks(rank));
@@ -166,7 +179,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             updateRunningProgress(task, total, success, failed, rank, seed);
                             continue;
                         }
-                        if (isXbookcnAuthorizedSource(source) && !isAuthorizedMetadataMode(source)
+                        if (!authorizedContentTask && isXbookcnAuthorizedSource(source) && !isAuthorizedMetadataMode(source)
                                 && !canCrawlAuthorizedChapters(source, sourceBookIdFromUrl(seed.url()))) {
                             failed++;
                             rankFailed++;
@@ -268,6 +281,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return rules.boolValue(false, "poc.metadataOnly", "metadataOnly", "authorizedBook.metadataOnly");
     }
 
+    private CrawlerSourceConfig authorizedContentSource(CrawlerSourceConfig original) {
+        CrawlerSourceConfig source = new CrawlerSourceConfig();
+        source.id=original.id;source.sourceCode=original.sourceCode;source.name=original.name;source.baseUrl=original.baseUrl;
+        source.sourceType=original.sourceType;source.authMode=original.authMode;source.enabled=original.enabled;source.priority=original.priority;
+        source.ruleConfigJson=(original.ruleConfigJson==null?"{}":original.ruleConfigJson).replaceAll("(\\\"metadataOnly\\\"\\s*:\\s*)true", "$1false");
+        return source;
+    }
+
     private boolean isXbookcnAuthorizedSource(CrawlerSourceConfig source) {
         return source != null && "xbookcn_authorized".equalsIgnoreCase(source.sourceCode);
     }
@@ -276,7 +297,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (!isXbookcnAuthorizedSource(source) || snapshot == null || !StringUtils.hasText(snapshot.sourceBookId())) {
             return false;
         }
-        return canCrawlAuthorizedChapters(source, snapshot.sourceBookId());
+        if (canCrawlAuthorizedChapters(source, snapshot.sourceBookId())) return true;
+        return authorizedBookMapper.selectCount(new QueryWrapper<CrawlerAuthorizedBook>()
+                .eq("source_code",source.sourceCode).eq("book_url",snapshot.sourceUrl())
+                .eq("authorization_status","AUTHORIZED").eq("review_status","APPROVED")
+                .eq("allow_crawl_chapters",true).ne("risk_level","BLOCKED"))>0;
     }
 
     private boolean canCrawlAuthorizedChapters(CrawlerSourceConfig source, String sourceBookId) {
@@ -356,7 +381,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private List<CrawlRankSource> loadRanks(CrawlTaskRecord task, CrawlerSourceConfig source) {
         if (task.rankSourceId != null) {
             CrawlRankSource rank = rankSourceMapper.selectById(task.rankSourceId);
-            if (rank == null || !task.sourceId.equals(rank.sourceId) || !Boolean.TRUE.equals(rank.enabled)) {
+            if (rank == null || !task.sourceId.equals(rank.sourceId) || (!"AUTHORIZED_BOOK_CONTENT".equals(task.taskType) && !Boolean.TRUE.equals(rank.enabled))) {
                 return new ArrayList<>();
             }
             return new ArrayList<>(List.of(scopedRank(rank, task)));
