@@ -4,6 +4,10 @@ export function login(payload) {
   return http.post('/auth/login', payload);
 }
 
+export function fetchCaptcha() {
+  return http.get('/auth/captcha');
+}
+
 export function logout() {
   return http.post('/auth/logout');
 }

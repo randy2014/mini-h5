@@ -15,11 +15,17 @@
       <van-field
         v-model="verifyCode"
         clearable
-        maxlength="6"
-        type="digit"
+        maxlength="4"
         label="验证码"
-        placeholder="一期免校验，可留空"
-      />
+        placeholder="请输入图中字符"
+      >
+        <template #button>
+          <button class="captcha-image-button" type="button" :disabled="captchaLoading" @click="loadCaptcha">
+            <img v-if="captchaImage" :src="captchaImage" alt="图形验证码，点击刷新" />
+            <span v-else>{{ captchaLoading ? '加载中' : '点击刷新' }}</span>
+          </button>
+        </template>
+      </van-field>
       <van-cell title="邀请码" :value="showInvite ? '收起' : inviteSummary" is-link @click="showInvite = !showInvite" />
       <van-field
         v-if="showInvite"
@@ -39,16 +45,20 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { useUserStore } from '../stores/user';
+import { fetchCaptcha } from '../services/user';
 
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
 const mobile = ref('13800000001');
 const verifyCode = ref('');
+const captchaId = ref('');
+const captchaImage = ref('');
+const captchaLoading = ref(false);
 const invitationCode = ref('');
 const showInvite = ref(false);
 const loading = ref(false);
@@ -60,10 +70,16 @@ async function submit(confirmCreateNormal = false) {
     showToast('请输入正确的手机号');
     return;
   }
+  if (!captchaId.value || !/^[0-9A-Za-z]{4}$/.test(verifyCode.value.trim())) {
+    showToast('请输入 4 位图形验证码');
+    return;
+  }
   loading.value = true;
   try {
     const data = await userStore.signIn({
       mobile: value,
+      captchaId: captchaId.value,
+      captchaCode: verifyCode.value.trim(),
       invitationCode: invitationCode.value.trim(),
       confirmCreateNormal
     });
@@ -77,6 +93,7 @@ async function submit(confirmCreateNormal = false) {
       confirmNormalAccount();
       return;
     }
+    await loadCaptcha();
     if (String(error.message || '').includes('邀请码不可用')) {
       showInvite.value = true;
     }
@@ -87,8 +104,23 @@ async function submit(confirmCreateNormal = false) {
 
 function quickLogin(value) {
   mobile.value = value;
-  submit(true);
+  showToast('请输入图形验证码后登录');
 }
+
+async function loadCaptcha() {
+  if (captchaLoading.value) return;
+  captchaLoading.value = true;
+  try {
+    const data = await fetchCaptcha();
+    captchaId.value = data.captchaId;
+    captchaImage.value = data.image;
+    verifyCode.value = '';
+  } finally {
+    captchaLoading.value = false;
+  }
+}
+
+onMounted(loadCaptcha);
 
 async function confirmNormalAccount() {
   try {

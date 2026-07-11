@@ -2,6 +2,8 @@ package com.mini.novel.api.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.mini.novel.api.model.LoginRequest;
+import com.mini.novel.api.model.CaptchaVo;
+import com.mini.novel.api.service.CaptchaService;
 import com.mini.novel.api.model.UserProfileVo;
 import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
@@ -9,8 +11,10 @@ import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.vip.service.VipInvitationService;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,18 +23,34 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
     private final VipInvitationService vipInvitationService;
+    private final CaptchaService captchaService;
 
-    public AuthController(VipInvitationService vipInvitationService) {
+    public AuthController(VipInvitationService vipInvitationService, CaptchaService captchaService) {
         this.vipInvitationService = vipInvitationService;
+        this.captchaService = captchaService;
+    }
+
+    @GetMapping("/captcha")
+    public Result<CaptchaVo> captcha(HttpServletRequest request) {
+        return Result.ok(captchaService.create(clientIp(request)));
     }
 
     @PostMapping("/login")
     public Result<UserProfileVo> login(@Valid @RequestBody LoginRequest request) {
+        String verifiedCaptcha = captchaService.verify(request.getCaptchaId(), request.getCaptchaCode());
         String mobile = normalizeMobile(request.getMobile());
-        VipInvitationService.LoginResult loginResult = vipInvitationService.loginOrCreate(
-                mobile,
-                request.getInvitationCode(),
-                Boolean.TRUE.equals(request.getConfirmCreateNormal()));
+        VipInvitationService.LoginResult loginResult;
+        try {
+            loginResult = vipInvitationService.loginOrCreate(
+                    mobile,
+                    request.getInvitationCode(),
+                    Boolean.TRUE.equals(request.getConfirmCreateNormal()));
+        } catch (BusinessException ex) {
+            if ("新账号未填邀请码将创建普通账号".equals(ex.getMessage())) {
+                captchaService.restore(request.getCaptchaId(), verifiedCaptcha);
+            }
+            throw ex;
+        }
         AppUser user = loginResult.getUser();
         if (user.getStatus() != null && user.getStatus() == 0) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "账号已被禁用");
@@ -74,5 +94,17 @@ public class AuthController {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "请输入正确的手机号");
         }
         return value;
+    }
+
+    private String clientIp(HttpServletRequest request) {
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",", 2)[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }

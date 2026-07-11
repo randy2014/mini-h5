@@ -973,6 +973,23 @@ a {
   border-radius: 8px;
 }
 
+.captcha-image-button {
+  width: 120px;
+  height: 44px;
+  padding: 0;
+  overflow: hidden;
+  color: #1f6f64;
+  background: #f5f8f7;
+  border: 0;
+  border-radius: 8px;
+}
+
+.captcha-image-button img {
+  display: block;
+  width: 120px;
+  height: 44px;
+}
+
 .demo-actions {
   display: flex;
   gap: 10px;
