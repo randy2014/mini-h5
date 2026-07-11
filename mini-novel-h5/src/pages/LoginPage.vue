@@ -29,7 +29,7 @@
         label="邀请码"
         placeholder="新账号可填写 VIP 邀请码"
       />
-      <van-button block round color="#1f6f64" :loading="loading" @click="submit">登录</van-button>
+      <van-button block round color="#1f6f64" :loading="loading" @click="submit()">登录</van-button>
       <div class="demo-actions">
         <van-button plain size="small" :disabled="loading" @click="quickLogin('13800000001')">普通用户</van-button>
         <van-button plain size="small" :disabled="loading" @click="quickLogin('13800000002')">VIP 用户</van-button>

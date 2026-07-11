@@ -49,6 +49,23 @@ run_migration() {
   fi
 }
 
+run_migration_if_table_missing() {
+  file="$1"
+  database="$2"
+  marker_table="$3"
+  exists="$(docker exec mini-novel-mysql mysql \
+    --default-character-set=utf8mb4 \
+    -uroot \
+    -p"$MYSQL_ROOT_PASSWORD" \
+    --batch --skip-column-names \
+    -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${database}' AND table_name='${marker_table}'")"
+  if [ "$exists" = "0" ]; then
+    run_migration "$file"
+  else
+    echo "Migration already applied: $file"
+  fi
+}
+
 wait_for_http() {
   name="$1"
   url="$2"
@@ -76,6 +93,7 @@ run_migration "sql/migrations/20260701_shuqi_public_seed.sql"
 run_migration "sql/migrations/20260701_shuqi_store_rank_sources.sql"
 run_migration "sql/migrations/20260701_23qb_category_sources.sql"
 run_migration "sql/migrations/20260702_23qb_only_crawler_source.sql"
+run_migration_if_table_missing "sql/migrations/20260711_vip_invitation.sql" "mini_novel" "vip_operation_audit"
 run_migration "sql/migrations/20260712_crawler_authorized_book.sql"
 run_migration "sql/migrations/20260712_xbookcn_authorized_poc.sql"
 run_migration "sql/migrations/20260712_xbookcn_metadata_only_flag.sql"
