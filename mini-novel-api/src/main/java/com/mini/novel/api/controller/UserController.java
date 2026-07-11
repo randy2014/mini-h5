@@ -10,6 +10,8 @@ import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.entity.UserBookshelf;
 import com.mini.novel.user.mapper.UserBookshelfMapper;
+import com.mini.novel.vip.entity.VipInvitationCode;
+import com.mini.novel.vip.service.VipInvitationService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,19 +30,28 @@ public class UserController {
     private final BookReadService bookReadService;
     private final UserBookshelfMapper bookshelfMapper;
     private final NovelMapper novelMapper;
+    private final VipInvitationService vipInvitationService;
 
     public UserController(CurrentUserResolver currentUserResolver, BookReadService bookReadService,
-                          UserBookshelfMapper bookshelfMapper, NovelMapper novelMapper) {
+                          UserBookshelfMapper bookshelfMapper, NovelMapper novelMapper,
+                          VipInvitationService vipInvitationService) {
         this.currentUserResolver = currentUserResolver;
         this.bookReadService = bookReadService;
         this.bookshelfMapper = bookshelfMapper;
         this.novelMapper = novelMapper;
+        this.vipInvitationService = vipInvitationService;
     }
 
     @GetMapping("/profile")
     public Result<UserProfileVo> profile(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         AppUser user = currentUserResolver.requireUser(userId);
-        return Result.ok(AuthController.toProfile(user));
+        UserProfileVo profile = AuthController.toProfile(user);
+        VipInvitationCode code = vipInvitationService.currentCode(user.getId());
+        if (code != null) {
+            profile.setExclusiveInviteCode(code.getCode());
+            profile.setInviteQuotaLeft(code.getRemainingQuota());
+        }
+        return Result.ok(profile);
     }
 
     @GetMapping("/bookshelf")

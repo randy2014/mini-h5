@@ -15,9 +15,11 @@
         <template #default="{ row }"><el-tag :type="row.vipStatus ? 'warning' : 'info'">{{ vipText(row) }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="vipExpireTime" label="VIP到期" width="190" />
-      <el-table-column label="操作" min-width="260">
+      <el-table-column prop="vipSource" label="VIP来源" width="110" />
+      <el-table-column label="操作" min-width="360">
         <template #default="{ row }">
           <el-button link type="primary" @click="openVip(row)">调整VIP</el-button>
+          <el-button link type="primary" @click="openInvite(row)">邀请码</el-button>
           <el-button link :type="row.status === 1 ? 'danger' : 'success'" @click="toggleStatus(row)">{{ row.status === 1 ? '禁用' : '启用' }}</el-button>
           <el-button link type="primary" @click="openLogs(row)">VIP记录</el-button>
         </template>
@@ -28,10 +30,11 @@
         <el-form-item label="用户">{{ currentUser?.nickname }} {{ currentUser?.mobile }}</el-form-item>
         <el-form-item label="调整类型">
           <el-select v-model="vipForm.action">
-            <el-option label="续期" value="EXTEND" />
+            <el-option label="升级/续期" value="UPGRADE" />
             <el-option label="指定到期" value="SET" />
-            <el-option label="永久VIP" value="PERMANENT" />
-            <el-option label="取消VIP" value="CANCEL" />
+            <el-option label="降级" value="DOWNGRADE" />
+            <el-option label="停用" value="SUSPEND" />
+            <el-option label="恢复" value="RESTORE" />
           </el-select>
         </el-form-item>
         <el-form-item label="天数"><el-input-number v-model="vipForm.days" :min="1" /></el-form-item>
@@ -48,12 +51,43 @@
         <el-table-column prop="reason" label="原因" />
       </el-table>
     </el-drawer>
+    <el-drawer v-model="inviteVisible" title="邀请码管理" size="720px">
+      <el-descriptions :column="2" border v-if="inviteCode">
+        <el-descriptions-item label="邀请码">{{ inviteCode.code }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ inviteCode.status }}</el-descriptions-item>
+        <el-descriptions-item label="总额度">{{ inviteCode.totalQuota }}</el-descriptions-item>
+        <el-descriptions-item label="剩余额度">{{ inviteCode.remainingQuota }}</el-descriptions-item>
+      </el-descriptions>
+      <el-empty v-else description="暂无邀请码" />
+      <div class="toolbar">
+        <el-input-number v-model="quotaForm.totalQuota" :min="0" />
+        <el-input v-model="quotaForm.reason" placeholder="原因" />
+        <el-button type="primary" :disabled="!inviteCode" @click="saveQuota">调整额度</el-button>
+        <el-button :disabled="!inviteCode" @click="setInviteEnabled(true)">启用</el-button>
+        <el-button :disabled="!inviteCode" @click="setInviteEnabled(false)">停用</el-button>
+        <el-button type="warning" @click="reissueInvite">作废重发</el-button>
+      </div>
+      <h3>邀请记录</h3>
+      <el-table :data="inviteRecords">
+        <el-table-column prop="codeSnapshot" label="邀请码" width="120" />
+        <el-table-column prop="inviteeUserId" label="被邀请用户" width="120" />
+        <el-table-column prop="status" label="状态" width="110" />
+        <el-table-column prop="activatedAt" label="激活时间" />
+      </el-table>
+      <h3>审计摘要</h3>
+      <el-table :data="operationLogs">
+        <el-table-column prop="action" label="动作" width="140" />
+        <el-table-column prop="operatorId" label="操作人" width="100" />
+        <el-table-column prop="reason" label="原因" />
+        <el-table-column prop="createdAt" label="时间" width="180" />
+      </el-table>
+    </el-drawer>
   </el-card>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi } from '../services/http';
 
 const rows = ref([]);
@@ -63,7 +97,12 @@ const keyword = ref('');
 const currentUser = ref(null);
 const vipVisible = ref(false);
 const logVisible = ref(false);
-const vipForm = reactive({ action: 'EXTEND', days: 30, expireAt: '', reason: '' });
+const inviteVisible = ref(false);
+const inviteCode = ref(null);
+const inviteRecords = ref([]);
+const operationLogs = ref([]);
+const vipForm = reactive({ action: 'UPGRADE', days: 30, expireAt: '', reason: '' });
+const quotaForm = reactive({ totalQuota: 3, reason: '' });
 
 function vipText(row) {
   if (row.vipStatus === 2) return '永久VIP';
@@ -80,11 +119,16 @@ async function toggleStatus(row) {
 }
 function openVip(row) {
   currentUser.value = row;
-  Object.assign(vipForm, { action: 'EXTEND', days: 30, expireAt: '', reason: '' });
+  Object.assign(vipForm, { action: 'UPGRADE', days: 30, expireAt: '', reason: '' });
   vipVisible.value = true;
 }
 async function saveVip() {
-  await adminApi.put(`/users/${currentUser.value.id}/vip`, { ...vipForm, operatorId: 1 });
+  if (!vipForm.reason) {
+    ElMessage.warning('请填写原因');
+    return;
+  }
+  await ElMessageBox.confirm('确认调整该用户 VIP 状态？', '二次确认');
+  await adminApi.put(`/users/${currentUser.value.id}/vip`, { ...vipForm, operatorId: 1, requestId: requestId('vip') });
   ElMessage.success('VIP 状态已更新');
   vipVisible.value = false;
   load();
@@ -92,6 +136,42 @@ async function saveVip() {
 async function openLogs(row) {
   logs.value = await adminApi.get(`/users/${row.id}/vip-logs`);
   logVisible.value = true;
+}
+async function openInvite(row) {
+  currentUser.value = row;
+  inviteCode.value = await adminApi.get(`/users/${row.id}/invite-code`);
+  inviteRecords.value = await adminApi.get(`/users/${row.id}/invite-records`);
+  operationLogs.value = await adminApi.get(`/users/${row.id}/operation-logs`);
+  quotaForm.totalQuota = inviteCode.value?.totalQuota || 3;
+  quotaForm.reason = '';
+  inviteVisible.value = true;
+}
+async function saveQuota() {
+  await adminApi.put(`/users/invite-codes/${inviteCode.value.id}/quota`, { ...quotaForm, operatorId: 1, requestId: requestId('quota') });
+  ElMessage.success('额度已更新');
+  openInvite(currentUser.value);
+}
+async function setInviteEnabled(enabled) {
+  await adminApi.put(`/users/invite-codes/${inviteCode.value.id}/${enabled ? 'enable' : 'disable'}`, {
+    operatorId: 1,
+    reason: quotaForm.reason || (enabled ? '启用邀请码' : '停用邀请码'),
+    requestId: requestId(enabled ? 'enable' : 'disable')
+  });
+  ElMessage.success('邀请码状态已更新');
+  openInvite(currentUser.value);
+}
+async function reissueInvite() {
+  await ElMessageBox.confirm('确认作废旧邀请码并重发？', '二次确认');
+  await adminApi.put(`/users/${currentUser.value.id}/invite-code/reissue`, {
+    operatorId: 1,
+    reason: quotaForm.reason || '后台作废重发',
+    requestId: requestId('reissue')
+  });
+  ElMessage.success('邀请码已重发');
+  openInvite(currentUser.value);
+}
+function requestId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 onMounted(load);
 </script>

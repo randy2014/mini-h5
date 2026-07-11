@@ -15,6 +15,10 @@ public class UserVip {
     private LocalDateTime endTime;
     private Integer status;
     private Long sourceOrderId;
+    private String sourceType;
+    private Long sourceRefId;
+    private Long operatorId;
+    private String remark;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -32,6 +36,14 @@ public class UserVip {
     public void setStatus(Integer status) { this.status = status; }
     public Long getSourceOrderId() { return sourceOrderId; }
     public void setSourceOrderId(Long sourceOrderId) { this.sourceOrderId = sourceOrderId; }
+    public String getSourceType() { return sourceType; }
+    public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    public Long getSourceRefId() { return sourceRefId; }
+    public void setSourceRefId(Long sourceRefId) { this.sourceRefId = sourceRefId; }
+    public Long getOperatorId() { return operatorId; }
+    public void setOperatorId(Long operatorId) { this.operatorId = operatorId; }
+    public String getRemark() { return remark; }
+    public void setRemark(String remark) { this.remark = remark; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

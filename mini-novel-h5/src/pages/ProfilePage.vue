@@ -15,6 +15,9 @@
 
     <div class="setting-list">
       <van-cell title="VIP 会员" value="查看权益" is-link to="/h5/vip" />
+      <van-cell v-if="!profile?.vipActive" title="升级 VIP" value="联系客服升级" />
+      <van-cell v-if="profile?.vipActive" title="专属邀请码" :value="profile?.exclusiveInviteCode || '生成中'" is-link @click="copyInviteCode" />
+      <van-cell v-if="profile?.vipActive" title="剩余名额" :value="String(profile?.inviteQuotaLeft ?? 0)" />
       <van-cell title="阅读历史" value="待接入" />
       <van-cell title="账号设置" value="待接入" />
     </div>
@@ -98,6 +101,19 @@ async function signOut() {
   await userStore.signOut();
   showToast('已退出登录');
   router.replace('/h5/home');
+}
+
+async function copyInviteCode() {
+  if (!profile.value?.exclusiveInviteCode) {
+    showToast('邀请码生成中');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(profile.value.exclusiveInviteCode);
+    showToast('邀请码已复制');
+  } catch {
+    showToast(profile.value.exclusiveInviteCode);
+  }
 }
 
 function loadSettings() {

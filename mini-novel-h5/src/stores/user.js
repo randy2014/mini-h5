@@ -17,8 +17,8 @@ export const useUserStore = defineStore('user', {
     isVip: (state) => Boolean(state.profile?.vipActive)
   },
   actions: {
-    async signIn(mobile) {
-      const data = await login({ mobile });
+    async signIn(payload) {
+      const data = await login(typeof payload === 'string' ? { mobile: payload } : payload);
       this.userId = data.id;
       this.token = data.tokenValue || '';
       this.tokenName = data.tokenName || 'Authorization';

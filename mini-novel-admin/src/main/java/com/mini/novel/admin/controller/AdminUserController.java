@@ -5,7 +5,11 @@ import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.vip.entity.VipAdjustLog;
+import com.mini.novel.vip.entity.VipInvitationCode;
+import com.mini.novel.vip.entity.VipInvitationRecord;
+import com.mini.novel.vip.entity.VipOperationAudit;
 import com.mini.novel.vip.mapper.VipAdjustLogMapper;
+import com.mini.novel.vip.service.VipInvitationService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.util.StringUtils;
@@ -22,10 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminUserController {
     private final AppUserMapper appUserMapper;
     private final VipAdjustLogMapper vipAdjustLogMapper;
+    private final VipInvitationService vipInvitationService;
 
-    public AdminUserController(AppUserMapper appUserMapper, VipAdjustLogMapper vipAdjustLogMapper) {
+    public AdminUserController(AppUserMapper appUserMapper, VipAdjustLogMapper vipAdjustLogMapper,
+                               VipInvitationService vipInvitationService) {
         this.appUserMapper = appUserMapper;
         this.vipAdjustLogMapper = vipAdjustLogMapper;
+        this.vipInvitationService = vipInvitationService;
     }
 
     @GetMapping
@@ -59,39 +66,9 @@ public class AdminUserController {
     }
 
     @PutMapping("/{id}/vip")
-    public Result<AppUser> vip(@PathVariable("id") Long id, @RequestBody VipAdjustRequest request) {
-        AppUser before = appUserMapper.selectById(id);
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime base = before.getVipExpireTime() != null && before.getVipExpireTime().isAfter(now)
-                ? before.getVipExpireTime()
-                : now;
-        LocalDateTime after = switch (request.action() == null ? "EXTEND" : request.action()) {
-            case "CANCEL" -> null;
-            case "PERMANENT" -> LocalDateTime.of(2099, 12, 31, 23, 59, 59);
-            case "SET" -> request.expireAt();
-            default -> base.plusDays(request.days() == null ? 30 : request.days());
-        };
-
-        AppUser user = new AppUser();
-        user.setId(id);
-        user.setVipExpireTime(after);
-        user.setVipStatus(after == null ? 0 : (after.getYear() >= 2099 ? 2 : 1));
-        user.setUpdatedAt(now);
-        appUserMapper.updateById(user);
-
-        VipAdjustLog log = new VipAdjustLog();
-        log.setUserId(id);
-        log.setAction(request.action() == null ? "EXTEND" : request.action());
-        log.setBeforeExpireTime(before.getVipExpireTime());
-        log.setAfterExpireTime(after);
-        log.setBeforeStatus(String.valueOf(before.getVipStatus()));
-        log.setAfterStatus(String.valueOf(user.getVipStatus()));
-        log.setDays(request.days());
-        log.setReason(request.reason());
-        log.setOperatorId(request.operatorId() == null ? 1L : request.operatorId());
-        log.setCreatedAt(now);
-        vipAdjustLogMapper.insert(log);
-        return Result.ok(appUserMapper.selectById(id));
+    public Result<VipInvitationService.VipAdminResult> vip(@PathVariable("id") Long id, @RequestBody VipAdjustRequest request) {
+        return Result.ok(vipInvitationService.adjustVip(id, request.action(), request.days(),
+                request.expireAt(), request.operatorId(), request.reason(), request.requestId()));
     }
 
     @GetMapping("/{id}/vip-logs")
@@ -102,9 +79,50 @@ public class AdminUserController {
                 .last("LIMIT 100")));
     }
 
+    @GetMapping("/{id}/invite-code")
+    public Result<VipInvitationCode> inviteCode(@PathVariable("id") Long id) {
+        return Result.ok(vipInvitationService.currentCode(id));
+    }
+
+    @PutMapping("/invite-codes/{codeId}/enable")
+    public Result<VipInvitationCode> enableInviteCode(@PathVariable("codeId") Long codeId, @RequestBody AdminReasonRequest request) {
+        return Result.ok(vipInvitationService.enableCode(codeId, request.operatorId(), request.reason(), request.requestId()));
+    }
+
+    @PutMapping("/invite-codes/{codeId}/disable")
+    public Result<VipInvitationCode> disableInviteCode(@PathVariable("codeId") Long codeId, @RequestBody AdminReasonRequest request) {
+        return Result.ok(vipInvitationService.disableCode(codeId, request.operatorId(), request.reason(), request.requestId()));
+    }
+
+    @PutMapping("/{id}/invite-code/reissue")
+    public Result<VipInvitationCode> reissueInviteCode(@PathVariable("id") Long id, @RequestBody AdminReasonRequest request) {
+        return Result.ok(vipInvitationService.reissueCode(id, request.operatorId(), request.reason(), request.requestId()));
+    }
+
+    @PutMapping("/invite-codes/{codeId}/quota")
+    public Result<VipInvitationCode> inviteCodeQuota(@PathVariable("codeId") Long codeId, @RequestBody InviteQuotaRequest request) {
+        return Result.ok(vipInvitationService.updateQuota(codeId, request.totalQuota(), request.operatorId(), request.reason(), request.requestId()));
+    }
+
+    @GetMapping("/{id}/invite-records")
+    public Result<List<VipInvitationRecord>> inviteRecords(@PathVariable("id") Long id) {
+        return Result.ok(vipInvitationService.records(id));
+    }
+
+    @GetMapping("/{id}/operation-logs")
+    public Result<List<VipOperationAudit>> operationLogs(@PathVariable("id") Long id) {
+        return Result.ok(vipInvitationService.audits(id));
+    }
+
     public record UserStatusRequest(Integer status) {
     }
 
-    public record VipAdjustRequest(String action, Integer days, LocalDateTime expireAt, String reason, Long operatorId) {
+    public record VipAdjustRequest(String action, Integer days, String expireAt, String reason, Long operatorId, String requestId) {
+    }
+
+    public record AdminReasonRequest(Long operatorId, String reason, String requestId) {
+    }
+
+    public record InviteQuotaRequest(Integer totalQuota, Long operatorId, String reason, String requestId) {
     }
 }

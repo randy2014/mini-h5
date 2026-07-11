@@ -30,7 +30,10 @@ http.interceptors.response.use(
       clearSession();
     }
     showToast(message);
-    throw new Error(message);
+    const error = new Error(message);
+    error.code = payload?.code;
+    error.payload = payload;
+    throw error;
   },
   (error) => {
     const message = error.response?.data?.message || error.message || '网络异常';
