@@ -230,6 +230,11 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
 
     private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters) {
         LocalDateTime now = LocalDateTime.now();
+        if (isReviewOnlySource(book)) {
+            upsertMergeItem(task, book, null, null, "PENDING_REVIEW",
+                    "Authorized source is isolated for VIP/manual review; skipped free-site merge.");
+            return MergeOutcome.PENDING_REVIEW;
+        }
         int acceptableChapters = 0;
         long estimatedWordCount = 0L;
         for (CrawlChapterRaw rawChapter : chapters) {
@@ -583,7 +588,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             item.bookRawId = book.id;
             item.createdAt = now;
         }
-        item.identityId = identity.id;
+        item.identityId = identity == null ? null : identity.id;
         item.novelId = novel == null ? null : novel.getId();
         item.matchStatus = status;
         item.confidenceScore = 100;
@@ -594,6 +599,16 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         } else {
             mergeItemMapper.updateById(item);
         }
+    }
+
+    private boolean isReviewOnlySource(CrawlBookRaw book) {
+        if (book == null) {
+            return false;
+        }
+        if ("xbookcn_authorized".equalsIgnoreCase(book.sourceCode)) {
+            return true;
+        }
+        return book.rawJson != null && book.rawJson.contains("\"isolation\":\"VIP_REVIEW\"");
     }
 
     private ContentQuality evaluateContent(String content) {

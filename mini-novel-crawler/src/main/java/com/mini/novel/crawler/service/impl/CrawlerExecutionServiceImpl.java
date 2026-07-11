@@ -21,6 +21,7 @@ import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
+import com.mini.novel.crawler.parser.ContentRiskGuard;
 import com.mini.novel.crawler.parser.CrawlerRuleConfig;
 import com.mini.novel.crawler.parser.CrawlerSiteParser;
 import com.mini.novel.crawler.parser.ParsedBookSeed;
@@ -323,8 +324,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;
         book.rankType = rank.rankType;
+        boolean isolated = isIsolatedReviewSource(source);
         book.contentStatus = StringUtils.hasText(snapshot.chapterId()) ? "CATALOG_READY" : "META_ONLY";
-        book.rawJson = "{\"rankName\":\"" + json(rank.rankName) + "\",\"rankUrl\":\"" + json(rank.rankUrl) + "\"}";
+        if (isolated) {
+            book.contentStatus = "PENDING_REVIEW";
+        }
+        book.rawJson = "{\"rankName\":\"" + json(rank.rankName) + "\",\"rankUrl\":\"" + json(rank.rankUrl)
+                + "\",\"isolation\":\"" + (isolated ? "VIP_REVIEW" : "NONE") + "\"}";
         book.crawledAt = now;
         book.updatedAt = now;
         if (book.id == null) {
@@ -473,7 +479,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 readyCount++;
             }
         }
-        book.contentStatus = readyCount > 0 ? "CONTENT_READY" : "CATALOG_READY";
+        book.contentStatus = isIsolatedReviewSource(source) ? "PENDING_REVIEW"
+                : readyCount > 0 ? "CONTENT_READY" : "CATALOG_READY";
         bookRawMapper.updateById(book);
     }
 
@@ -520,7 +527,28 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (!StringUtils.hasText(content)) {
             content = fetchPublicChapterContent(snapshot.chapterUrl(), source);
         }
-        if (StringUtils.hasText(content)) {
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
+        if (rules.boolValue(false, "riskRules.enabled")) {
+            ContentRiskGuard.RiskResult risk = ContentRiskGuard.evaluate(
+                    book.title, book.intro, content, rules.list("riskRules.blockedTerms"));
+            if (risk.blocked()) {
+                chapter.contentStatus = "RISK_BLOCKED";
+                chapter.updatedAt = now;
+                if (chapter.id == null) {
+                    chapterRawMapper.insert(chapter);
+                } else {
+                    chapterRawMapper.updateById(chapter);
+                }
+                book.contentStatus = "PENDING_REVIEW";
+                bookRawMapper.updateById(book);
+                return;
+            }
+            if (risk.reviewRequired()) {
+                chapter.contentStatus = "PENDING_REVIEW";
+                book.contentStatus = "PENDING_REVIEW";
+            }
+        }
+        if (StringUtils.hasText(content) && !"PENDING_REVIEW".equals(chapter.contentStatus)) {
             chapter.contentHash = sha256(content);
             chapter.contentStatus = "CONTENT_READY";
             book.contentStatus = "CONTENT_READY";
@@ -531,9 +559,18 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         } else {
             chapterRawMapper.updateById(chapter);
         }
-        if (StringUtils.hasText(content)) {
+        if (StringUtils.hasText(content) && "CONTENT_READY".equals(chapter.contentStatus)) {
             upsertContent(chapter, content);
         }
+    }
+
+    private boolean isIsolatedReviewSource(CrawlerSourceConfig source) {
+        if (source == null) {
+            return false;
+        }
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
+        return rules.boolValue(false, "isolation.reviewOnly", "reviewOnly")
+                || "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType);
     }
 
     private boolean isContentReady(CrawlChapterRaw chapter) {
