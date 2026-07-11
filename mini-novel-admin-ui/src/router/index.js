@@ -16,7 +16,8 @@ const routes = [
       { path: 'users', component: () => import('../views/UserView.vue'), meta: { title: '用户管理' } },
       { path: 'vip', component: () => import('../views/VipView.vue'), meta: { title: 'VIP 管理' } },
       { path: 'orders', component: () => import('../views/OrderView.vue'), meta: { title: '付费管理' } },
-      { path: 'crawler', component: CrawlerView, meta: { title: '采集管理' } }
+      { path: 'crawler', component: CrawlerView, meta: { title: '采集管理' } },
+      { path: 'authorized-books', component: () => import('../views/AuthorizedBookView.vue'), meta: { title: '授权书单管理' } }
     ]
   }
 ];
