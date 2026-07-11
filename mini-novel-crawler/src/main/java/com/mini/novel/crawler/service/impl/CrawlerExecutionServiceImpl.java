@@ -420,7 +420,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             try {
                 return Jsoup.connect(url)
                         .userAgent(url.contains("m.qidian.com") ? MOBILE_USER_AGENT : USER_AGENT)
+                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
                         .header("Accept-Language", "zh-CN,zh;q=0.9")
+                        .header("Referer", origin(url))
+                        .header("Sec-Fetch-Dest", "document")
+                        .header("Sec-Fetch-Mode", "navigate")
+                        .header("Sec-Fetch-Site", "same-origin")
+                        .header("Upgrade-Insecure-Requests", "1")
                         .timeout(FETCH_TIMEOUT_MILLIS)
                         .get();
             } catch (IOException ex) {
@@ -429,6 +435,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
         }
         throw lastException;
+    }
+
+    private String origin(String url) {
+        try { URI uri=URI.create(url);return uri.getScheme()+"://"+uri.getHost()+"/"; }
+        catch (Exception ignored) { return url; }
     }
 
     private void sleepBeforeRetry(int attempt) {
