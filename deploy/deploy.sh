@@ -76,6 +76,7 @@ run_migration "sql/migrations/20260701_shuqi_public_seed.sql"
 run_migration "sql/migrations/20260701_shuqi_store_rank_sources.sql"
 run_migration "sql/migrations/20260701_23qb_category_sources.sql"
 run_migration "sql/migrations/20260702_23qb_only_crawler_source.sql"
+run_migration "sql/migrations/20260712_crawler_authorized_book.sql"
 
 echo "Building and starting application services..."
 compose up -d --build

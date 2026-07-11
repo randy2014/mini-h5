@@ -1,0 +1,55 @@
+CREATE DATABASE IF NOT EXISTS mini_novel_crawler DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE mini_novel_crawler;
+
+CREATE TABLE IF NOT EXISTS crawler_authorized_book (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  source_code VARCHAR(64) NOT NULL,
+  source_book_id VARCHAR(128) NOT NULL,
+  book_url VARCHAR(512) NOT NULL,
+  title VARCHAR(128) NOT NULL,
+  author VARCHAR(64) NOT NULL DEFAULT '',
+  intro TEXT,
+  category_name VARCHAR(64),
+  tags_json JSON,
+  cover_url VARCHAR(512),
+  authorization_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+  allow_crawl_meta TINYINT(1) NOT NULL DEFAULT 0,
+  allow_crawl_chapters TINYINT(1) NOT NULL DEFAULT 0,
+  allow_store TINYINT(1) NOT NULL DEFAULT 0,
+  allow_display TINYINT(1) NOT NULL DEFAULT 0,
+  allow_vip_display TINYINT(1) NOT NULL DEFAULT 0,
+  review_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+  risk_level VARCHAR(32) NOT NULL DEFAULT 'LOW',
+  risk_reason VARCHAR(1000),
+  authorization_note VARCHAR(1000),
+  proof_ref VARCHAR(512),
+  authorized_by BIGINT,
+  reviewed_by BIGINT,
+  discovered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  authorized_at DATETIME,
+  reviewed_at DATETIME,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_source_book (source_code, source_book_id),
+  KEY idx_source_auth_review (source_code, authorization_status, review_status),
+  KEY idx_crawl_gate (source_code, authorization_status, allow_crawl_chapters),
+  KEY idx_store_display_gate (source_code, allow_store, allow_display, allow_vip_display),
+  KEY idx_risk_review (risk_level, review_status),
+  KEY idx_authorized_at (authorized_at),
+  KEY idx_reviewed_at (reviewed_at),
+  KEY idx_updated_at (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS crawler_authorized_book_audit (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  authorized_book_id BIGINT NOT NULL,
+  action VARCHAR(64) NOT NULL,
+  before_json JSON,
+  after_json JSON,
+  operator_id BIGINT,
+  remark VARCHAR(1000),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_book_created (authorized_book_id, created_at),
+  KEY idx_action_created (action, created_at),
+  KEY idx_operator_created (operator_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
