@@ -376,6 +376,7 @@
             <el-table-column label="操作" width="180" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="retryMergeItem(row)">重新清洗</el-button>
+                <el-button v-if="row.sourceCode === 'xbookcn_authorized'" link type="success" @click="approveAuthorizedMergeItem(row)">批准入库</el-button>
                 <el-button link type="danger" @click="ignoreMergeItem(row)">忽略</el-button>
               </template>
             </el-table-column>
@@ -718,6 +719,13 @@ async function runPendingMergeTasks() {
 async function retryMergeItem(row) {
   await crawlerApi.post(`/config/merge-items/${row.id}/retry`);
   ElMessage.success('已重新清洗该条记录');
+  await Promise.all([loadMergeTasks(), loadMergeItems()]);
+}
+
+async function approveAuthorizedMergeItem(row) {
+  await ElMessageBox.confirm(`确认批准《${row.title}》授权内容入库？系统会再次核验授权证明和权限。`, '批准授权内容', { type: 'warning' });
+  await crawlerApi.post(`/config/merge-items/${row.id}/approve-authorized`, { remark: '后台人工批准授权内容入库' });
+  ElMessage.success('授权内容已批准入库');
   await Promise.all([loadMergeTasks(), loadMergeItems()]);
 }
 

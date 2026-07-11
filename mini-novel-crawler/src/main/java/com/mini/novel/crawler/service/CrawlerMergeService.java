@@ -7,5 +7,7 @@ public interface CrawlerMergeService {
 
     void retryMergeItem(Long mergeItemId);
 
+    void approveAuthorizedMergeItem(Long mergeItemId, Long operatorId, String remark);
+
     void ignoreMergeItem(Long mergeItemId, String reason);
 }

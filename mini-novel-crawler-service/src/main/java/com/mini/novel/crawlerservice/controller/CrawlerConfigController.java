@@ -36,6 +36,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -432,6 +433,14 @@ public class CrawlerConfigController {
         }
         Integer scopedMaxBooks = scopedMaxBooks(maxBooks);
         return scopedMaxBooks == null ? rank.rankUrl : rank.rankUrl + "#maxBooks=" + scopedMaxBooks;
+    }
+
+    @PostMapping("/merge-items/{id}/approve-authorized")
+    public Result<Void> approveAuthorizedMergeItem(@PathVariable Long id,
+            @RequestHeader(value = "X-Operator-Id", defaultValue = "0") Long operatorId,
+            @RequestBody(required = false) Map<String, String> payload) {
+        crawlerMergeService.approveAuthorizedMergeItem(id, operatorId, payload == null ? null : payload.get("remark"));
+        return Result.ok();
     }
 
     private Integer scopedMaxBooks(Integer maxBooks) {
