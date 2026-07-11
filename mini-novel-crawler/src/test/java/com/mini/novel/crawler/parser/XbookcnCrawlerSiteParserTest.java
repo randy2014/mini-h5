@@ -63,6 +63,47 @@ class XbookcnCrawlerSiteParserTest {
     }
 
     @Test
+    void metadataOnlyDoesNotFetchCatalogOrChapters() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {
+                  "poc": {
+                    "singleBookOnly": true,
+                    "metadataOnly": true,
+                    "bookUrl": "https://book.xbookcn.net/book/200"
+                  },
+                  "riskRules": {
+                    "enabled": true
+                  }
+                }
+                """);
+
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://book.xbookcn.net/"),
+                "https://book.xbookcn.net/", 1).get(0);
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, url -> {
+            if (!"https://book.xbookcn.net/book/200".equals(url)) {
+                throw new AssertionError("metadata-only mode must not fetch catalog or chapter URLs: " + url);
+            }
+            return Jsoup.parse("""
+                    <meta property="og:novel:book_id" content="x200">
+                    <meta property="og:image" content="/covers/200.jpg">
+                    <h1>Metadata Only Book</h1>
+                    <div class="author">Author: Writer B</div>
+                    <div class="intro">Only metadata is discovered.</div>
+                    <div class="category">Authorized</div>
+                    <div class="tags"><a>Adult</a><a>Drama</a></div>
+                    <a href="/book/200/catalog.html">Catalog</a>
+                    """, "https://book.xbookcn.net/book/200");
+        });
+
+        assertThat(snapshot.title()).isEqualTo("Metadata Only Book");
+        assertThat(snapshot.sourceBookId()).isEqualTo("x200");
+        assertThat(snapshot.coverUrl()).isEqualTo("https://book.xbookcn.net/covers/200.jpg");
+        assertThat(snapshot.chapters()).isEmpty();
+        assertThat(snapshot.tagsJson()).isEqualTo("[\"Adult\",\"Drama\"]");
+    }
+
+    @Test
     void riskGuardHardBlocksSexualMinorSignals() {
         ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
                 "test", "", "\u672a\u6210\u5e74 sexual content", java.util.List.of());

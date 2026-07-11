@@ -13,6 +13,7 @@ import com.mini.novel.crawler.entity.CrawlContentRaw;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
 import com.mini.novel.crawler.entity.CrawlRankSource;
 import com.mini.novel.crawler.entity.CrawlTaskRecord;
+import com.mini.novel.crawler.entity.CrawlerAuthorizedBook;
 import com.mini.novel.crawler.entity.CrawlerSourceConfig;
 import com.mini.novel.crawler.mapper.CrawlBookRawMapper;
 import com.mini.novel.crawler.mapper.CrawlChapterRawMapper;
@@ -20,6 +21,7 @@ import com.mini.novel.crawler.mapper.CrawlContentRawMapper;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
+import com.mini.novel.crawler.mapper.CrawlerAuthorizedBookMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.parser.ContentRiskGuard;
 import com.mini.novel.crawler.parser.CrawlerRuleConfig;
@@ -65,6 +67,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     private final CrawlTaskRecordMapper taskMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
+    private final CrawlerAuthorizedBookMapper authorizedBookMapper;
     private final CrawlRankSourceMapper rankSourceMapper;
     private final CrawlBookRawMapper bookRawMapper;
     private final CrawlChapterRawMapper chapterRawMapper;
@@ -79,6 +82,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     public CrawlerExecutionServiceImpl(CrawlTaskRecordMapper taskMapper,
                                        CrawlerSourceConfigMapper sourceMapper,
+                                       CrawlerAuthorizedBookMapper authorizedBookMapper,
                                        CrawlRankSourceMapper rankSourceMapper,
                                        CrawlBookRawMapper bookRawMapper,
                                        CrawlChapterRawMapper chapterRawMapper,
@@ -92,6 +96,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                                        @Qualifier("applicationTaskExecutor") TaskExecutor applicationTaskExecutor) {
         this.taskMapper = taskMapper;
         this.sourceMapper = sourceMapper;
+        this.authorizedBookMapper = authorizedBookMapper;
         this.rankSourceMapper = rankSourceMapper;
         this.bookRawMapper = bookRawMapper;
         this.chapterRawMapper = chapterRawMapper;
@@ -159,8 +164,28 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             updateRunningProgress(task, total, success, failed, rank, seed);
                             continue;
                         }
+                        if (isXbookcnAuthorizedSource(source) && !isAuthorizedMetadataMode(source)
+                                && !canCrawlAuthorizedChapters(source, sourceBookIdFromUrl(seed.url()))) {
+                            failed++;
+                            rankFailed++;
+                            updateRunningProgress(task, total, success, failed, rank, seed);
+                            continue;
+                        }
                         ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
                         if (!StringUtils.hasText(snapshot.title())) {
+                            failed++;
+                            rankFailed++;
+                            updateRunningProgress(task, total, success, failed, rank, seed);
+                            continue;
+                        }
+                        if (isAuthorizedMetadataMode(source)) {
+                            upsertAuthorizedBook(source, snapshot);
+                            success++;
+                            rankSaved++;
+                            updateRunningProgress(task, total, success, failed, rank, seed);
+                            continue;
+                        }
+                        if (isXbookcnAuthorizedSource(source) && !canCrawlAuthorizedChapters(source, snapshot)) {
                             failed++;
                             rankFailed++;
                             updateRunningProgress(task, total, success, failed, rank, seed);
@@ -231,6 +256,97 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 + ", current rank " + limit(rankLabel(rank), 96)
                 + ", current book " + limit(seed.url(), 160) + ".";
         taskMapper.updateById(task);
+    }
+
+    private boolean isAuthorizedMetadataMode(CrawlerSourceConfig source) {
+        if (!isXbookcnAuthorizedSource(source)) {
+            return false;
+        }
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
+        return rules.boolValue(false, "poc.metadataOnly", "metadataOnly", "authorizedBook.metadataOnly");
+    }
+
+    private boolean isXbookcnAuthorizedSource(CrawlerSourceConfig source) {
+        return source != null && "xbookcn_authorized".equalsIgnoreCase(source.sourceCode);
+    }
+
+    private boolean canCrawlAuthorizedChapters(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
+        if (!isXbookcnAuthorizedSource(source) || snapshot == null || !StringUtils.hasText(snapshot.sourceBookId())) {
+            return false;
+        }
+        return canCrawlAuthorizedChapters(source, snapshot.sourceBookId());
+    }
+
+    private boolean canCrawlAuthorizedChapters(CrawlerSourceConfig source, String sourceBookId) {
+        if (!isXbookcnAuthorizedSource(source) || !StringUtils.hasText(sourceBookId)) {
+            return false;
+        }
+        CrawlerAuthorizedBook authorized = authorizedBookMapper.selectOne(new QueryWrapper<CrawlerAuthorizedBook>()
+                .eq("source_code", source.sourceCode)
+                .eq("source_book_id", sourceBookId)
+                .eq("authorization_status", "AUTHORIZED")
+                .eq("allow_crawl_chapters", true)
+                .last("LIMIT 1"));
+        return authorized != null;
+    }
+
+    private String sourceBookIdFromUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return "";
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("/(?:book|novel)/(\\d+|[A-Za-z0-9_-]+)")
+                .matcher(url);
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private void upsertAuthorizedBook(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
+        LocalDateTime now = LocalDateTime.now();
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
+        ContentRiskGuard.RiskResult risk = ContentRiskGuard.evaluate(
+                snapshot.title(), snapshot.intro(), "", rules.list("riskRules.blockedTerms"));
+
+        CrawlerAuthorizedBook book = authorizedBookMapper.selectOne(new QueryWrapper<CrawlerAuthorizedBook>()
+                .eq("source_code", source.sourceCode)
+                .eq("source_book_id", snapshot.sourceBookId())
+                .last("LIMIT 1"));
+        if (book == null) {
+            book = new CrawlerAuthorizedBook();
+            book.sourceCode = source.sourceCode;
+            book.sourceBookId = snapshot.sourceBookId();
+            book.authorizationStatus = "PENDING";
+            book.allowCrawlMeta = true;
+            book.allowCrawlChapters = false;
+            book.allowStore = false;
+            book.allowDisplay = false;
+            book.allowVipDisplay = false;
+            book.reviewStatus = risk.reviewRequired() ? "RISK_REVIEW" : "PENDING";
+            book.discoveredAt = now;
+            book.createdAt = now;
+        }
+        book.bookUrl = limit(snapshot.sourceUrl(), 512);
+        book.title = limit(snapshot.title(), 128);
+        book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "", 64);
+        book.intro = snapshot.intro();
+        book.categoryName = limit(snapshot.categoryName(), 64);
+        book.tagsJson = StringUtils.hasText(snapshot.tagsJson()) ? snapshot.tagsJson() : "[]";
+        book.coverUrl = limit(snapshot.coverUrl(), 512);
+        book.riskLevel = risk.blocked() ? "BLOCKED" : risk.reviewRequired() ? "HIGH" : "LOW";
+        book.riskReason = risk.reviewRequired() ? limit(risk.reason(), 1000) : null;
+        if (risk.blocked()) {
+            book.authorizationStatus = "REJECTED";
+            book.reviewStatus = "RISK_REVIEW";
+            book.allowCrawlChapters = false;
+            book.allowStore = false;
+            book.allowDisplay = false;
+            book.allowVipDisplay = false;
+        }
+        book.updatedAt = now;
+        if (book.id == null) {
+            authorizedBookMapper.insert(book);
+        } else {
+            authorizedBookMapper.updateById(book);
+        }
     }
 
     private List<CrawlRankSource> loadRanks(CrawlTaskRecord task, CrawlerSourceConfig source) {

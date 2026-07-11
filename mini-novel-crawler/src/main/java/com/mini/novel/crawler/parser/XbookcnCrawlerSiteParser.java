@@ -71,19 +71,23 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
                 firstText(detail, ".author", ".book-author", ".writer", "a[href*='author']"), seed.author()));
         String intro = firstNonBlank(firstText(detail, "meta[property=og:description]", "meta[name=description]"),
                 firstText(detail, ".intro", ".book-intro", ".summary", ".description"));
-        String cover = firstNonBlank(firstAttr(detail, "meta[property=og:image]", "content"),
+        String cover = firstNonBlank(firstRawAttr(detail, "meta[property=og:image]", "content"),
                 firstAttr(detail, ".cover img, img.cover, .book-cover img", "src"));
         String category = firstNonBlank(firstText(detail, "meta[property=og:novel:category]"),
                 firstText(detail, ".tag a", ".tags a", ".category", ".book-category"), "VIP_AUTH_REVIEW");
+        String tagsJson = tagsJson(detail);
         String status = normalizeStatus(firstNonBlank(firstText(detail, "meta[property=og:novel:status]"),
                 firstText(detail, ".status", ".book-status", ".book-meta", ".book-info")));
-        String sourceBookId = firstNonBlank(firstAttr(detail, "meta[property=og:novel:book_id]", "content"), bookId(seed.url()));
+        String sourceBookId = firstNonBlank(firstRawAttr(detail, "meta[property=og:novel:book_id]", "content"), bookId(seed.url()));
 
-        String catalogUrl = firstNonBlank(firstAttr(detail, "a[href*='catalog'], a[href*='chapter'], a[href*='list']", "href"),
-                seed.url());
-        List<ParsedChapterSnapshot> chapters = fetchCatalog(catalogUrl, rules, fetcher);
-        if (chapters.isEmpty()) {
-            chapters = chapterLinks(detail, rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters"));
+        List<ParsedChapterSnapshot> chapters = List.of();
+        if (!metadataOnly(rules)) {
+            String catalogUrl = firstNonBlank(firstAttr(detail, "a[href*='catalog'], a[href*='chapter'], a[href*='list']", "href"),
+                    seed.url());
+            chapters = fetchCatalog(catalogUrl, rules, fetcher);
+            if (chapters.isEmpty()) {
+                chapters = chapterLinks(detail, rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters"));
+            }
         }
 
         ContentRiskGuard.RiskResult risk = ContentRiskGuard.evaluate(title, intro, "", rules.list("riskRules.blockedTerms"));
@@ -91,7 +95,11 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         String firstChapterId = chapters.isEmpty() ? "" : chapters.get(0).chapterId();
         String firstChapterUrl = chapters.isEmpty() ? "" : chapters.get(0).url();
         return new ParsedBookSnapshot(title, author, abs(detail, cover), intro, seed.url(), sourceBookId, seed.wordCount(),
-                category, contentStatus, firstChapterId, firstChapterUrl, chapters);
+                category, contentStatus, firstChapterId, firstChapterUrl, chapters, tagsJson);
+    }
+
+    private boolean metadataOnly(CrawlerRuleConfig rules) {
+        return rules.boolValue(false, "poc.metadataOnly", "metadataOnly", "authorizedBook.metadataOnly");
     }
 
     private List<ParsedChapterSnapshot> fetchCatalog(String catalogUrl, CrawlerRuleConfig rules,
@@ -186,6 +194,33 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
     private String firstAttr(Document document, String selector, String attr) {
         Element element = document.selectFirst(selector);
         return element == null ? "" : normalize(element.absUrl(attr));
+    }
+
+    private String firstRawAttr(Document document, String selector, String attr) {
+        Element element = document.selectFirst(selector);
+        return element == null ? "" : normalize(element.attr(attr));
+    }
+
+    private String tagsJson(Document document) {
+        List<String> tags = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Element element : document.select(".tag a, .tags a, .label a, .labels a, .book-tags a")) {
+            String tag = clean(element.text());
+            if (StringUtils.hasText(tag) && seen.add(tag)) {
+                tags.add(tag);
+            }
+        }
+        if (tags.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder json = new StringBuilder("[");
+        for (int i = 0; i < tags.size(); i++) {
+            if (i > 0) {
+                json.append(',');
+            }
+            json.append('"').append(tags.get(i).replace("\\", "\\\\").replace("\"", "\\\"")).append('"');
+        }
+        return json.append(']').toString();
     }
 
     private String bookId(String url) {

@@ -23,6 +23,7 @@ INSERT INTO crawl_source (
     ),
     'poc', JSON_OBJECT(
       'singleBookOnly', true,
+      'metadataOnly', true,
       'bookUrl', ''
     ),
     'catalogRules', JSON_OBJECT(
