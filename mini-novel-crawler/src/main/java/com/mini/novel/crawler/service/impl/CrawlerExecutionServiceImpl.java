@@ -30,6 +30,7 @@ import com.mini.novel.crawler.parser.ParsedBookSeed;
 import com.mini.novel.crawler.parser.ParsedBookSnapshot;
 import com.mini.novel.crawler.parser.ParsedChapterSnapshot;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
+import com.mini.novel.crawler.service.CompanyAuthorization;
 import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -39,6 +40,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -340,6 +342,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             book.allowStore = false;
             book.allowDisplay = false;
             book.allowVipDisplay = false;
+        } else if (CompanyAuthorization.isActive(source, CompanyAuthorization.read(source), LocalDate.now())) {
+            CompanyAuthorization.apply(book, CompanyAuthorization.read(source));
         }
         book.updatedAt = now;
         if (book.id == null) {
