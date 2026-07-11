@@ -49,7 +49,7 @@ INSERT INTO crawl_source (
   base_url = VALUES(base_url),
   source_type = VALUES(source_type),
   auth_mode = VALUES(auth_mode),
-  rule_config_json = VALUES(rule_config_json),
+  -- Preserve runtime-managed companyAuthorization and every other existing rule node.
   enabled = 0,
   priority = VALUES(priority),
   remark = VALUES(remark),
