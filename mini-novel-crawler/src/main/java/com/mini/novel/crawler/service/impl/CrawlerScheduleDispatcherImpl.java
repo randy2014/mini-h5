@@ -70,10 +70,18 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .in("status", List.of("RUNNING"))
                 .last("LIMIT 200"));
         for (CrawlTaskRecord task : runningTasks) {
-            task.status = "FAILED";
-            task.finishedAt = now;
+            if ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType)) {
+                task.status = "PENDING";
+                task.finishedAt = null;
+            } else {
+                task.status = "FAILED";
+                task.finishedAt = now;
+            }
             task.updatedAt = now;
-            task.message = appendMessage(task.message, "Crawler service restarted; interrupted running task was closed.");
+            task.message = appendMessage(task.message, "Crawler service restarted; "
+                    + ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType)
+                    ? "recoverable authorized-content task was returned to PENDING."
+                    : "interrupted running task was closed."));
             taskRecordMapper.updateById(task);
         }
 
@@ -125,7 +133,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .last("LIMIT 10"));
         Set<Long> dispatchedSourceIds = new HashSet<>();
         for (CrawlTaskRecord task : tasks) {
-            if (!isPrimarySource(task.sourceId)
+            if (!isRunnablePendingTask(task)
                     || dispatchedSourceIds.contains(task.sourceId)
                     || hasRunningSourceTask(task.sourceId, task.id)) {
                 continue;
@@ -134,6 +142,13 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
             executionService.executeAsync(task.id);
         }
         mergeService.mergePending();
+    }
+
+    private boolean isRunnablePendingTask(CrawlTaskRecord task) {
+        if (task == null) {
+            return false;
+        }
+        return isPrimarySource(task.sourceId) || "AUTHORIZED_BOOK_CONTENT".equals(task.taskType);
     }
 
     private boolean isDue(CrawlSchedule schedule) {
