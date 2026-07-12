@@ -42,6 +42,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -139,7 +140,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         int riskBlockedCount = 0;
         int pendingReviewCount = 0;
         int processedCount = 0;
+        int insertedBooks = 0;
+        int updatedBooks = 0;
+        int insertedChapters = 0;
+        int updatedChapters = 0;
+        int deduplicated = 0;
         Long continuationId = null;
+        Set<Long> selectedIds = Set.of();
         try {
             CrawlerSourceConfig source = sourceMapper.selectById(task.sourceId);
             if (source == null) {
@@ -166,13 +173,16 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             .last("LIMIT 500"));
                     eligibleCount = eligibleBooks.size();
                     int limit = approvedContentLimit(task);
-                    selectedAuthorizedBooks = eligibleBooks.stream()
-                            .filter(book -> StringUtils.hasText(book.bookUrl))
-                            .filter(book -> !isAuthorizedBookFinished(effectiveSource, book))
-                            .limit(limit)
-                            .toList();
+                    AuthorizedContentBatchPlanner.BatchPlan plan = AuthorizedContentBatchPlanner.plan(eligibleBooks,
+                            finishedAuthorizedSourceBookIds(effectiveSource), previousAuthorizedContentMessage(task), limit);
+                    if (plan.duplicateSelection() || !plan.advanced()) {
+                        throw new IllegalStateException("authorized content batch did not advance: previousAfterId="
+                                + plan.previousAfterId() + ", afterId=" + plan.afterId());
+                    }
+                    selectedAuthorizedBooks = plan.selected();
                     selectedCount = selectedAuthorizedBooks.size();
-                    continuationId = selectedAuthorizedBooks.stream().map(book -> book.id).max(Long::compareTo).orElse(null);
+                    continuationId = plan.afterId() == 0 ? null : plan.afterId();
+                    selectedIds = plan.selectedIds();
                     seeds = selectedAuthorizedBooks.stream()
                             .filter(b -> StringUtils.hasText(b.bookUrl))
                             .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, "", 0L, "", rank.rankUrl))
@@ -198,6 +208,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                         if (completedBook != null) {
                             success++;
                             rankSaved++;
+                            if (authorizedContentTask) {
+                                deduplicated++;
+                            }
                             updateRunningProgress(task, total, success, failed, rank, seed);
                             continue;
                         }
@@ -231,22 +244,38 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                         if (isSnapshotFullyMapped(source, snapshot)) {
                             success++;
                             rankSaved++;
+                            if (authorizedContentTask) {
+                                deduplicated++;
+                            }
                             updateRunningProgress(task, total, success, failed, rank, seed);
                             continue;
                         }
+                        boolean bookExists = rawBookExists(source, snapshot);
                         CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
                         if (isCompletedBookReady(book)) {
                             success++;
                             rankSaved++;
+                            if (authorizedContentTask) {
+                                deduplicated++;
+                            }
                             updateRunningProgress(task, total, success, failed, rank, seed);
                             updateMergeTask(task, true);
                             continue;
                         }
+                        long beforeChapters = countRawChapters(book.id);
                         upsertChaptersAndContent(source, book, snapshot);
+                        long afterChapters = countRawChapters(book.id);
                         success++;
                         rankSaved++;
                         processedCount++;
                         if (authorizedContentTask) {
+                            if (bookExists) {
+                                updatedBooks++;
+                            } else {
+                                insertedBooks++;
+                            }
+                            insertedChapters += (int) Math.max(0, afterChapters - beforeChapters);
+                            updatedChapters += (int) Math.min(beforeChapters, afterChapters);
                             ChapterStatusStats stats = chapterStatusStats(book.id);
                             riskBlockedCount += stats.riskBlocked();
                             pendingReviewCount += stats.pendingReview();
@@ -268,14 +297,16 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             if (total == 0) {
                 task.status = authorizedContentTask ? "SUCCESS" : "NO_DATA";
                 task.message = authorizedContentTask
-                        ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, success,
-                        riskBlockedCount, pendingReviewCount, failed, continuationId)
+                        ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, insertedBooks,
+                        updatedBooks, insertedChapters, updatedChapters, deduplicated,
+                        riskBlockedCount, pendingReviewCount, failed, continuationId, selectedIds)
                         : "Crawler finished, but no book was parsed. Check rank URL or source rules.";
             } else {
                 task.status = failed == 0 ? "SUCCESS" : "PARTIAL_SUCCESS";
                 task.message = authorizedContentTask
-                        ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, success,
-                        riskBlockedCount, pendingReviewCount, failed, continuationId)
+                        ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, insertedBooks,
+                        updatedBooks, insertedChapters, updatedChapters, deduplicated,
+                        riskBlockedCount, pendingReviewCount, failed, continuationId, selectedIds)
                         : "Crawler finished: discovered " + total + ", saved " + success
                         + ", failed " + failed + ", merge task reports merged counts.";
             }
@@ -329,12 +360,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private boolean isAuthorizedBookFinished(CrawlerSourceConfig source, CrawlerAuthorizedBook authorizedBook) {
-        if (source == null || authorizedBook == null || !StringUtils.hasText(authorizedBook.bookUrl)) {
+        if (source == null || authorizedBook == null || !StringUtils.hasText(authorizedBook.sourceBookId)) {
             return false;
         }
         CrawlBookRaw book = bookRawMapper.selectOne(new QueryWrapper<CrawlBookRaw>()
                 .eq("source_code", source.sourceCode)
-                .eq("source_url", limit(authorizedBook.bookUrl, 512))
+                .eq("source_book_id", authorizedBook.sourceBookId)
                 .in("content_status", List.of("CONTENT_READY", "PENDING_REVIEW"))
                 .last("LIMIT 1"));
         if (book == null || book.id == null) {
@@ -343,6 +374,40 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         Long chapters = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
                 .eq("book_raw_id", book.id));
         return chapters != null && chapters > 0;
+    }
+
+    private Set<String> finishedAuthorizedSourceBookIds(CrawlerSourceConfig source) {
+        Set<String> ids = new HashSet<>();
+        if (source == null || !StringUtils.hasText(source.sourceCode)) {
+            return ids;
+        }
+        List<CrawlBookRaw> books = bookRawMapper.selectList(new QueryWrapper<CrawlBookRaw>()
+                .select("id", "source_book_id")
+                .eq("source_code", source.sourceCode)
+                .in("content_status", List.of("CONTENT_READY", "PENDING_REVIEW")));
+        for (CrawlBookRaw book : books) {
+            if (StringUtils.hasText(book.sourceBookId) && isAuthorizedBookFinished(source, authorizedBookProbe(book.sourceBookId))) {
+                ids.add(book.sourceBookId);
+            }
+        }
+        return ids;
+    }
+
+    private CrawlerAuthorizedBook authorizedBookProbe(String sourceBookId) {
+        CrawlerAuthorizedBook book = new CrawlerAuthorizedBook();
+        book.sourceBookId = sourceBookId;
+        return book;
+    }
+
+    private String previousAuthorizedContentMessage(CrawlTaskRecord task) {
+        CrawlTaskRecord previous = taskMapper.selectOne(new QueryWrapper<CrawlTaskRecord>()
+                .eq("source_id", task.sourceId)
+                .eq("task_type", "AUTHORIZED_BOOK_CONTENT")
+                .in("status", List.of("SUCCESS", "PARTIAL_SUCCESS"))
+                .lt("id", task.id)
+                .orderByDesc("id")
+                .last("LIMIT 1"));
+        return previous == null ? "" : previous.message;
     }
 
     private ChapterStatusStats chapterStatusStats(Long bookRawId) {
@@ -359,16 +424,23 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 pendingReview == null ? 0 : pendingReview.intValue());
     }
 
-    private String authorizedContentMessage(int eligible, int selected, int processed, int saved,
-                                            int riskBlocked, int pendingReview, int failed, Long continuationId) {
+    private String authorizedContentMessage(int eligible, int selected, int processed, int insertedBooks,
+                                            int updatedBooks, int insertedChapters, int updatedChapters,
+                                            int deduplicated, int riskBlocked, int pendingReview, int failed,
+                                            Long continuationId, Set<Long> selectedIds) {
         return "Approved adult-book content task finished: eligible=" + eligible
                 + ", selected=" + selected
                 + ", processed=" + processed
-                + ", saved=" + saved
+                + ", insertedBooks=" + insertedBooks
+                + ", updatedBooks=" + updatedBooks
+                + ", insertedChapters=" + insertedChapters
+                + ", updatedChapters=" + updatedChapters
+                + ", deduplicated=" + deduplicated
                 + ", riskBlocked=" + riskBlocked
                 + ", pendingReview=" + pendingReview
                 + ", failed=" + failed
                 + ", continuation=" + (continuationId == null ? "none" : "afterId:" + continuationId)
+                + ", selectedIds=" + selectedIds.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("")
                 + ", mode=authorized-book-list-batch.";
     }
 
@@ -597,6 +669,27 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             bookRawMapper.updateById(book);
         }
         return book;
+    }
+
+    private boolean rawBookExists(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
+        if (source == null || snapshot == null) {
+            return false;
+        }
+        String sourceBookId = StringUtils.hasText(snapshot.sourceBookId())
+                ? snapshot.sourceBookId()
+                : sha256(snapshot.sourceUrl()).substring(0, 24);
+        Long count = bookRawMapper.selectCount(new QueryWrapper<CrawlBookRaw>()
+                .eq("source_code", source.sourceCode)
+                .eq("source_book_id", sourceBookId));
+        return count != null && count > 0;
+    }
+
+    private long countRawChapters(Long bookRawId) {
+        if (bookRawId == null) {
+            return 0L;
+        }
+        Long count = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>().eq("book_raw_id", bookRawId));
+        return count == null ? 0L : count;
     }
 
     private CrawlBookRaw completedReadyBook(CrawlerSourceConfig source, ParsedBookSeed seed) {
