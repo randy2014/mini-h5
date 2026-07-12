@@ -7,3 +7,7 @@ export function fetchVipPlans() {
 export function fetchVipStatus() {
   return http.get('/vip/status');
 }
+
+export function fetchVipBooks() {
+  return http.get('/vip/books');
+}
