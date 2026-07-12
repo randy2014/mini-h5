@@ -148,6 +148,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
             boolean authorizedContentTask = "AUTHORIZED_BOOK_CONTENT".equals(task.taskType);
             if (authorizedContentTask) source = authorizedContentSource(source);
+            CrawlerSourceConfig effectiveSource = source;
             List<CrawlRankSource> ranks = loadRanks(task, source);
             for (CrawlRankSource rank : ranks) {
                 validateUrl(rank.rankUrl);
@@ -162,7 +163,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     int limit = approvedContentLimit(task);
                     selectedAuthorizedBooks = eligibleBooks.stream()
                             .filter(book -> StringUtils.hasText(book.bookUrl))
-                            .filter(book -> !isAuthorizedBookFinished(source, book))
+                            .filter(book -> !isAuthorizedBookFinished(effectiveSource, book))
                             .limit(limit)
                             .toList();
                     selectedCount = selectedAuthorizedBooks.size();
