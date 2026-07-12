@@ -296,7 +296,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private BookOutcome processBook(CrawlTaskRecord task, CrawlerSourceConfig source, CrawlRankSource rank,
-                                    CrawlerSiteParser parser, ParsedBookSeed seed) throws IOException {
+                                    CrawlerSiteParser parser, ParsedBookSeed seed) throws Exception {
         CrawlBookRaw completedBook = completedReadyBook(source, seed);
         if (completedBook != null) {
             return BookOutcome.deduplicatedOutcome();
