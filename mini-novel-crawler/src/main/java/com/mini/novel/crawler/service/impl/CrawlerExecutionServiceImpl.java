@@ -352,15 +352,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                                                          int timeouts, Long continuationId) throws Exception {
         updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts,
                 continuationId, rank, seed, selectedBooks, "detail/catalog/chapter");
-        for (int attempt = 1; attempt <= 2; attempt++) {
-            BookOutcome outcome = processBook(task, source, rank, parser, seed);
-            if (outcome.timeout() == 0 || attempt == 2) {
-                return outcome;
-            }
+        BookOutcome outcome = processBook(task, source, rank, parser, seed);
+        if (outcome.timeout() > 0) {
             updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts + outcome.timeout(),
-                    continuationId, rank, seed, selectedBooks, "timeout-retry-" + attempt);
+                    continuationId, rank, seed, selectedBooks, "timeout-isolated");
         }
-        return BookOutcome.failed();
+        return outcome;
     }
 
     private ParsedBookSnapshot withSourceBookId(ParsedBookSnapshot snapshot, String sourceBookId) {
