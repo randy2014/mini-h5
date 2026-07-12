@@ -147,7 +147,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
 
             boolean authorizedContentTask = "AUTHORIZED_BOOK_CONTENT".equals(task.taskType);
-            if (authorizedContentTask) source = authorizedContentSource(source);
+            if (authorizedContentTask) {
+                if (!Boolean.TRUE.equals(source.enabled)) {
+                    throw new IllegalStateException("xbookcn source is disabled; approved-content collection was not started.");
+                }
+                source = authorizedContentSource(source);
+            }
             CrawlerSourceConfig effectiveSource = source;
             List<CrawlRankSource> ranks = loadRanks(task, source);
             for (CrawlRankSource rank : ranks) {
