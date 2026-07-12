@@ -53,7 +53,7 @@ final class AuthorizedContentBatchPlanner {
         return matcher.find() ? Long.parseLong(matcher.group(1)) : 0L;
     }
 
-    private static Set<Long> selectedIds(String message) {
+    static Set<Long> selectedIds(String message) {
         Set<Long> ids = new LinkedHashSet<>();
         if (!StringUtils.hasText(message)) {
             return ids;

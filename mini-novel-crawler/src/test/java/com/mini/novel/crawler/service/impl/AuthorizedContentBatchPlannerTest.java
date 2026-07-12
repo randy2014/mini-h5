@@ -44,6 +44,19 @@ class AuthorizedContentBatchPlannerTest {
         assertThat(plan.duplicateSelection()).isTrue();
     }
 
+    @Test
+    void continuesFromMainCursorAfterRetryBatch() {
+        var retryMessage = "continuation=afterId:62, selectedIds=57,58,59,62, mode=retry.";
+        assertThat(AuthorizedContentBatchPlanner.continuationAfterId(retryMessage)).isEqualTo(62L);
+
+        var plan = AuthorizedContentBatchPlanner.plan(books(80), Set.of(),
+                "continuation=afterId:69, selectedIds=65,66,67,68,69, mode=main.", 5);
+
+        assertThat(plan.previousAfterId()).isEqualTo(69L);
+        assertThat(plan.selectedIds()).containsExactly(70L, 71L, 72L, 73L, 74L);
+        assertThat(plan.afterId()).isEqualTo(74L);
+    }
+
     private static List<CrawlerAuthorizedBook> books(int count) {
         return java.util.stream.LongStream.rangeClosed(1, count)
                 .mapToObj(id -> {

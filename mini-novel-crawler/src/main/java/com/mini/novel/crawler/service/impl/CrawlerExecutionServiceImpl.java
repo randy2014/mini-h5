@@ -182,7 +182,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     Set<Long> retryIds = approvedContentRetryIds(task);
                     if (retryIds.isEmpty()) {
                         AuthorizedContentBatchPlanner.BatchPlan plan = AuthorizedContentBatchPlanner.plan(eligibleBooks,
-                                finishedAuthorizedSourceBookIds(effectiveSource), previousAuthorizedContentMessage(task), limit);
+                                finishedAuthorizedSourceBookIds(effectiveSource), previousAuthorizedMainContentMessage(task), limit);
                         if (plan.duplicateSelection() || !plan.advanced()) {
                             throw new IllegalStateException("authorized content batch did not advance: previousAfterId="
                                     + plan.previousAfterId() + ", afterId=" + plan.afterId());
@@ -272,17 +272,19 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
             if (total == 0) {
                 task.status = authorizedContentTask ? "SUCCESS" : "NO_DATA";
-                task.message = authorizedContentTask
+                        task.message = authorizedContentTask
                         ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, insertedBooks,
                         updatedBooks, insertedChapters, updatedChapters, deduplicated,
-                        riskBlockedCount, pendingReviewCount, timeoutCount, failed, continuationId, selectedIds, batchTimedOut)
+                        riskBlockedCount, pendingReviewCount, timeoutCount, failed, continuationId, selectedIds, batchTimedOut,
+                        approvedContentRetryIds(task).isEmpty())
                         : "Crawler finished, but no book was parsed. Check rank URL or source rules.";
             } else {
                 task.status = failed == 0 && !batchTimedOut ? "SUCCESS" : "PARTIAL_SUCCESS";
                 task.message = authorizedContentTask
                         ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, insertedBooks,
                         updatedBooks, insertedChapters, updatedChapters, deduplicated,
-                        riskBlockedCount, pendingReviewCount, timeoutCount, failed, continuationId, selectedIds, batchTimedOut)
+                        riskBlockedCount, pendingReviewCount, timeoutCount, failed, continuationId, selectedIds, batchTimedOut,
+                        approvedContentRetryIds(task).isEmpty())
                         : "Crawler finished: discovered " + total + ", saved " + success
                         + ", failed " + failed + ", merge task reports merged counts.";
             }
@@ -488,15 +490,30 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return book;
     }
 
-    private String previousAuthorizedContentMessage(CrawlTaskRecord task) {
-        CrawlTaskRecord previous = taskMapper.selectOne(new QueryWrapper<CrawlTaskRecord>()
+    private String previousAuthorizedMainContentMessage(CrawlTaskRecord task) {
+        List<CrawlTaskRecord> previousTasks = taskMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", task.sourceId)
                 .eq("task_type", "AUTHORIZED_BOOK_CONTENT")
                 .in("status", List.of("SUCCESS", "PARTIAL_SUCCESS"))
+                .notLike("target_url", "retryIds=")
                 .lt("id", task.id)
                 .orderByDesc("id")
-                .last("LIMIT 1"));
-        return previous == null ? "" : previous.message;
+                .last("LIMIT 200"));
+        long maxAfterId = 0L;
+        Set<Long> selectedIds = Set.of();
+        for (CrawlTaskRecord previous : previousTasks) {
+            long afterId = AuthorizedContentBatchPlanner.continuationAfterId(previous.message);
+            if (afterId > maxAfterId) {
+                maxAfterId = afterId;
+                selectedIds = AuthorizedContentBatchPlanner.selectedIds(previous.message);
+            }
+        }
+        if (maxAfterId == 0L) {
+            return "";
+        }
+        return "continuation=afterId:" + maxAfterId
+                + ", selectedIds=" + selectedIds.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("")
+                + ", mode=main.";
     }
 
     private ChapterStatusStats chapterStatusStats(Long bookRawId) {
@@ -516,7 +533,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private String authorizedContentMessage(int eligible, int selected, int processed, int insertedBooks,
                                             int updatedBooks, int insertedChapters, int updatedChapters,
                                             int deduplicated, int riskBlocked, int pendingReview, int timeouts,
-                                            int failed, Long continuationId, Set<Long> selectedIds, boolean batchTimedOut) {
+                                            int failed, Long continuationId, Set<Long> selectedIds, boolean batchTimedOut,
+                                            boolean mainBatch) {
         return "Approved adult-book content task finished: eligible=" + eligible
                 + ", selected=" + selected
                 + ", processed=" + processed
@@ -532,7 +550,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 + ", batchTimedOut=" + batchTimedOut
                 + ", continuation=" + (continuationId == null ? "none" : "afterId:" + continuationId)
                 + ", selectedIds=" + selectedIds.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("")
-                + ", mode=authorized-book-list-batch.";
+                + ", mode=" + (mainBatch ? "main" : "retry") + ".";
     }
 
     private record ChapterStatusStats(int riskBlocked, int pendingReview) {
