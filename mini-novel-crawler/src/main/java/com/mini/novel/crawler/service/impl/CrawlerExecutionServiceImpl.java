@@ -46,12 +46,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -196,7 +191,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     selectedIds = plan.selectedIds();
                     seeds = selectedAuthorizedBooks.stream()
                             .filter(b -> StringUtils.hasText(b.bookUrl))
-                            .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, "", 0L, "", rank.rankUrl))
+                            .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, b.sourceBookId, 0L, "", rank.rankUrl))
                             .toList();
                 } else {
                     Document rankPage = fetch(rank.rankUrl);
@@ -306,6 +301,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return BookOutcome.failed();
         }
         ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
+        if ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType) && StringUtils.hasText(seed.intro())) {
+            snapshot = withSourceBookId(snapshot, seed.intro());
+        }
         if (!StringUtils.hasText(snapshot.title())) {
             return BookOutcome.failed();
         }
@@ -325,12 +323,16 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return BookOutcome.deduplicatedWithMergeOutcome();
         }
         long beforeChapters = countRawChapters(book.id);
-        upsertChaptersAndContent(source, book, snapshot);
+        boolean completed = upsertChaptersAndContent(source, book, snapshot,
+                "AUTHORIZED_BOOK_CONTENT".equals(task.taskType)
+                        ? System.currentTimeMillis() + AUTHORIZED_BOOK_TIMEOUT_MILLIS
+                        : Long.MAX_VALUE);
         long afterChapters = countRawChapters(book.id);
         ChapterStatusStats stats = chapterStatusStats(book.id);
-        return new BookOutcome(true, 1, bookExists ? 0 : 1, bookExists ? 1 : 0,
+        return new BookOutcome(completed, 1, bookExists ? 0 : 1, bookExists ? 1 : 0,
                 (int) Math.max(0, afterChapters - beforeChapters),
-                (int) Math.min(beforeChapters, afterChapters), 0, stats.riskBlocked(), stats.pendingReview(), 0, true);
+                (int) Math.min(beforeChapters, afterChapters), 0, stats.riskBlocked(), stats.pendingReview(),
+                completed ? 0 : 1, true);
     }
 
     private BookOutcome processAuthorizedBookWithTimeout(CrawlTaskRecord task, CrawlerSourceConfig source,
@@ -340,36 +342,21 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                                                          int timeouts, Long continuationId) throws Exception {
         updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts,
                 continuationId, rank, seed, selectedBooks, "detail/catalog/chapter");
-        var executor = Executors.newSingleThreadExecutor();
-        try {
-            Callable<BookOutcome> callable = () -> processBook(task, source, rank, parser, seed);
-            BookOutcome lastTimeout = null;
-            for (int attempt = 1; attempt <= 2; attempt++) {
-                Future<BookOutcome> future = executor.submit(callable);
-                try {
-                    return future.get(AUTHORIZED_BOOK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-                } catch (TimeoutException ex) {
-                    future.cancel(true);
-                    lastTimeout = BookOutcome.timeoutOutcome();
-                    updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts + 1,
-                            continuationId, rank, seed, selectedBooks, "timeout-retry-" + attempt);
-                } catch (ExecutionException ex) {
-                    Throwable cause = ex.getCause();
-                    if (cause instanceof Exception exception) {
-                        if (attempt == 2) {
-                            throw exception;
-                        }
-                        updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts,
-                                continuationId, rank, seed, selectedBooks, "retry-" + attempt);
-                        continue;
-                    }
-                    throw new IllegalStateException(cause);
-                }
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            BookOutcome outcome = processBook(task, source, rank, parser, seed);
+            if (outcome.timeout() == 0 || attempt == 2) {
+                return outcome;
             }
-            return lastTimeout == null ? BookOutcome.failed() : lastTimeout;
-        } finally {
-            executor.shutdownNow();
+            updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts + outcome.timeout(),
+                    continuationId, rank, seed, selectedBooks, "timeout-retry-" + attempt);
         }
+        return BookOutcome.failed();
+    }
+
+    private ParsedBookSnapshot withSourceBookId(ParsedBookSnapshot snapshot, String sourceBookId) {
+        return new ParsedBookSnapshot(snapshot.title(), snapshot.author(), snapshot.coverUrl(), snapshot.intro(),
+                snapshot.sourceUrl(), sourceBookId, snapshot.wordCount(), snapshot.categoryName(), snapshot.bookStatus(),
+                snapshot.chapterId(), snapshot.chapterUrl(), snapshot.chapters(), snapshot.tagsJson());
     }
 
     private void updateRunningProgress(CrawlTaskRecord task, int total, int success, int failed,
@@ -901,13 +888,23 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private void upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
+        upsertChaptersAndContent(source, book, snapshot, Long.MAX_VALUE);
+    }
+
+    private boolean upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot,
+                                             long deadlineMillis) {
         List<ParsedChapterSnapshot> chapters = snapshot.chapters();
         if (chapters == null || chapters.isEmpty()) {
             upsertChapterAndContent(source, book, snapshot, null);
-            return;
+            return true;
         }
         int readyCount = 0;
+        boolean completed = true;
         for (ParsedChapterSnapshot parsedChapter : chapters) {
+            if (System.currentTimeMillis() > deadlineMillis) {
+                completed = false;
+                break;
+            }
             ParsedBookSnapshot chapterSnapshot = new ParsedBookSnapshot(
                     snapshot.title(),
                     snapshot.author(),
@@ -932,6 +929,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.contentStatus = isIsolatedReviewSource(source) ? "PENDING_REVIEW"
                 : readyCount > 0 ? "CONTENT_READY" : "CATALOG_READY";
         bookRawMapper.updateById(book);
+        return completed;
     }
 
     private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book,
