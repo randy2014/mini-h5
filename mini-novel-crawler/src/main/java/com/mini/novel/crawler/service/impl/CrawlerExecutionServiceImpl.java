@@ -179,16 +179,26 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             .last("LIMIT 500"));
                     eligibleCount = eligibleBooks.size();
                     int limit = approvedContentLimit(task);
-                    AuthorizedContentBatchPlanner.BatchPlan plan = AuthorizedContentBatchPlanner.plan(eligibleBooks,
-                            finishedAuthorizedSourceBookIds(effectiveSource), previousAuthorizedContentMessage(task), limit);
-                    if (plan.duplicateSelection() || !plan.advanced()) {
-                        throw new IllegalStateException("authorized content batch did not advance: previousAfterId="
-                                + plan.previousAfterId() + ", afterId=" + plan.afterId());
+                    Set<Long> retryIds = approvedContentRetryIds(task);
+                    if (retryIds.isEmpty()) {
+                        AuthorizedContentBatchPlanner.BatchPlan plan = AuthorizedContentBatchPlanner.plan(eligibleBooks,
+                                finishedAuthorizedSourceBookIds(effectiveSource), previousAuthorizedContentMessage(task), limit);
+                        if (plan.duplicateSelection() || !plan.advanced()) {
+                            throw new IllegalStateException("authorized content batch did not advance: previousAfterId="
+                                    + plan.previousAfterId() + ", afterId=" + plan.afterId());
+                        }
+                        selectedAuthorizedBooks = plan.selected();
+                        continuationId = plan.afterId() == 0 ? null : plan.afterId();
+                        selectedIds = plan.selectedIds();
+                    } else {
+                        selectedAuthorizedBooks = eligibleBooks.stream()
+                                .filter(book -> book.id != null && retryIds.contains(book.id))
+                                .limit(limit)
+                                .toList();
+                        continuationId = selectedAuthorizedBooks.stream().map(book -> book.id).max(Long::compareTo).orElse(null);
+                        selectedIds = new LinkedHashSet<>(selectedAuthorizedBooks.stream().map(book -> book.id).toList());
                     }
-                    selectedAuthorizedBooks = plan.selected();
                     selectedCount = selectedAuthorizedBooks.size();
-                    continuationId = plan.afterId() == 0 ? null : plan.afterId();
-                    selectedIds = plan.selectedIds();
                     seeds = selectedAuthorizedBooks.stream()
                             .filter(b -> StringUtils.hasText(b.bookUrl))
                             .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, b.sourceBookId, 0L, "", rank.rankUrl))
@@ -417,6 +427,28 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
         }
         return Math.max(1, Math.min(20, limit));
+    }
+
+    private Set<Long> approvedContentRetryIds(CrawlTaskRecord task) {
+        Set<Long> ids = new LinkedHashSet<>();
+        if (task == null || !StringUtils.hasText(task.targetUrl)) {
+            return ids;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:#|&|\\?)retryIds=([^&#]+)")
+                .matcher(task.targetUrl);
+        if (!matcher.find()) {
+            return ids;
+        }
+        for (String value : matcher.group(1).split(",")) {
+            if (StringUtils.hasText(value)) {
+                try {
+                    ids.add(Long.parseLong(value.trim()));
+                } catch (NumberFormatException ignored) {
+                    // Ignore malformed retry ids; controller validates normal admin calls.
+                }
+            }
+        }
+        return ids;
     }
 
     private boolean isAuthorizedBookFinished(CrawlerSourceConfig source, CrawlerAuthorizedBook authorizedBook) {
