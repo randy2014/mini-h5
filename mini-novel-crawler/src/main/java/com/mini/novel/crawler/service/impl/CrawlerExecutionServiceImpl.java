@@ -46,6 +46,12 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -67,6 +73,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private static final int DEFAULT_MAX_CHAPTER_PAGES = 8;
     private static final int MAX_CHAPTER_PAGES_CAP = 30;
     private static final int FETCH_TIMEOUT_MILLIS = 45000;
+    private static final long AUTHORIZED_BOOK_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(5);
+    private static final long AUTHORIZED_BATCH_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
 
     private final CrawlTaskRecordMapper taskMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
@@ -145,8 +153,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         int insertedChapters = 0;
         int updatedChapters = 0;
         int deduplicated = 0;
+        int timeoutCount = 0;
         Long continuationId = null;
         Set<Long> selectedIds = Set.of();
+        long batchStartedAt = System.currentTimeMillis();
+        boolean batchTimedOut = false;
         try {
             CrawlerSourceConfig source = sourceMapper.selectById(task.sourceId);
             if (source == null) {
@@ -203,85 +214,42 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                         task.id, rankLabel(rank), rankDiscovered);
                 total += seeds.size();
                 for (ParsedBookSeed seed : seeds) {
+                    if (authorizedContentTask && System.currentTimeMillis() - batchStartedAt > AUTHORIZED_BATCH_TIMEOUT_MILLIS) {
+                        batchTimedOut = true;
+                        updateAuthorizedRunningProgress(task, total, success, failed, processedCount, timeoutCount,
+                                continuationId, rank, seed, selectedAuthorizedBooks, "batch-timeout");
+                        break;
+                    }
                     try {
-                        CrawlBookRaw completedBook = completedReadyBook(source, seed);
-                        if (completedBook != null) {
+                        BookOutcome outcome = authorizedContentTask
+                                ? processAuthorizedBookWithTimeout(task, source, rank, parser, seed,
+                                selectedAuthorizedBooks, total, success, failed, processedCount, timeoutCount, continuationId)
+                                : processBook(task, source, rank, parser, seed);
+                        if (outcome.success()) {
                             success++;
                             rankSaved++;
-                            if (authorizedContentTask) {
-                                deduplicated++;
-                            }
-                            updateRunningProgress(task, total, success, failed, rank, seed);
-                            continue;
-                        }
-                        if (!authorizedContentTask && isXbookcnAuthorizedSource(source) && !isAuthorizedMetadataMode(source)
-                                && !canCrawlAuthorizedChapters(source, sourceBookIdFromUrl(seed.url()))) {
+                        } else {
                             failed++;
                             rankFailed++;
-                            updateRunningProgress(task, total, success, failed, rank, seed);
-                            continue;
                         }
-                        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
-                        if (!StringUtils.hasText(snapshot.title())) {
-                            failed++;
-                            rankFailed++;
-                            updateRunningProgress(task, total, success, failed, rank, seed);
-                            continue;
-                        }
-                        if (isAuthorizedMetadataMode(source)) {
-                            upsertAuthorizedBook(source, snapshot);
-                            success++;
-                            rankSaved++;
-                            updateRunningProgress(task, total, success, failed, rank, seed);
-                            continue;
-                        }
-                        if (isXbookcnAuthorizedSource(source) && !canCrawlAuthorizedChapters(source, snapshot)) {
-                            failed++;
-                            rankFailed++;
-                            updateRunningProgress(task, total, success, failed, rank, seed);
-                            continue;
-                        }
-                        if (isSnapshotFullyMapped(source, snapshot)) {
-                            success++;
-                            rankSaved++;
-                            if (authorizedContentTask) {
-                                deduplicated++;
-                            }
-                            updateRunningProgress(task, total, success, failed, rank, seed);
-                            continue;
-                        }
-                        boolean bookExists = rawBookExists(source, snapshot);
-                        CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
-                        if (isCompletedBookReady(book)) {
-                            success++;
-                            rankSaved++;
-                            if (authorizedContentTask) {
-                                deduplicated++;
-                            }
-                            updateRunningProgress(task, total, success, failed, rank, seed);
-                            updateMergeTask(task, true);
-                            continue;
-                        }
-                        long beforeChapters = countRawChapters(book.id);
-                        upsertChaptersAndContent(source, book, snapshot);
-                        long afterChapters = countRawChapters(book.id);
-                        success++;
-                        rankSaved++;
-                        processedCount++;
+                        processedCount += outcome.processed();
+                        insertedBooks += outcome.insertedBooks();
+                        updatedBooks += outcome.updatedBooks();
+                        insertedChapters += outcome.insertedChapters();
+                        updatedChapters += outcome.updatedChapters();
+                        deduplicated += outcome.deduplicated();
+                        riskBlockedCount += outcome.riskBlocked();
+                        pendingReviewCount += outcome.pendingReview();
+                        timeoutCount += outcome.timeout();
                         if (authorizedContentTask) {
-                            if (bookExists) {
-                                updatedBooks++;
-                            } else {
-                                insertedBooks++;
-                            }
-                            insertedChapters += (int) Math.max(0, afterChapters - beforeChapters);
-                            updatedChapters += (int) Math.min(beforeChapters, afterChapters);
-                            ChapterStatusStats stats = chapterStatusStats(book.id);
-                            riskBlockedCount += stats.riskBlocked();
-                            pendingReviewCount += stats.pendingReview();
+                            updateAuthorizedRunningProgress(task, total, success, failed, processedCount, timeoutCount,
+                                    continuationId, rank, seed, selectedAuthorizedBooks, outcome.timeout() > 0 ? "timeout" : "chapter");
+                        } else {
+                            updateRunningProgress(task, total, success, failed, rank, seed);
                         }
-                        updateRunningProgress(task, total, success, failed, rank, seed);
-                        updateMergeTask(task, true);
+                        if (outcome.mergeTask()) {
+                            updateMergeTask(task, true);
+                        }
                     } catch (Exception itemEx) {
                         failed++;
                         rankFailed++;
@@ -289,6 +257,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                         log.warn("Crawler book failed: taskId={}, rank={}, bookUrl={}, message={}",
                                 task.id, rankLabel(rank), seed.url(), itemEx.getMessage());
                     }
+                }
+                if (batchTimedOut) {
+                    break;
                 }
                 log.info("Crawler rank finished: taskId={}, rank={}, discovered={}, saved={}, failed={}",
                         task.id, rankLabel(rank), rankDiscovered, rankSaved, rankFailed);
@@ -299,14 +270,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 task.message = authorizedContentTask
                         ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, insertedBooks,
                         updatedBooks, insertedChapters, updatedChapters, deduplicated,
-                        riskBlockedCount, pendingReviewCount, failed, continuationId, selectedIds)
+                        riskBlockedCount, pendingReviewCount, timeoutCount, failed, continuationId, selectedIds, batchTimedOut)
                         : "Crawler finished, but no book was parsed. Check rank URL or source rules.";
             } else {
-                task.status = failed == 0 ? "SUCCESS" : "PARTIAL_SUCCESS";
+                task.status = failed == 0 && !batchTimedOut ? "SUCCESS" : "PARTIAL_SUCCESS";
                 task.message = authorizedContentTask
                         ? authorizedContentMessage(eligibleCount, selectedCount, processedCount, insertedBooks,
                         updatedBooks, insertedChapters, updatedChapters, deduplicated,
-                        riskBlockedCount, pendingReviewCount, failed, continuationId, selectedIds)
+                        riskBlockedCount, pendingReviewCount, timeoutCount, failed, continuationId, selectedIds, batchTimedOut)
                         : "Crawler finished: discovered " + total + ", saved " + success
                         + ", failed " + failed + ", merge task reports merged counts.";
             }
@@ -324,6 +295,83 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
     }
 
+    private BookOutcome processBook(CrawlTaskRecord task, CrawlerSourceConfig source, CrawlRankSource rank,
+                                    CrawlerSiteParser parser, ParsedBookSeed seed) throws IOException {
+        CrawlBookRaw completedBook = completedReadyBook(source, seed);
+        if (completedBook != null) {
+            return BookOutcome.deduplicated();
+        }
+        if (!"AUTHORIZED_BOOK_CONTENT".equals(task.taskType) && isXbookcnAuthorizedSource(source) && !isAuthorizedMetadataMode(source)
+                && !canCrawlAuthorizedChapters(source, sourceBookIdFromUrl(seed.url()))) {
+            return BookOutcome.failed();
+        }
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
+        if (!StringUtils.hasText(snapshot.title())) {
+            return BookOutcome.failed();
+        }
+        if (isAuthorizedMetadataMode(source)) {
+            upsertAuthorizedBook(source, snapshot);
+            return BookOutcome.successOnly();
+        }
+        if (isXbookcnAuthorizedSource(source) && !canCrawlAuthorizedChapters(source, snapshot)) {
+            return BookOutcome.failed();
+        }
+        if (isSnapshotFullyMapped(source, snapshot)) {
+            return BookOutcome.deduplicated();
+        }
+        boolean bookExists = rawBookExists(source, snapshot);
+        CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
+        if (isCompletedBookReady(book)) {
+            return BookOutcome.deduplicatedWithMerge();
+        }
+        long beforeChapters = countRawChapters(book.id);
+        upsertChaptersAndContent(source, book, snapshot);
+        long afterChapters = countRawChapters(book.id);
+        ChapterStatusStats stats = chapterStatusStats(book.id);
+        return new BookOutcome(true, 1, bookExists ? 0 : 1, bookExists ? 1 : 0,
+                (int) Math.max(0, afterChapters - beforeChapters),
+                (int) Math.min(beforeChapters, afterChapters), 0, stats.riskBlocked(), stats.pendingReview(), 0, true);
+    }
+
+    private BookOutcome processAuthorizedBookWithTimeout(CrawlTaskRecord task, CrawlerSourceConfig source,
+                                                         CrawlRankSource rank, CrawlerSiteParser parser,
+                                                         ParsedBookSeed seed, List<CrawlerAuthorizedBook> selectedBooks,
+                                                         int total, int success, int failed, int processed,
+                                                         int timeouts, Long continuationId) throws Exception {
+        updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts,
+                continuationId, rank, seed, selectedBooks, "detail/catalog/chapter");
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            Callable<BookOutcome> callable = () -> processBook(task, source, rank, parser, seed);
+            BookOutcome lastTimeout = null;
+            for (int attempt = 1; attempt <= 2; attempt++) {
+                Future<BookOutcome> future = executor.submit(callable);
+                try {
+                    return future.get(AUTHORIZED_BOOK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException ex) {
+                    future.cancel(true);
+                    lastTimeout = BookOutcome.timeout();
+                    updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts + 1,
+                            continuationId, rank, seed, selectedBooks, "timeout-retry-" + attempt);
+                } catch (ExecutionException ex) {
+                    Throwable cause = ex.getCause();
+                    if (cause instanceof Exception exception) {
+                        if (attempt == 2) {
+                            throw exception;
+                        }
+                        updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts,
+                                continuationId, rank, seed, selectedBooks, "retry-" + attempt);
+                        continue;
+                    }
+                    throw new IllegalStateException(cause);
+                }
+            }
+            return lastTimeout == null ? BookOutcome.failed() : lastTimeout;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     private void updateRunningProgress(CrawlTaskRecord task, int total, int success, int failed,
                                        CrawlRankSource rank, ParsedBookSeed seed) {
         task.totalCount = total;
@@ -335,6 +383,31 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 + ", failed " + failed
                 + ", current rank " + limit(rankLabel(rank), 96)
                 + ", current book " + limit(seed.url(), 160) + ".";
+        taskMapper.updateById(task);
+    }
+
+    private void updateAuthorizedRunningProgress(CrawlTaskRecord task, int total, int success, int failed,
+                                                 int processed, int timeouts, Long continuationId,
+                                                 CrawlRankSource rank, ParsedBookSeed seed,
+                                                 List<CrawlerAuthorizedBook> selectedBooks, String stage) {
+        CrawlerAuthorizedBook current = selectedBooks.stream()
+                .filter(book -> seed != null && seed.url().equals(book.bookUrl))
+                .findFirst()
+                .orElse(null);
+        task.totalCount = total;
+        task.successCount = success;
+        task.failCount = failed;
+        task.updatedAt = LocalDateTime.now();
+        task.message = "Authorized content running: processed=" + processed
+                + ", success=" + success
+                + ", failed=" + failed
+                + ", timeouts=" + timeouts
+                + ", continuation=" + (continuationId == null ? "none" : "afterId:" + continuationId)
+                + ", currentAuthorizedBookId=" + (current == null ? "unknown" : current.id)
+                + ", currentSourceBookId=" + (current == null ? "unknown" : limit(current.sourceBookId, 64))
+                + ", stage=" + stage
+                + ", rank=" + limit(rankLabel(rank), 96)
+                + ".";
         taskMapper.updateById(task);
     }
 
@@ -426,8 +499,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     private String authorizedContentMessage(int eligible, int selected, int processed, int insertedBooks,
                                             int updatedBooks, int insertedChapters, int updatedChapters,
-                                            int deduplicated, int riskBlocked, int pendingReview, int failed,
-                                            Long continuationId, Set<Long> selectedIds) {
+                                            int deduplicated, int riskBlocked, int pendingReview, int timeouts,
+                                            int failed, Long continuationId, Set<Long> selectedIds, boolean batchTimedOut) {
         return "Approved adult-book content task finished: eligible=" + eligible
                 + ", selected=" + selected
                 + ", processed=" + processed
@@ -438,13 +511,39 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 + ", deduplicated=" + deduplicated
                 + ", riskBlocked=" + riskBlocked
                 + ", pendingReview=" + pendingReview
+                + ", timeouts=" + timeouts
                 + ", failed=" + failed
+                + ", batchTimedOut=" + batchTimedOut
                 + ", continuation=" + (continuationId == null ? "none" : "afterId:" + continuationId)
                 + ", selectedIds=" + selectedIds.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("")
                 + ", mode=authorized-book-list-batch.";
     }
 
     private record ChapterStatusStats(int riskBlocked, int pendingReview) {
+    }
+
+    private record BookOutcome(boolean success, int processed, int insertedBooks, int updatedBooks,
+                               int insertedChapters, int updatedChapters, int deduplicated,
+                               int riskBlocked, int pendingReview, int timeout, boolean mergeTask) {
+        static BookOutcome successOnly() {
+            return new BookOutcome(true, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
+        }
+
+        static BookOutcome failed() {
+            return new BookOutcome(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
+        }
+
+        static BookOutcome timeout() {
+            return new BookOutcome(false, 0, 0, 0, 0, 0, 0, 0, 0, 1, false);
+        }
+
+        static BookOutcome deduplicated() {
+            return new BookOutcome(true, 0, 0, 0, 0, 0, 1, 0, 0, 0, false);
+        }
+
+        static BookOutcome deduplicatedWithMerge() {
+            return new BookOutcome(true, 0, 0, 0, 0, 0, 1, 0, 0, 0, true);
+        }
     }
 
     private boolean isAuthorizedMetadataMode(CrawlerSourceConfig source) {
