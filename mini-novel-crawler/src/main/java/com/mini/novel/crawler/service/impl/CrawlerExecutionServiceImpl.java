@@ -299,7 +299,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                                     CrawlerSiteParser parser, ParsedBookSeed seed) throws IOException {
         CrawlBookRaw completedBook = completedReadyBook(source, seed);
         if (completedBook != null) {
-            return BookOutcome.deduplicated();
+            return BookOutcome.deduplicatedOutcome();
         }
         if (!"AUTHORIZED_BOOK_CONTENT".equals(task.taskType) && isXbookcnAuthorizedSource(source) && !isAuthorizedMetadataMode(source)
                 && !canCrawlAuthorizedChapters(source, sourceBookIdFromUrl(seed.url()))) {
@@ -317,12 +317,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return BookOutcome.failed();
         }
         if (isSnapshotFullyMapped(source, snapshot)) {
-            return BookOutcome.deduplicated();
+            return BookOutcome.deduplicatedOutcome();
         }
         boolean bookExists = rawBookExists(source, snapshot);
         CrawlBookRaw book = upsertBookRaw(task, source, rank, snapshot);
         if (isCompletedBookReady(book)) {
-            return BookOutcome.deduplicatedWithMerge();
+            return BookOutcome.deduplicatedWithMergeOutcome();
         }
         long beforeChapters = countRawChapters(book.id);
         upsertChaptersAndContent(source, book, snapshot);
@@ -350,7 +350,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     return future.get(AUTHORIZED_BOOK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
                 } catch (TimeoutException ex) {
                     future.cancel(true);
-                    lastTimeout = BookOutcome.timeout();
+                    lastTimeout = BookOutcome.timeoutOutcome();
                     updateAuthorizedRunningProgress(task, total, success, failed, processed, timeouts + 1,
                             continuationId, rank, seed, selectedBooks, "timeout-retry-" + attempt);
                 } catch (ExecutionException ex) {
@@ -533,15 +533,15 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             return new BookOutcome(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, false);
         }
 
-        static BookOutcome timeout() {
+        static BookOutcome timeoutOutcome() {
             return new BookOutcome(false, 0, 0, 0, 0, 0, 0, 0, 0, 1, false);
         }
 
-        static BookOutcome deduplicated() {
+        static BookOutcome deduplicatedOutcome() {
             return new BookOutcome(true, 0, 0, 0, 0, 0, 1, 0, 0, 0, false);
         }
 
-        static BookOutcome deduplicatedWithMerge() {
+        static BookOutcome deduplicatedWithMergeOutcome() {
             return new BookOutcome(true, 0, 0, 0, 0, 0, 1, 0, 0, 0, true);
         }
     }
