@@ -224,8 +224,9 @@ public class ContentReviewController {
                 || !truthy(permission.get("allowStore")) || !truthy(permission.get("allowDisplay")) || !truthy(permission.get("allowVipDisplay"))) {
             throw new IllegalArgumentException("Authorized VIP store/display permissions are required before chapter approval.");
         }
-        List<Long> ids = jdbc.query("SELECT id FROM mini_novel.novel WHERE source_url=? LIMIT 1",
-                (rs, row) -> rs.getLong(1), chapter.get("bookSourceUrl"));
+        String publicationUrl = chapter.get("bookSourceUrl") + "#rawBook=" + chapter.get("bookRawId");
+        List<Long> ids = jdbc.query("SELECT id FROM mini_novel.novel WHERE source_url IN (?,?) ORDER BY source_url=? DESC LIMIT 1",
+                (rs, row) -> rs.getLong(1), publicationUrl, chapter.get("bookSourceUrl"), publicationUrl);
         Long novelId;
         if (ids.isEmpty()) {
             jdbc.update("""
@@ -233,7 +234,7 @@ public class ContentReviewController {
                   word_count,source_url,operator_id,created_at,updated_at)
                 VALUES(?,?,?,?,1,1,0,0,?,?,NOW(),NOW())
                 """, chapter.get("bookTitle"), Objects.toString(chapter.get("author"), ""), chapter.get("coverUrl"),
-                    chapter.get("intro"), chapter.get("bookSourceUrl"), operatorId);
+                    chapter.get("intro"), publicationUrl, operatorId);
             novelId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         } else {
             novelId = ids.get(0);
@@ -247,8 +248,9 @@ public class ContentReviewController {
         refreshNovel(novelId);
     }
     private void unpublishChapter(Map<String, Object> chapter) {
-        List<Long> ids = jdbc.query("SELECT id FROM mini_novel.novel WHERE source_url=? LIMIT 1",
-                (rs, row) -> rs.getLong(1), chapter.get("bookSourceUrl"));
+        String publicationUrl = chapter.get("bookSourceUrl") + "#rawBook=" + chapter.get("bookRawId");
+        List<Long> ids = jdbc.query("SELECT id FROM mini_novel.novel WHERE source_url IN (?,?) ORDER BY source_url=? DESC LIMIT 1",
+                (rs, row) -> rs.getLong(1), publicationUrl, chapter.get("bookSourceUrl"), publicationUrl);
         if (ids.isEmpty()) return;
         Long novelId = ids.get(0);
         jdbc.update("DELETE FROM mini_novel.chapter WHERE novel_id=? AND chapter_no=?", novelId, chapter.get("chapterNo"));
