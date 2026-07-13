@@ -135,6 +135,7 @@ public class ContentReviewController {
         if (!"PENDING_REVIEW".equals(before) || chapter.get("contentRawId") == null) throw new IllegalArgumentException("Only pending chapters with isolated content can be reviewed.");
         String after = "APPROVE".equals(request.decision) ? "CONTENT_READY" : "REVIEW_REJECTED";
         jdbc.update("UPDATE mini_novel_crawler.crawl_chapter_raw SET content_status=?,updated_at=NOW() WHERE id=?", after, chapterRawId);
+        if ("APPROVE".equals(request.decision)) publishChapter(chapter, operatorId); else unpublishChapter(chapter);
         audit(chapter, before, after, operatorId, "CHAPTER_REVIEW_" + request.decision, request.remark);
         recomputeBook(((Number) chapter.get("bookRawId")).longValue());
         return Result.ok(Map.of("chapterRawId", chapterRawId, "before", before, "after", after));
@@ -163,6 +164,8 @@ public class ContentReviewController {
             Long chapterId = ((Number) chapter.get("chapterRawId")).longValue();
             jdbc.update("UPDATE mini_novel_crawler.crawl_chapter_raw SET content_status=?,updated_at=NOW() WHERE id=?", after, chapterId);
             chapter.put("sourceCode", book.get("sourceCode")); chapter.put("sourceBookId", book.get("sourceBookId"));
+            Map<String, Object> fullChapter = chapterForUpdate(chapterId);
+            if ("APPROVE".equals(request.decision)) publishChapter(fullChapter, operatorId); else unpublishChapter(fullChapter);
             audit(chapter, "PENDING_REVIEW", after, operatorId, "BOOK_CHAPTER_REVIEW_" + request.decision, request.remark);
         }
         String bookStatus = recomputeBook(bookRawId);
@@ -192,7 +195,9 @@ public class ContentReviewController {
     private Map<String, Object> chapterForUpdate(Long id) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT c.id chapterRawId,c.book_raw_id bookRawId,c.content_status contentStatus,r.id contentRawId,
-                   b.source_code sourceCode,b.source_book_id sourceBookId
+                   c.chapter_no chapterNo,c.title chapterTitle,c.source_url chapterSourceUrl,r.content,
+                   b.source_code sourceCode,b.source_book_id sourceBookId,b.source_url bookSourceUrl,
+                   b.title bookTitle,b.author,b.intro,b.cover_url coverUrl
             FROM mini_novel_crawler.crawl_chapter_raw c JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
             WHERE c.id=? AND b.source_code=? FOR UPDATE
@@ -209,6 +214,61 @@ public class ContentReviewController {
         jdbc.update("UPDATE mini_novel_crawler.crawl_book_raw SET content_status=?,updated_at=NOW() WHERE id=?", status, bookId);
         return status;
     }
+    private void publishChapter(Map<String, Object> chapter, Long operatorId) {
+        Map<String, Object> permission = jdbc.queryForMap("""
+            SELECT authorization_status authorizationStatus,review_status reviewStatus,risk_level riskLevel,
+                   allow_store allowStore,allow_display allowDisplay,allow_vip_display allowVipDisplay
+            FROM mini_novel_crawler.crawler_authorized_book WHERE source_code=? AND source_book_id=? LIMIT 1
+            """, chapter.get("sourceCode"), chapter.get("sourceBookId"));
+        if (!"AUTHORIZED".equals(permission.get("authorizationStatus")) || !"APPROVED".equals(permission.get("reviewStatus")) || "BLOCKED".equals(permission.get("riskLevel"))
+                || !truthy(permission.get("allowStore")) || !truthy(permission.get("allowDisplay")) || !truthy(permission.get("allowVipDisplay"))) {
+            throw new IllegalArgumentException("Authorized VIP store/display permissions are required before chapter approval.");
+        }
+        List<Long> ids = jdbc.query("SELECT id FROM mini_novel.novel WHERE source_url=? LIMIT 1",
+                (rs, row) -> rs.getLong(1), chapter.get("bookSourceUrl"));
+        Long novelId;
+        if (ids.isEmpty()) {
+            jdbc.update("""
+                INSERT INTO mini_novel.novel(title,author,cover_url,intro,status,vip_required,free_chapter_count,
+                  word_count,source_url,operator_id,created_at,updated_at)
+                VALUES(?,?,?,?,1,1,0,0,?,?,NOW(),NOW())
+                """, chapter.get("bookTitle"), Objects.toString(chapter.get("author"), ""), chapter.get("coverUrl"),
+                    chapter.get("intro"), chapter.get("bookSourceUrl"), operatorId);
+            novelId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        } else {
+            novelId = ids.get(0);
+            jdbc.update("UPDATE mini_novel.novel SET status=1,vip_required=1,free_chapter_count=0,offline_reason=NULL,offline_at=NULL,operator_id=?,updated_at=NOW() WHERE id=?", operatorId, novelId);
+        }
+        jdbc.update("""
+            INSERT INTO mini_novel.chapter(novel_id,chapter_no,title,content,is_vip,price_coin,source_url,created_at,updated_at)
+            VALUES(?,?,?,?,1,0,?,NOW(),NOW())
+            ON DUPLICATE KEY UPDATE title=VALUES(title),content=VALUES(content),is_vip=1,source_url=VALUES(source_url),updated_at=NOW()
+            """, novelId, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"), chapter.get("chapterSourceUrl"));
+        refreshNovel(novelId);
+    }
+    private void unpublishChapter(Map<String, Object> chapter) {
+        List<Long> ids = jdbc.query("SELECT id FROM mini_novel.novel WHERE source_url=? LIMIT 1",
+                (rs, row) -> rs.getLong(1), chapter.get("bookSourceUrl"));
+        if (ids.isEmpty()) return;
+        Long novelId = ids.get(0);
+        jdbc.update("DELETE FROM mini_novel.chapter WHERE novel_id=? AND chapter_no=?", novelId, chapter.get("chapterNo"));
+        refreshNovel(novelId);
+    }
+    private void refreshNovel(Long novelId) {
+        Long approved = jdbc.queryForObject("SELECT COUNT(*) FROM mini_novel.chapter WHERE novel_id=?", Long.class, novelId);
+        if (approved == null || approved == 0) {
+            jdbc.update("UPDATE mini_novel.novel SET status=0,latest_chapter_id=NULL,latest_chapter_title=NULL,word_count=0,updated_at=NOW() WHERE id=?", novelId);
+            return;
+        }
+        jdbc.update("""
+            UPDATE mini_novel.novel n SET n.status=1,n.vip_required=1,n.free_chapter_count=0,
+              n.word_count=(SELECT COALESCE(SUM(CHAR_LENGTH(c.content)),0) FROM mini_novel.chapter c WHERE c.novel_id=n.id),
+              n.latest_chapter_id=(SELECT c.id FROM mini_novel.chapter c WHERE c.novel_id=n.id ORDER BY c.chapter_no DESC LIMIT 1),
+              n.latest_chapter_title=(SELECT c.title FROM mini_novel.chapter c WHERE c.novel_id=n.id ORDER BY c.chapter_no DESC LIMIT 1),
+              n.updated_at=NOW() WHERE n.id=?
+            """, novelId);
+    }
+    private boolean truthy(Object value) { return value instanceof Boolean b ? b : value instanceof Number n && n.intValue() != 0; }
     private void audit(Map<String, Object> row, String before, String after, Long operatorId, String action, String remark) {
         Long authorizedId = jdbc.queryForObject("SELECT id FROM mini_novel_crawler.crawler_authorized_book WHERE source_code=? AND source_book_id=? LIMIT 1", Long.class, row.get("sourceCode"), row.get("sourceBookId"));
         if (authorizedId == null) throw new IllegalArgumentException("Authorized-book audit target is missing.");

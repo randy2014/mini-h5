@@ -2,6 +2,7 @@ package com.mini.novel.api.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mini.novel.api.support.CurrentUserResolver;
+import com.mini.novel.api.support.VipPublicationProgress;
 import com.mini.novel.book.entity.Chapter;
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.book.service.BookReadService;
@@ -23,12 +24,14 @@ public class NovelController {
     private final BookReadService bookReadService;
     private final VipAccessService vipAccessService;
     private final CurrentUserResolver currentUserResolver;
+    private final VipPublicationProgress publicationProgress;
 
     public NovelController(BookReadService bookReadService, VipAccessService vipAccessService,
-                           CurrentUserResolver currentUserResolver) {
+                           CurrentUserResolver currentUserResolver, VipPublicationProgress publicationProgress) {
         this.bookReadService = bookReadService;
         this.vipAccessService = vipAccessService;
         this.currentUserResolver = currentUserResolver;
+        this.publicationProgress = publicationProgress;
     }
 
     @GetMapping("/search")
@@ -45,13 +48,15 @@ public class NovelController {
 
     @GetMapping("/{novelId}")
     public Result<Novel> detail(@PathVariable("novelId") Long novelId) {
-        return Result.ok(bookReadService.getNovel(novelId));
+        return Result.ok(publicationProgress.enrich(bookReadService.getNovel(novelId)));
     }
 
     @GetMapping("/{novelId}/chapters")
     public Result<Page<Chapter>> chapters(@PathVariable("novelId") Long novelId,
                                           @RequestParam(value = "page", defaultValue = "1") long page,
                                           @RequestParam(value = "size", defaultValue = "80") long size) {
+        Novel novel = bookReadService.getNovel(novelId);
+        if (publicationProgress.supports(novel)) return Result.ok(publicationProgress.chapters(novel, page, size));
         return Result.ok(bookReadService.listChapters(novelId, page, size));
     }
 

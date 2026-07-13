@@ -29,6 +29,10 @@
         </van-button>
         <van-button block round plain color="#1f6f64" icon="bookmark-o" @click="addToBookshelf">加入书架</van-button>
       </div>
+      <div v-if="book.publishStatus" class="reading-progress-card">
+        <span>{{ book.publishStatus === 'REVIEWING' ? '内容审核中' : '已审核开放' }}</span>
+        <strong>已开放 {{ book.approvedChapterCount || 0 }} / {{ book.totalChapterCount || 0 }} 章</strong>
+      </div>
 
       <div v-if="activeChapterId" class="reading-progress-card">
         <span>上次读到</span>
@@ -64,14 +68,16 @@
           :id="`chapter-${chapter.id}`"
           :key="chapter.id"
           type="button"
-          :class="{ 'chapter-active': chapter.id === activeChapterId }"
-          @click="read(chapter)"
+          :class="{ 'chapter-active': chapter.id === activeChapterId, 'chapter-locked': chapter.readable === false }"
+          :disabled="chapter.readable === false"
+          @click="chapter.readable === false ? null : read(chapter)"
         >
           <span>
             <b>{{ chapter.title }}</b>
             <small>第 {{ chapter.chapterNo }} 章</small>
           </span>
-          <van-tag v-if="chapter.vip" color="#9b7a2f">VIP</van-tag>
+          <van-tag v-if="chapter.readable === false" color="#8b949e">待审核</van-tag>
+          <van-tag v-else-if="chapter.vip" color="#9b7a2f">VIP</van-tag>
         </button>
       </div>
       <van-empty v-if="chapters.length && displayedChapters.length === 0" description="本页没有匹配章节" />

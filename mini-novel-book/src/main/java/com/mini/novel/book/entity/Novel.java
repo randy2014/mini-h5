@@ -2,6 +2,7 @@ package com.mini.novel.book.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
@@ -26,6 +27,14 @@ public class Novel {
     private Long operatorId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    @TableField(exist = false)
+    private Integer approvedChapterCount;
+    @TableField(exist = false)
+    private Integer totalChapterCount;
+    @TableField(exist = false)
+    private String reviewProgress;
+    @TableField(exist = false)
+    private String publishStatus;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -63,4 +72,12 @@ public class Novel {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public Integer getApprovedChapterCount() { return approvedChapterCount; }
+    public void setApprovedChapterCount(Integer approvedChapterCount) { this.approvedChapterCount = approvedChapterCount; }
+    public Integer getTotalChapterCount() { return totalChapterCount; }
+    public void setTotalChapterCount(Integer totalChapterCount) { this.totalChapterCount = totalChapterCount; }
+    public String getReviewProgress() { return reviewProgress; }
+    public void setReviewProgress(String reviewProgress) { this.reviewProgress = reviewProgress; }
+    public String getPublishStatus() { return publishStatus; }
+    public void setPublishStatus(String publishStatus) { this.publishStatus = publishStatus; }
 }

@@ -20,6 +20,10 @@ public class Chapter {
     private String sourceUrl;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    @TableField(exist = false)
+    private Boolean readable;
+    @TableField(exist = false)
+    private String reviewStatus;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -41,4 +45,8 @@ public class Chapter {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public Boolean getReadable() { return readable; }
+    public void setReadable(Boolean readable) { this.readable = readable; }
+    public String getReviewStatus() { return reviewStatus; }
+    public void setReviewStatus(String reviewStatus) { this.reviewStatus = reviewStatus; }
 }

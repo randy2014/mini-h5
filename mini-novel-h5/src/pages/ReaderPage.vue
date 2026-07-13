@@ -42,11 +42,13 @@
             v-for="item in catalogChapters"
             :key="item.id"
             type="button"
-            :class="{ active: item.id === chapter.id }"
-            @click="readCatalog(item)"
+            :class="{ active: item.id === chapter.id, locked: item.readable === false }"
+            :disabled="item.readable === false"
+            @click="item.readable === false ? null : readCatalog(item)"
           >
             <b>{{ item.title }}</b>
             <small>第 {{ item.chapterNo }} 章</small>
+            <small v-if="item.readable === false">待审核</small>
           </button>
           <div v-if="catalogPage.pages > 1" class="chapter-pager">
             <van-button size="small" plain :disabled="catalogPageNo <= 1" @click="loadCatalog(catalogPageNo - 1)">上一页</van-button>

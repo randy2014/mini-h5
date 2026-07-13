@@ -3,6 +3,7 @@ package com.mini.novel.api.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mini.novel.api.model.VipStatusVo;
 import com.mini.novel.api.support.CurrentUserResolver;
+import com.mini.novel.api.support.VipPublicationProgress;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.book.mapper.NovelMapper;
@@ -23,22 +24,26 @@ public class VipController {
     private final CurrentUserResolver currentUserResolver;
     private final VipAccessService vipAccessService;
     private final NovelMapper novelMapper;
+    private final VipPublicationProgress publicationProgress;
 
-    public VipController(VipPlanMapper vipPlanMapper, CurrentUserResolver currentUserResolver, VipAccessService vipAccessService, NovelMapper novelMapper) {
+    public VipController(VipPlanMapper vipPlanMapper, CurrentUserResolver currentUserResolver, VipAccessService vipAccessService, NovelMapper novelMapper, VipPublicationProgress publicationProgress) {
         this.vipPlanMapper = vipPlanMapper;
         this.currentUserResolver = currentUserResolver;
         this.vipAccessService = vipAccessService;
         this.novelMapper = novelMapper;
+        this.publicationProgress = publicationProgress;
     }
 
     @GetMapping("/books")
     public Result<List<Novel>> books() {
-        return Result.ok(novelMapper.selectList(new LambdaQueryWrapper<Novel>()
+        List<Novel> books = novelMapper.selectList(new LambdaQueryWrapper<Novel>()
                 .ne(Novel::getStatus, 0)
                 .eq(Novel::getVipRequired, true)
                 .like(Novel::getSourceUrl, "book.xbookcn.net")
                 .orderByDesc(Novel::getUpdatedAt)
-                .last("LIMIT 50")));
+                .last("LIMIT 50"));
+        books.forEach(publicationProgress::enrich);
+        return Result.ok(books);
     }
 
     @GetMapping("/plans")

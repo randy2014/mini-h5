@@ -15,6 +15,9 @@
       <small>{{ bookMetaLine }}</small>
       <em>{{ formatIntro(book.intro) || '暂无简介' }}</em>
       <span v-if="book.latestChapterTitle" class="latest-line">{{ book.latestChapterTitle }}</span>
+      <span v-if="book.publishStatus" class="review-line">
+        {{ book.publishStatus === 'REVIEWING' ? `审核中 · 已开放 ${book.approvedChapterCount || 0} 章` : `已开放 ${book.approvedChapterCount || 0} 章` }}
+      </span>
     </span>
   </button>
 </template>
@@ -62,3 +65,5 @@ function formatIntro(value) {
   return formatTextLineBreaks(value);
 }
 </script>
+
+<style scoped>.review-line{color:#9b7a2f;font-size:12px;font-weight:700}</style>
