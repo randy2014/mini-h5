@@ -139,6 +139,33 @@ class XbookcnCrawlerSiteParserTest {
         assertThat(result.reviewRequired()).isTrue();
     }
 
+    @Test
+    void riskGuardDoesNotBlockBroadXiaoWords() {
+        for (String text : java.util.List.of("\u5c0f\u9547", "\u5c0f\u59d0", "\u5c0f\u533a", "\u5c0f\u65f6", "\u5c0f\u5fc3")) {
+            ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate("test", "", text + " sexual signal", java.util.List.of());
+            assertThat(result.blocked()).isFalse();
+            assertThat(result.reviewRequired()).isTrue();
+        }
+    }
+
+    @Test
+    void riskGuardHardBlocksExplicitMinorPersonNearSexualSignal() {
+        ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
+                "test", "", "\u5c0f\u5b66\u751f\u5973\u5b69 sexual signal", java.util.List.of());
+
+        assertThat(result.blocked()).isTrue();
+        assertThat(result.reviewRequired()).isTrue();
+    }
+
+    @Test
+    void riskGuardDoesNotBlockAdultAge() {
+        ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
+                "test", "", "18\u5c81\u5973\u5b69 sexual signal", java.util.List.of());
+
+        assertThat(result.blocked()).isFalse();
+        assertThat(result.reviewRequired()).isTrue();
+    }
+
     private CrawlerSourceConfig source(String rules) {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "xbookcn_authorized";
