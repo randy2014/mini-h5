@@ -151,9 +151,18 @@ class XbookcnCrawlerSiteParserTest {
     @Test
     void riskGuardHardBlocksExplicitMinorPersonNearSexualSignal() {
         ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
-                "test", "", "\u5c0f\u5b66\u751f\u5973\u5b69 sexual signal", java.util.List.of());
+                "test", "", "17\u5c81\u5973\u5b69 sexual signal", java.util.List.of());
 
         assertThat(result.blocked()).isTrue();
+        assertThat(result.reviewRequired()).isTrue();
+    }
+
+    @Test
+    void riskGuardKeepsStudentIdentityForReviewWithoutNumericAge() {
+        ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
+                "test", "", "\u5c0f\u5b66\u751f\u5973\u5b69 sexual signal", java.util.List.of());
+
+        assertThat(result.blocked()).isFalse();
         assertThat(result.reviewRequired()).isTrue();
     }
 

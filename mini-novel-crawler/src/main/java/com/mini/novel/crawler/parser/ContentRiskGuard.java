@@ -12,12 +12,13 @@ public final class ContentRiskGuard {
                     + "\\u505a\\u7231|\\u53e3\\u4ea4|\\u9634\\u9053|\\u9634\\u830e|rape|incest|porn|sex)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern EXPLICIT_MINOR_PATTERN = Pattern.compile(
-            "(?:\\u672a\\u6210\\u5e74|\\u5e7c\\u5973|\\u5e7c\\u7ae5|\\u5c0f\\u5b66\\u751f|"
-                    + "\\u521d\\u4e2d\\u751f|\\u5973\\u7ae5|\\u7537\\u7ae5|\\u5b69\\u5b50|"
-                    + "\\u5341[0-7]\\u5c81|1[0-7]\\s*\\u5c81|minor|underage|child)",
+            "(?:\\u5341[0-7]\\u5c81|1[0-7]\\s*\\u5c81)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern AGE_UNKNOWN_PATTERN = Pattern.compile(
-            "(?:\\u5c11\\u5973|\\u5c11\\u5e74|\\u5b66\\u751f|\\u6821\\u56ed|\\u9ad8\\u4e2d\\u751f|\\u841d\\u8389|\\u5e74\\u8f7b)",
+            "(?:\\u672a\\u6210\\u5e74|\\u5e7c\\u5973|\\u5e7c\\u7ae5|\\u5c0f\\u5b66\\u751f|"
+                    + "\\u521d\\u4e2d\\u751f|\\u5973\\u7ae5|\\u7537\\u7ae5|\\u5b69\\u5b50|"
+                    + "\\u5c11\\u5973|\\u5c11\\u5e74|\\u5b66\\u751f|\\u6821\\u56ed|\\u9ad8\\u4e2d\\u751f|\\u841d\\u8389|"
+                    + "\\u5e74\\u8f7b|minor|underage|child)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern PERSON_PATTERN = Pattern.compile(
             "(?:\\u5973\\u5b69|\\u7537\\u5b69|\\u5973\\u7ae5|\\u7537\\u7ae5|\\u5b69\\u5b50|\\u5b66\\u751f|\\u5973\\u751f|"
