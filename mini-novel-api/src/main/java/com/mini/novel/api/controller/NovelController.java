@@ -55,8 +55,6 @@ public class NovelController {
     public Result<Page<Chapter>> chapters(@PathVariable("novelId") Long novelId,
                                           @RequestParam(value = "page", defaultValue = "1") long page,
                                           @RequestParam(value = "size", defaultValue = "80") long size) {
-        Novel novel = bookReadService.getNovel(novelId);
-        if (publicationProgress.supports(novel)) return Result.ok(publicationProgress.chapters(novel, page, size));
         return Result.ok(bookReadService.listChapters(novelId, page, size));
     }
 

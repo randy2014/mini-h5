@@ -31,7 +31,7 @@
       </div>
       <div v-if="book.publishStatus" class="reading-progress-card">
         <span>{{ book.publishStatus === 'REVIEWING' ? '内容审核中' : '已审核开放' }}</span>
-        <strong>已开放 {{ book.approvedChapterCount || 0 }} / {{ book.totalChapterCount || 0 }} 章</strong>
+        <strong>已开放 {{ book.approvedChapterCount || 0 }} 章</strong>
       </div>
 
       <div v-if="activeChapterId" class="reading-progress-card">
