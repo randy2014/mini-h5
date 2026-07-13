@@ -180,7 +180,7 @@ class XbookcnCrawlerSiteParserTest {
                         <a href="/book/300/catalog.html">Catalog</a>
                         """, "https://book.xbookcn.net/book/300"),
                 "https://book.xbookcn.net/book/300/catalog.html", Jsoup.parse("""
-                        <a href="/book/300/chapter/1.html">\u7b2c1\u7ae0 \u7b2c1\u7ae0 Opening - book.xbookcn.net</a>
+                        <a href="/book/300/chapter/1.html">Real Book \u7b2c1\u7ae0 \u7b2c1\u7ae0 Opening - book.xbookcn.net</a>
                         <a href="/book/300/chapter/2.html">&amp; Chapter 2 Real Title | \u5c0f\u8bf4\u7f51</a>
                         """, "https://book.xbookcn.net/book/300/catalog.html")
         );

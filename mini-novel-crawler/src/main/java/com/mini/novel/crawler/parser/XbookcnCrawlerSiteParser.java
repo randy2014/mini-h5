@@ -84,9 +84,9 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         if (!metadataOnly(rules)) {
             String catalogUrl = firstNonBlank(firstAttr(detail, "a[href*='catalog'], a[href*='chapter'], a[href*='list']", "href"),
                     seed.url());
-            chapters = fetchCatalog(catalogUrl, rules, fetcher);
+            chapters = fetchCatalog(catalogUrl, title, rules, fetcher);
             if (chapters.isEmpty()) {
-                chapters = chapterLinks(detail, rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters"));
+                chapters = chapterLinks(detail, title, rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters"));
             }
         }
 
@@ -102,7 +102,7 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         return rules.boolValue(false, "poc.metadataOnly", "metadataOnly", "authorizedBook.metadataOnly");
     }
 
-    private List<ParsedChapterSnapshot> fetchCatalog(String catalogUrl, CrawlerRuleConfig rules,
+    private List<ParsedChapterSnapshot> fetchCatalog(String catalogUrl, String bookTitle, CrawlerRuleConfig rules,
                                                      DocumentFetcher fetcher) throws Exception {
         List<ParsedChapterSnapshot> chapters = new ArrayList<>();
         Set<String> seenPages = new LinkedHashSet<>();
@@ -110,23 +110,23 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         int maxPages = rules.intValue(DEFAULT_MAX_CATALOG_PAGES, "catalogRules.maxPages");
         while (StringUtils.hasText(currentUrl) && seenPages.size() < maxPages && seenPages.add(currentUrl)) {
             Document page = fetcher.fetch(currentUrl);
-            chapters.addAll(chapterLinks(page, rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters")));
+            chapters.addAll(chapterLinks(page, bookTitle, rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters")));
             currentUrl = nextCatalogPage(page, currentUrl);
         }
         return unique(chapters);
     }
 
-    private List<ParsedChapterSnapshot> chapterLinks(Document document, int maxChapters) {
+    private List<ParsedChapterSnapshot> chapterLinks(Document document, String bookTitle, int maxChapters) {
         List<ParsedChapterSnapshot> chapters = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (Element link : document.select("a[href]")) {
             String href = normalize(link.absUrl("href"));
-            String title = cleanChapterTitle(clean(link.text()), chapters.size() + 1);
+            String title = cleanChapterTitle(clean(link.text()), bookTitle, chapters.size() + 1);
             if (!isChapterUrl(href) || !seen.add(href)) {
                 continue;
             }
             int chapterNo = chapters.size() + 1;
-            chapters.add(new ParsedChapterSnapshot(chapterId(href), StringUtils.hasText(title) ? title : "Chapter " + chapterNo,
+            chapters.add(new ParsedChapterSnapshot(chapterId(href), StringUtils.hasText(title) ? title : "第" + chapterNo + "章",
                     href, chapterNo, true));
             if (chapters.size() >= maxChapters) {
                 break;
@@ -254,7 +254,7 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         return cleaned;
     }
 
-    private String cleanChapterTitle(String value, int chapterNo) {
+    private String cleanChapterTitle(String value, String bookTitle, int chapterNo) {
         String cleaned = clean(value)
                 .replaceAll("(?i)\\s*[-_|]\\s*(book\\.)?xbookcn(\\.net)?.*$", "")
                 .replaceAll("\\s*[-_|]\\s*(\\u5c0f\\u8bf4|\\u5c0f\\u8bf4\\u7f51|\\u9605\\u8bfb|\\u4e0b\\u4e00\\u7ae0|\\u4e0a\\u4e00\\u7ae0).*$", "")
@@ -262,6 +262,15 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
                 .replaceAll("^(?:chapter\\s*" + chapterNo + "\\s*){2,}", "Chapter " + chapterNo + " ")
                 .replaceAll("\\s+", " ")
                 .trim();
+        String cleanBookTitle = cleanBookTitle(bookTitle);
+        if (StringUtils.hasText(cleanBookTitle) && cleaned.startsWith(cleanBookTitle)) {
+            String withoutBook = cleaned.substring(cleanBookTitle.length())
+                    .replaceFirst("^[\\s:：\\-_|　]+", "")
+                    .trim();
+            if (StringUtils.hasText(withoutBook)) {
+                cleaned = withoutBook;
+            }
+        }
         if (cleaned.matches("(?i)^(home|next|previous|catalog|xbookcn)$")
                 || cleaned.matches("^(\\u9996\\u9875|\\u4e0b\\u4e00\\u9875|\\u4e0a\\u4e00\\u9875|\\u76ee\\u5f55)$")) {
             return "";

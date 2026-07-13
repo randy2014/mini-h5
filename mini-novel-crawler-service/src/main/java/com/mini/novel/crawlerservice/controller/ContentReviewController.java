@@ -195,7 +195,7 @@ public class ContentReviewController {
     private Map<String, Object> chapterForUpdate(Long id) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT c.id chapterRawId,c.book_raw_id bookRawId,c.content_status contentStatus,r.id contentRawId,
-                   c.chapter_no chapterNo,c.title chapterTitle,c.source_url chapterSourceUrl,r.content,
+                   c.chapter_no chapterNo,c.source_chapter_id sourceChapterId,c.title chapterTitle,c.source_url chapterSourceUrl,r.content,
                    b.source_code sourceCode,b.source_book_id sourceBookId,b.source_url bookSourceUrl,
                    b.title bookTitle,b.author,b.intro,b.cover_url coverUrl
             FROM mini_novel_crawler.crawl_chapter_raw c JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
@@ -245,7 +245,32 @@ public class ContentReviewController {
             VALUES(?,?,?,?,1,0,?,NOW(),NOW())
             ON DUPLICATE KEY UPDATE title=VALUES(title),content=VALUES(content),is_vip=1,source_url=VALUES(source_url),updated_at=NOW()
             """, novelId, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"), chapter.get("chapterSourceUrl"));
+        syncChapterMapping(chapter, novelId);
         refreshNovel(novelId);
+    }
+
+    private void syncChapterMapping(Map<String, Object> chapter, Long novelId) {
+        String publicationUrl = chapter.get("bookSourceUrl") + "#rawBook=" + chapter.get("bookRawId");
+        List<Long> mappingIds = jdbc.query("""
+            SELECT id FROM mini_novel.novel_source_mapping
+            WHERE source_code=? AND source_book_id=? AND (novel_id=? OR source_url IN (?,?))
+            ORDER BY novel_id=? DESC LIMIT 1
+            """, (rs, row) -> rs.getLong(1), chapter.get("sourceCode"), chapter.get("sourceBookId"),
+                novelId, publicationUrl, chapter.get("bookSourceUrl"), novelId);
+        if (mappingIds.isEmpty()) {
+            return;
+        }
+        List<Long> chapterIds = jdbc.query("SELECT id FROM mini_novel.chapter WHERE novel_id=? AND chapter_no=? LIMIT 1",
+                (rs, row) -> rs.getLong(1), novelId, chapter.get("chapterNo"));
+        if (chapterIds.isEmpty()) {
+            return;
+        }
+        jdbc.update("""
+            UPDATE mini_novel.chapter_source_mapping
+            SET chapter_id=?,source_title=?,source_url=?,chapter_no=?,is_vip=1,content_status='CONTENT_READY',updated_at=NOW()
+            WHERE novel_mapping_id=? AND source_chapter_id=?
+            """, chapterIds.get(0), chapter.get("chapterTitle"), chapter.get("chapterSourceUrl"),
+                chapter.get("chapterNo"), mappingIds.get(0), chapter.get("sourceChapterId"));
     }
     private void unpublishChapter(Map<String, Object> chapter) {
         String publicationUrl = chapter.get("bookSourceUrl") + "#rawBook=" + chapter.get("bookRawId");
