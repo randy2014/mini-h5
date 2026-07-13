@@ -5,6 +5,7 @@ function createClient(baseURL) {
   const client = axios.create({ baseURL, timeout: 15000 });
   client.interceptors.request.use((config) => {
     config.headers['X-Operator-Id'] = localStorage.getItem('mini_admin_operator_id') || '1';
+    config.headers['X-Admin-Token'] = localStorage.getItem('mini_admin_token') || '';
     return config;
   });
   client.interceptors.response.use(
