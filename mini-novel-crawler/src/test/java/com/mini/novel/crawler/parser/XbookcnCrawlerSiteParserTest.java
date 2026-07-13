@@ -149,11 +149,29 @@ class XbookcnCrawlerSiteParserTest {
     }
 
     @Test
-    void riskGuardHardBlocksExplicitMinorPersonNearSexualSignal() {
+    void riskGuardDoesNotHardBlockExplicitMinorTextCooccurrence() {
         ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
                 "test", "", "17\u5c81\u5973\u5b69 sexual signal", java.util.List.of());
 
-        assertThat(result.blocked()).isTrue();
+        assertThat(result.blocked()).isFalse();
+        assertThat(result.reviewRequired()).isTrue();
+    }
+
+    @Test
+    void riskGuardDoesNotHardBlockPronounMixedContext() {
+        ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
+                "test", "", "\u5979\u66fe\u63d0\u523017\u5c81\u7684\u5f80\u4e8b\uff0c\u53e6\u4e00\u6bb5\u51fa\u73b0 sexual signal", java.util.List.of());
+
+        assertThat(result.blocked()).isFalse();
+        assertThat(result.reviewRequired()).isTrue();
+    }
+
+    @Test
+    void riskGuardDoesNotHardBlockRecalledAgeContext() {
+        ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
+                "test", "", "\u56de\u5fc6\u4e2d\u4ed616\u5c81\u65f6\u4f4f\u5728\u5c0f\u9547\uff0c\u6210\u5e74\u540e\u7684\u7ae0\u8282\u51fa\u73b0 sex signal", java.util.List.of());
+
+        assertThat(result.blocked()).isFalse();
         assertThat(result.reviewRequired()).isTrue();
     }
 

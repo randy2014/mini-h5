@@ -24,7 +24,6 @@ public final class ContentRiskGuard {
             "(?:\\u5973\\u5b69|\\u7537\\u5b69|\\u5973\\u7ae5|\\u7537\\u7ae5|\\u5b69\\u5b50|\\u5b66\\u751f|\\u5973\\u751f|"
                     + "\\u7537\\u751f|\\u5979|\\u4ed6|girl|boy|child|student)",
             Pattern.CASE_INSENSITIVE);
-    private static final int HARD_BLOCK_DISTANCE = 80;
 
     private ContentRiskGuard() {
     }
@@ -38,72 +37,22 @@ public final class ContentRiskGuard {
         if (extraBlockedTerms != null) {
             for (String term : extraBlockedTerms) {
                 if (StringUtils.hasText(term) && lower.contains(term.toLowerCase(Locale.ROOT))) {
-                    return RiskResult.review("ADULT_SENSITIVE requires manual review.");
+                    return unknownReview();
                 }
             }
-        }
-        java.util.regex.Matcher sexual = SEXUAL_PATTERN.matcher(combined);
-        java.util.regex.Matcher explicitMinor = EXPLICIT_MINOR_PATTERN.matcher(combined);
-        if (highConfidenceMinorSexual(combined, sexual, explicitMinor)) {
-            return RiskResult.blocked("rule_code=EXPLICIT_MINOR_SEXUAL;version=20260713;confidence=HIGH");
         }
         boolean hasSexual = SEXUAL_PATTERN.matcher(combined).find();
         boolean hasAgeUnknown = AGE_UNKNOWN_PATTERN.matcher(combined).find();
         boolean hasExplicitMinor = EXPLICIT_MINOR_PATTERN.matcher(combined).find();
-        if (hasSexual || hasAgeUnknown || hasExplicitMinor) {
-            return RiskResult.review("rule_code=UNKNOWN_OR_ADULT_SENSITIVE;version=20260713;confidence=UNKNOWN");
+        boolean hasPersonSignal = PERSON_PATTERN.matcher(combined).find();
+        if (hasSexual || hasAgeUnknown || hasExplicitMinor || hasPersonSignal) {
+            return unknownReview();
         }
         return RiskResult.ok();
     }
 
-    private static boolean highConfidenceMinorSexual(String text, java.util.regex.Matcher sexual,
-                                                     java.util.regex.Matcher explicitMinor) {
-        for (String segment : text.split("[\\n\\r。！？!?；;]")) {
-            if (!StringUtils.hasText(segment) || !PERSON_PATTERN.matcher(segment).find()) {
-                continue;
-            }
-            if (near(SEXUAL_PATTERN.matcher(segment), EXPLICIT_MINOR_PATTERN.matcher(segment), HARD_BLOCK_DISTANCE)) {
-                return true;
-            }
-        }
-        return near(sexual, explicitMinor, HARD_BLOCK_DISTANCE)
-                && sameWindowHasPerson(text, SEXUAL_PATTERN.matcher(text), EXPLICIT_MINOR_PATTERN.matcher(text));
-    }
-
-    private static boolean sameWindowHasPerson(String text, java.util.regex.Matcher sexual, java.util.regex.Matcher minor) {
-        java.util.List<int[]> sexualRanges = ranges(sexual);
-        java.util.List<int[]> minorRanges = ranges(minor);
-        for (int[] left : sexualRanges) {
-            for (int[] right : minorRanges) {
-                int start = Math.max(0, Math.min(left[0], right[0]) - HARD_BLOCK_DISTANCE);
-                int end = Math.min(text.length(), Math.max(left[1], right[1]) + HARD_BLOCK_DISTANCE);
-                if (PERSON_PATTERN.matcher(text.substring(start, end)).find()) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean near(java.util.regex.Matcher left, java.util.regex.Matcher right, int distance) {
-        java.util.List<int[]> leftRanges = ranges(left);
-        java.util.List<int[]> rightRanges = ranges(right);
-        for (int[] a : leftRanges) {
-            for (int[] b : rightRanges) {
-                if (Math.abs(b[0] - a[1]) <= distance || Math.abs(a[0] - b[1]) <= distance) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static java.util.List<int[]> ranges(java.util.regex.Matcher matcher) {
-        java.util.List<int[]> leftRanges = new java.util.ArrayList<>();
-        while (matcher.find()) {
-            leftRanges.add(new int[]{matcher.start(), matcher.end()});
-        }
-        return leftRanges;
+    private static RiskResult unknownReview() {
+        return RiskResult.review("rule_code=UNKNOWN_REQUIRES_MANUAL_REVIEW;version=20260714;confidence=UNKNOWN;hint=possible_age_or_behavior_context");
     }
 
     private static String join(String title, String intro, String content) {
