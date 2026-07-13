@@ -338,7 +338,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         boolean completed = upsertChaptersAndContent(source, book, snapshot,
                 "AUTHORIZED_BOOK_CONTENT".equals(task.taskType)
                         ? System.currentTimeMillis() + AUTHORIZED_BOOK_TIMEOUT_MILLIS
-                        : Long.MAX_VALUE);
+                        : Long.MAX_VALUE,
+                approvedChapterBatchSize(task));
         long afterChapters = countRawChapters(book.id);
         ChapterStatusStats stats = chapterStatusStats(book.id);
         return new BookOutcome(completed, 1, bookExists ? 0 : 1, bookExists ? 1 : 0,
@@ -426,6 +427,18 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
         }
         return Math.max(1, Math.min(20, limit));
+    }
+
+    private int approvedChapterBatchSize(CrawlTaskRecord task) {
+        int batchSize = 0;
+        if (task != null && StringUtils.hasText(task.targetUrl)) {
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:#|&|\\?)chapterBatchSize=(\\d+)")
+                    .matcher(task.targetUrl);
+            if (matcher.find()) {
+                batchSize = Integer.parseInt(matcher.group(1));
+            }
+        }
+        return Math.max(0, Math.min(100, batchSize));
     }
 
     private Set<Long> approvedContentRetryIds(CrawlTaskRecord task) {
@@ -935,20 +948,43 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private void upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
-        upsertChaptersAndContent(source, book, snapshot, Long.MAX_VALUE);
+        upsertChaptersAndContent(source, book, snapshot, Long.MAX_VALUE, 0);
     }
 
     private boolean upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot,
                                              long deadlineMillis) {
+        return upsertChaptersAndContent(source, book, snapshot, deadlineMillis, 0);
+    }
+
+    private boolean upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot,
+                                             long deadlineMillis, int chapterBatchSize) {
         List<ParsedChapterSnapshot> chapters = snapshot.chapters();
         if (chapters == null || chapters.isEmpty()) {
             upsertChapterAndContent(source, book, snapshot, null);
             return true;
         }
         int readyCount = 0;
+        int processedMissing = 0;
         boolean completed = true;
         for (ParsedChapterSnapshot parsedChapter : chapters) {
             if (System.currentTimeMillis() > deadlineMillis) {
+                completed = false;
+                break;
+            }
+            String sourceChapterId = StringUtils.hasText(parsedChapter.chapterId())
+                    ? parsedChapter.chapterId()
+                    : sha256(parsedChapter.url()).substring(0, 24);
+            CrawlChapterRaw existing = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
+                    .eq("book_raw_id", book.id)
+                    .eq("source_chapter_id", sourceChapterId)
+                    .last("LIMIT 1"));
+            if (isTerminalChapter(existing)) {
+                if ("CONTENT_READY".equals(existing.contentStatus)) {
+                    readyCount++;
+                }
+                continue;
+            }
+            if (chapterBatchSize > 0 && processedMissing >= chapterBatchSize) {
                 completed = false;
                 break;
             }
@@ -963,11 +999,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     parsedChapter.chapterId(),
                     parsedChapter.url());
             upsertChapterAndContent(source, book, chapterSnapshot, parsedChapter);
+            processedMissing++;
             CrawlChapterRaw raw = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
                     .eq("book_raw_id", book.id)
-                    .eq("source_chapter_id", StringUtils.hasText(parsedChapter.chapterId())
-                            ? parsedChapter.chapterId()
-                            : sha256(parsedChapter.url()).substring(0, 24))
+                    .eq("source_chapter_id", sourceChapterId)
                     .last("LIMIT 1"));
             if (raw != null && "CONTENT_READY".equals(raw.contentStatus)) {
                 readyCount++;
@@ -977,6 +1012,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 : readyCount > 0 ? "CONTENT_READY" : "CATALOG_READY";
         bookRawMapper.updateById(book);
         return completed;
+    }
+
+    private boolean isTerminalChapter(CrawlChapterRaw chapter) {
+        return chapter != null && chapter.id != null
+                && List.of("CONTENT_READY", "RISK_BLOCKED", "PENDING_REVIEW").contains(chapter.contentStatus);
     }
 
     private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book,
