@@ -1015,8 +1015,15 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private boolean isTerminalChapter(CrawlChapterRaw chapter) {
-        return chapter != null && chapter.id != null
-                && "CONTENT_READY".equals(chapter.contentStatus);
+        if (chapter == null || chapter.id == null) {
+            return false;
+        }
+        if ("CONTENT_READY".equals(chapter.contentStatus)) {
+            return true;
+        }
+        return contentRawMapper.selectCount(new QueryWrapper<CrawlContentRaw>()
+                .eq("chapter_raw_id", chapter.id)
+                .gt("content_length", 0)) > 0;
     }
 
     private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book,
