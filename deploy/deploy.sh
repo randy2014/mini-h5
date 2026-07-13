@@ -97,6 +97,7 @@ run_migration_if_table_missing "sql/migrations/20260711_vip_invitation.sql" "min
 run_migration "sql/migrations/20260712_crawler_authorized_book.sql"
 run_migration "sql/migrations/20260712_xbookcn_authorized_poc.sql"
 run_migration "sql/migrations/20260712_xbookcn_metadata_only_flag.sql"
+run_migration "sql/migrations/20260714_fix_xbookcn_vip_novel_titles.sql"
 
 echo "Building and starting application services..."
 compose up -d --build
