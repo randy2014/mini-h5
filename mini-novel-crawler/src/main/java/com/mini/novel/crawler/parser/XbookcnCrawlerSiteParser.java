@@ -65,8 +65,8 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
     public ParsedBookSnapshot fetchBook(CrawlerSourceConfig source, ParsedBookSeed seed, DocumentFetcher fetcher) throws Exception {
         CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
         Document detail = fetcher.fetch(seed.url());
-        String title = firstNonBlank(firstText(detail, "meta[property=og:novel:book_name]", "meta[property=og:title]"),
-                firstText(detail, "h1", ".book-title", ".novel-title", ".title"), seed.title());
+        String title = cleanBookTitle(firstNonBlank(firstText(detail, "meta[property=og:novel:book_name]", "meta[property=og:title]"),
+                firstText(detail, "h1", ".book-title", ".novel-title", ".title"), seed.title()));
         String author = cleanAuthor(firstNonBlank(firstText(detail, "meta[property=og:novel:author]"),
                 firstText(detail, ".author", ".book-author", ".writer", "a[href*='author']"), seed.author()));
         String intro = firstNonBlank(firstText(detail, "meta[property=og:description]", "meta[name=description]"),
@@ -121,7 +121,7 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         Set<String> seen = new LinkedHashSet<>();
         for (Element link : document.select("a[href]")) {
             String href = normalize(link.absUrl("href"));
-            String title = clean(link.text());
+            String title = cleanChapterTitle(clean(link.text()), chapters.size() + 1);
             if (!isChapterUrl(href) || !seen.add(href)) {
                 continue;
             }
@@ -245,8 +245,34 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         return clean(value).replaceFirst("^(\\u4f5c\\u8005|author)[:\\uff1a]?\\s*", "");
     }
 
+    private String cleanBookTitle(String value) {
+        String cleaned = clean(value)
+                .replaceAll("(?i)\\s*[-_|]\\s*(book\\.)?xbookcn(\\.net)?.*$", "")
+                .replaceAll("\\s*[-_|]\\s*(\\u5c0f\\u8bf4|\\u5c0f\\u8bf4\\u7f51|\\u9605\\u8bfb).*$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return cleaned;
+    }
+
+    private String cleanChapterTitle(String value, int chapterNo) {
+        String cleaned = clean(value)
+                .replaceAll("(?i)\\s*[-_|]\\s*(book\\.)?xbookcn(\\.net)?.*$", "")
+                .replaceAll("\\s*[-_|]\\s*(\\u5c0f\\u8bf4|\\u5c0f\\u8bf4\\u7f51|\\u9605\\u8bfb|\\u4e0b\\u4e00\\u7ae0|\\u4e0a\\u4e00\\u7ae0).*$", "")
+                .replaceAll("^(?:\\u7b2c\\s*" + chapterNo + "\\s*\\u7ae0\\s*){2,}", "\u7b2c" + chapterNo + "\u7ae0 ")
+                .replaceAll("^(?:chapter\\s*" + chapterNo + "\\s*){2,}", "Chapter " + chapterNo + " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (cleaned.matches("(?i)^(home|next|previous|catalog|xbookcn)$")
+                || cleaned.matches("^(\\u9996\\u9875|\\u4e0b\\u4e00\\u9875|\\u4e0a\\u4e00\\u9875|\\u76ee\\u5f55)$")) {
+            return "";
+        }
+        return cleaned;
+    }
+
     private String clean(String value) {
-        return value == null ? "" : value.replace('\u00a0', ' ').trim();
+        return value == null ? "" : org.jsoup.parser.Parser.unescapeEntities(value, false)
+                .replace('\u00a0', ' ')
+                .trim();
     }
 
     private String normalize(String value) {

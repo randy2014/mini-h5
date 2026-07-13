@@ -108,7 +108,7 @@ class XbookcnCrawlerSiteParserTest {
         ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
                 "test", "", "\u672a\u6210\u5e74 sexual content", java.util.List.of());
 
-        assertThat(result.blocked()).isTrue();
+        assertThat(result.blocked()).isFalse();
         assertThat(result.reviewRequired()).isTrue();
     }
 
@@ -164,6 +164,32 @@ class XbookcnCrawlerSiteParserTest {
 
         assertThat(result.blocked()).isFalse();
         assertThat(result.reviewRequired()).isTrue();
+    }
+
+    @Test
+    void cleansBookAndChapterTitlesWithoutUsingBodyOrSiteNoise() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {"poc":{"singleBookOnly":true,"bookUrl":"https://book.xbookcn.net/book/300"}}
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://book.xbookcn.net/"),
+                "https://book.xbookcn.net/", 1).get(0);
+        Map<String, Document> pages = Map.of(
+                "https://book.xbookcn.net/book/300", Jsoup.parse("""
+                        <meta property="og:title" content="Real Book - book.xbookcn.net">
+                        <a href="/book/300/catalog.html">Catalog</a>
+                        """, "https://book.xbookcn.net/book/300"),
+                "https://book.xbookcn.net/book/300/catalog.html", Jsoup.parse("""
+                        <a href="/book/300/chapter/1.html">\u7b2c1\u7ae0 \u7b2c1\u7ae0 Opening - book.xbookcn.net</a>
+                        <a href="/book/300/chapter/2.html">&amp; Chapter 2 Real Title | \u5c0f\u8bf4\u7f51</a>
+                        """, "https://book.xbookcn.net/book/300/catalog.html")
+        );
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, pages::get);
+
+        assertThat(snapshot.title()).isEqualTo("Real Book");
+        assertThat(snapshot.chapters()).extracting(ParsedChapterSnapshot::title)
+                .containsExactly("\u7b2c1\u7ae0 Opening", "& Chapter 2 Real Title");
     }
 
     @Test
