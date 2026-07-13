@@ -121,6 +121,24 @@ class XbookcnCrawlerSiteParserTest {
         assertThat(result.reviewRequired()).isTrue();
     }
 
+    @Test
+    void riskGuardDoesNotHardBlockDistantMinorSignals() {
+        ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
+                "test", "", "\u672a\u6210\u5e74" + "safe text ".repeat(30) + "sexual content", java.util.List.of());
+
+        assertThat(result.blocked()).isFalse();
+        assertThat(result.reviewRequired()).isTrue();
+    }
+
+    @Test
+    void riskGuardKeepsAgeUnknownSignalsForReview() {
+        ContentRiskGuard.RiskResult result = ContentRiskGuard.evaluate(
+                "test", "", "\u5c11\u5973 sexual signal", java.util.List.of());
+
+        assertThat(result.blocked()).isFalse();
+        assertThat(result.reviewRequired()).isTrue();
+    }
+
     private CrawlerSourceConfig source(String rules) {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "xbookcn_authorized";

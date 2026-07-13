@@ -11,11 +11,15 @@ public final class ContentRiskGuard {
                     + "\\u5f3a\\u66b4|\\u5f3a\\u5236\\u53d1\\u751f\\u5173\\u7cfb|\\u6deb\\u4e71|\\u88f8\\u4f53|"
                     + "\\u505a\\u7231|\\u53e3\\u4ea4|\\u9634\\u9053|\\u9634\\u830e|rape|incest|porn|sex)",
             Pattern.CASE_INSENSITIVE);
-    private static final Pattern MINOR_PATTERN = Pattern.compile(
+    private static final Pattern EXPLICIT_MINOR_PATTERN = Pattern.compile(
             "(?:\\u672a\\u6210\\u5e74|\\u5e7c\\u5973|\\u5e7c\\u7ae5|\\u5c0f\\u5b66\\u751f|"
-                    + "\\u521d\\u4e2d\\u751f|\\u5c11\\u5973|\\u5c11\\u5e74|\\u5973\\u7ae5|\\u7537\\u7ae5|"
+                    + "\\u521d\\u4e2d\\u751f|\\u5973\\u7ae5|\\u7537\\u7ae5|"
                     + "\\u5341[0-7]\\u5c81|1[0-7]\\s*\\u5c81|minor|underage|child)",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern AGE_UNKNOWN_PATTERN = Pattern.compile(
+            "(?:\\u5c11\\u5973|\\u5c11\\u5e74)",
+            Pattern.CASE_INSENSITIVE);
+    private static final int HARD_BLOCK_DISTANCE = 80;
 
     private ContentRiskGuard() {
     }
@@ -29,19 +33,37 @@ public final class ContentRiskGuard {
         if (extraBlockedTerms != null) {
             for (String term : extraBlockedTerms) {
                 if (StringUtils.hasText(term) && lower.contains(term.toLowerCase(Locale.ROOT))) {
-                    return RiskResult.blocked("Configured blocked risk term matched.");
+                    return RiskResult.review("Configured adult-sensitive risk term requires manual review.");
                 }
             }
         }
-        boolean sexual = SEXUAL_PATTERN.matcher(combined).find();
-        boolean minor = MINOR_PATTERN.matcher(combined).find();
-        if (sexual && minor) {
-            return RiskResult.blocked("Possible sexual minor content matched hard-block rule.");
+        java.util.regex.Matcher sexual = SEXUAL_PATTERN.matcher(combined);
+        java.util.regex.Matcher explicitMinor = EXPLICIT_MINOR_PATTERN.matcher(combined);
+        if (near(sexual, explicitMinor, HARD_BLOCK_DISTANCE)) {
+            return RiskResult.blocked("EXPLICIT_MINOR_SEXUAL hard-block rule matched.");
         }
-        if (sexual || minor) {
-            return RiskResult.review("Possible high-risk content requires manual review.");
+        boolean hasSexual = SEXUAL_PATTERN.matcher(combined).find();
+        boolean hasAgeUnknown = AGE_UNKNOWN_PATTERN.matcher(combined).find();
+        boolean hasExplicitMinor = EXPLICIT_MINOR_PATTERN.matcher(combined).find();
+        if (hasSexual || hasAgeUnknown || hasExplicitMinor) {
+            return RiskResult.review("Adult or age-unknown sensitive content requires manual review.");
         }
         return RiskResult.ok();
+    }
+
+    private static boolean near(java.util.regex.Matcher left, java.util.regex.Matcher right, int distance) {
+        java.util.List<int[]> leftRanges = new java.util.ArrayList<>();
+        while (left.find()) {
+            leftRanges.add(new int[]{left.start(), left.end()});
+        }
+        while (right.find()) {
+            for (int[] range : leftRanges) {
+                if (Math.abs(right.start() - range[1]) <= distance || Math.abs(range[0] - right.end()) <= distance) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static String join(String title, String intro, String content) {

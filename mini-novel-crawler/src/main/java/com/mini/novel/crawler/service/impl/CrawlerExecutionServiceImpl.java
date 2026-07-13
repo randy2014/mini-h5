@@ -1016,7 +1016,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     private boolean isTerminalChapter(CrawlChapterRaw chapter) {
         return chapter != null && chapter.id != null
-                && List.of("CONTENT_READY", "RISK_BLOCKED", "PENDING_REVIEW").contains(chapter.contentStatus);
+                && "CONTENT_READY".equals(chapter.contentStatus);
     }
 
     private void upsertChapterAndContent(CrawlerSourceConfig source, CrawlBookRaw book,
@@ -1083,10 +1083,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 book.contentStatus = "PENDING_REVIEW";
             }
         }
-        if (StringUtils.hasText(content) && !"PENDING_REVIEW".equals(chapter.contentStatus)) {
+        if (StringUtils.hasText(content) && !"RISK_BLOCKED".equals(chapter.contentStatus)) {
             chapter.contentHash = sha256(content);
-            chapter.contentStatus = "CONTENT_READY";
-            book.contentStatus = "CONTENT_READY";
+            if (!"PENDING_REVIEW".equals(chapter.contentStatus)) {
+                chapter.contentStatus = "CONTENT_READY";
+                book.contentStatus = "CONTENT_READY";
+            }
             bookRawMapper.updateById(book);
         }
         if (chapter.id == null) {
@@ -1094,7 +1096,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         } else {
             chapterRawMapper.updateById(chapter);
         }
-        if (StringUtils.hasText(content) && "CONTENT_READY".equals(chapter.contentStatus)) {
+        if (StringUtils.hasText(content) && List.of("CONTENT_READY", "PENDING_REVIEW").contains(chapter.contentStatus)) {
             upsertContent(chapter, content);
         }
     }
