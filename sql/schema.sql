@@ -394,6 +394,8 @@ CREATE TABLE IF NOT EXISTS crawl_book_raw (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_source_book (source_code, source_book_id),
   KEY idx_crawl_task_id (crawl_task_id),
+  KEY idx_source_url (source_code, source_url),
+  KEY idx_source_status (source_code, content_status),
   KEY idx_title_author (title, author),
   KEY idx_content_status (content_status),
   KEY idx_rank_heat (rank_type, heat_score)
@@ -415,6 +417,7 @@ CREATE TABLE IF NOT EXISTS crawl_chapter_raw (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_book_chapter (book_raw_id, source_chapter_id),
   KEY idx_book_no (book_raw_id, chapter_no),
+  KEY idx_book_chapter_url (book_raw_id, source_url),
   KEY idx_content_status (content_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -428,6 +431,19 @@ CREATE TABLE IF NOT EXISTS crawl_content_raw (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_chapter_content (chapter_raw_id),
   KEY idx_content_hash (content_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS xbookcn_raw_repair_cursor (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  repair_key VARCHAR(64) NOT NULL,
+  last_authorized_book_id BIGINT NOT NULL DEFAULT 0,
+  duplicate_raw_books INT NOT NULL DEFAULT 0,
+  repaired_books INT NOT NULL DEFAULT 0,
+  merged_chapters INT NOT NULL DEFAULT 0,
+  merged_contents INT NOT NULL DEFAULT 0,
+  preserved_statuses INT NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_repair_key (repair_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS crawler_authorized_book (

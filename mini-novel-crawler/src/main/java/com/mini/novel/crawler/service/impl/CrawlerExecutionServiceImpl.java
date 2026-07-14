@@ -776,9 +776,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private CrawlBookRaw upsertBookRaw(CrawlTaskRecord task, CrawlerSourceConfig source, CrawlRankSource rank,
                                        ParsedBookSnapshot snapshot) {
         LocalDateTime now = LocalDateTime.now();
-        String sourceBookId = StringUtils.hasText(snapshot.sourceBookId())
-                ? snapshot.sourceBookId()
-                : sha256(snapshot.sourceUrl()).substring(0, 24);
+        CrawlerAuthorizedBook authorizedBook = resolveAuthorizedRawBook(source, snapshot);
+        String sourceBookId = AuthorizedRawIdentity.canonicalSourceBookId(
+                authorizedBook == null ? null : authorizedBook.sourceBookId,
+                snapshot.sourceBookId(),
+                sha256(snapshot.sourceUrl()).substring(0, 24));
         CrawlBookRaw book = bookRawMapper.selectOne(new QueryWrapper<CrawlBookRaw>()
                 .eq("source_code", source.sourceCode)
                 .eq("source_book_id", sourceBookId)
@@ -806,7 +808,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             book.contentStatus = "PENDING_REVIEW";
         }
         book.rawJson = "{\"rankName\":\"" + json(rank.rankName) + "\",\"rankUrl\":\"" + json(rank.rankUrl)
-                + "\",\"isolation\":\"" + (isolated ? "VIP_REVIEW" : "NONE") + "\"}";
+                + "\",\"isolation\":\"" + (isolated ? "VIP_REVIEW" : "NONE") + "\""
+                + (authorizedBook == null ? "" : ",\"authorizedBookId\":" + authorizedBook.id)
+                + "}";
         book.crawledAt = now;
         book.updatedAt = now;
         if (book.id == null) {
@@ -821,13 +825,38 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (source == null || snapshot == null) {
             return false;
         }
-        String sourceBookId = StringUtils.hasText(snapshot.sourceBookId())
-                ? snapshot.sourceBookId()
-                : sha256(snapshot.sourceUrl()).substring(0, 24);
+        CrawlerAuthorizedBook authorizedBook = resolveAuthorizedRawBook(source, snapshot);
+        String sourceBookId = AuthorizedRawIdentity.canonicalSourceBookId(
+                authorizedBook == null ? null : authorizedBook.sourceBookId,
+                snapshot.sourceBookId(),
+                sha256(snapshot.sourceUrl()).substring(0, 24));
         Long count = bookRawMapper.selectCount(new QueryWrapper<CrawlBookRaw>()
                 .eq("source_code", source.sourceCode)
                 .eq("source_book_id", sourceBookId));
         return count != null && count > 0;
+    }
+
+    private CrawlerAuthorizedBook resolveAuthorizedRawBook(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
+        if (!isXbookcnAuthorizedSource(source) || snapshot == null) {
+            return null;
+        }
+        CrawlerAuthorizedBook bySourceBookId = null;
+        if (StringUtils.hasText(snapshot.sourceBookId())) {
+            bySourceBookId = authorizedBookMapper.selectOne(new QueryWrapper<CrawlerAuthorizedBook>()
+                    .eq("source_code", source.sourceCode)
+                    .eq("source_book_id", snapshot.sourceBookId())
+                    .last("LIMIT 1"));
+        }
+        if (bySourceBookId != null) {
+            return bySourceBookId;
+        }
+        if (!StringUtils.hasText(snapshot.sourceUrl())) {
+            return null;
+        }
+        return authorizedBookMapper.selectOne(new QueryWrapper<CrawlerAuthorizedBook>()
+                .eq("source_code", source.sourceCode)
+                .eq("book_url", limit(snapshot.sourceUrl(), 512))
+                .last("LIMIT 1"));
     }
 
     private long countRawChapters(Long bookRawId) {
