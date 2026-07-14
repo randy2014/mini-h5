@@ -59,7 +59,8 @@ public class AuthorizedRawRepairService {
                   ON ab.source_code = dup.source_code AND ab.book_url = dup.source_url
                 LEFT JOIN mini_novel_crawler.crawl_book_raw canon
                   ON canon.source_code = ab.source_code AND canon.source_book_id = ab.source_book_id
-                WHERE dup.source_code = ? AND (canon.id IS NULL OR dup.id <> canon.id)
+                WHERE dup.source_code = ? AND dup.content_status <> 'DUPLICATE_RAW'
+                  AND (canon.id IS NULL OR dup.id <> canon.id)
                 """, SOURCE_CODE);
         summary.metadataOnlyBooks = singleLong("SELECT COUNT(*) FROM mini_novel_crawler.crawl_book_raw WHERE source_code=? AND content_status='META_ONLY'", SOURCE_CODE);
         summary.completeBooks = singleLong("""
@@ -151,7 +152,7 @@ public class AuthorizedRawRepairService {
         return jdbc.query("""
                 SELECT id, source_book_id, source_url, content_status
                 FROM mini_novel_crawler.crawl_book_raw
-                WHERE source_code=? AND source_url=? AND id<>?
+                WHERE source_code=? AND source_url=? AND id<>? AND content_status <> 'DUPLICATE_RAW'
                 ORDER BY id
                 """, (rs, rowNum) -> rawBook(rs), authorizedBook.sourceCode, authorizedBook.bookUrl, canonicalId);
     }
