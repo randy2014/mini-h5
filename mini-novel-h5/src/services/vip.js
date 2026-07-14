@@ -8,6 +8,6 @@ export function fetchVipStatus() {
   return http.get('/vip/status');
 }
 
-export function fetchVipBooks() {
-  return http.get('/vip/books');
+export function fetchVipBooks(page = 1, pageSize = 20) {
+  return http.get('/vip/books', { params: { page, pageSize } });
 }

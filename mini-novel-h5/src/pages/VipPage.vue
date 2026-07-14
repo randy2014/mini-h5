@@ -43,36 +43,46 @@
       <div v-if="statusError" class="vip-feedback vip-feedback--error">
         <van-icon name="warning-o" />
         <span>VIP 身份校验失败，请稍后重试或重新登录。</span>
-        <button type="button" @click="load">重试</button>
+        <button type="button" @click="loadStatus">重试</button>
       </div>
 
       <div class="section-title vip-list-title">
         <h2>精选书单</h2>
-        <span>{{ books.length ? `${books.length} 本` : '专属内容' }}</span>
+        <span>{{ total ? `已加载 ${books.length} / ${total} 本` : '专属内容' }}</span>
       </div>
 
-      <div v-if="loading" class="vip-book-skeletons" aria-label="正在加载 VIP 书单">
-        <div v-for="item in 3" :key="item" class="vip-book-skeleton">
-          <van-skeleton-image />
-          <van-skeleton :row="3" />
-        </div>
-      </div>
-      <div v-else-if="booksError" class="vip-feedback vip-feedback--error">
+      <div v-if="listError && !books.length" class="vip-feedback vip-feedback--error">
         <van-icon name="warning-o" />
         <span>VIP 书单加载失败，请稍后再试。</span>
-        <button type="button" @click="load">重新加载</button>
+        <button type="button" @click="retryBooks">重新加载</button>
       </div>
-      <van-empty v-else-if="!books.length" image="search" description="暂无已审批上架的 VIP 书籍">
-        <van-button size="small" plain @click="load">刷新书单</van-button>
-      </van-empty>
-      <div v-else class="vip-books">
-        <BookCard
-          v-for="book in books"
-          :key="book.id"
-          :book="book"
-          @open="$router.push(`/h5/book/${book.id}`)"
-        />
-      </div>
+      <van-list
+        v-else
+        v-model:loading="loading"
+        v-model:error="listError"
+        :finished="finished"
+        error-text="加载失败，点击重试"
+        :finished-text="books.length ? `已加载全部 ${total} 本` : ''"
+        @load="loadNextPage"
+      >
+        <div v-if="loading && !books.length" class="vip-book-skeletons" aria-label="正在加载 VIP 书单">
+          <div v-for="item in 3" :key="item" class="vip-book-skeleton">
+            <van-skeleton-image />
+            <van-skeleton :row="3" />
+          </div>
+        </div>
+        <van-empty v-else-if="finished && !books.length" image="search" description="暂无已审批上架的 VIP 书籍">
+          <van-button size="small" plain @click="retryBooks">刷新书单</van-button>
+        </van-empty>
+        <div v-else class="vip-books">
+          <BookCard
+            v-for="book in books"
+            :key="book.novelId || book.id"
+            :book="book"
+            @open="$router.push(`/h5/book/${book.novelId || book.id}`)"
+          />
+        </div>
+      </van-list>
     </template>
   </section>
 </template>
@@ -87,9 +97,15 @@ const adult = ref(false);
 const confirmed = ref(localStorage.getItem(key) === 'yes');
 const loading = ref(false);
 const books = ref([]);
+const page = ref(1);
+const total = ref(0);
+const pages = ref(0);
+const finished = ref(false);
+const listError = ref(false);
+const requestInFlight = ref(false);
 const status = ref({ active: false, vipExpireTime: null });
 const statusError = ref(false);
-const booksError = ref(false);
+const pageSize = 20;
 
 const expiryLabel = computed(() => {
   if (!status.value.vipExpireTime) return '长期有效';
@@ -98,26 +114,66 @@ const expiryLabel = computed(() => {
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 });
 
-async function load() {
-  loading.value = true;
+async function loadStatus() {
   statusError.value = false;
-  booksError.value = false;
-  const results = await Promise.allSettled([fetchVipStatus(), fetchVipBooks()]);
-  if (results[0].status === 'fulfilled') status.value = results[0].value;
-  else statusError.value = true;
-  if (results[1].status === 'fulfilled') books.value = results[1].value || [];
-  else booksError.value = true;
-  loading.value = false;
+  try {
+    status.value = await fetchVipStatus();
+  } catch {
+    statusError.value = true;
+  }
+}
+
+async function loadNextPage() {
+  if (finished.value || requestInFlight.value) {
+    loading.value = false;
+    return;
+  }
+  requestInFlight.value = true;
+  listError.value = false;
+  try {
+    const result = await fetchVipBooks(page.value, pageSize);
+    const incoming = result.records || [];
+    const knownIds = new Set(books.value.map((book) => book.novelId || book.id));
+    incoming.forEach((book) => {
+      const novelId = book.novelId || book.id;
+      if (!knownIds.has(novelId)) {
+        knownIds.add(novelId);
+        books.value.push(book);
+      }
+    });
+    total.value = Number(result.total || 0);
+    pages.value = Number(result.pages || 0);
+    const currentPage = Number(result.page || page.value);
+    finished.value = !result.hasMore || currentPage >= pages.value;
+    if (!finished.value) page.value = currentPage + 1;
+  } catch {
+    listError.value = true;
+  } finally {
+    requestInFlight.value = false;
+    loading.value = false;
+  }
+}
+
+function retryBooks() {
+  if (!books.value.length) {
+    page.value = 1;
+    total.value = 0;
+    pages.value = 0;
+    finished.value = false;
+  }
+  listError.value = false;
+  loading.value = true;
+  loadNextPage();
 }
 
 function confirm() {
   localStorage.setItem(key, 'yes');
   confirmed.value = true;
-  load();
+  loadStatus();
 }
 
 onMounted(() => {
-  if (confirmed.value) load();
+  if (confirmed.value) loadStatus();
 });
 </script>
 

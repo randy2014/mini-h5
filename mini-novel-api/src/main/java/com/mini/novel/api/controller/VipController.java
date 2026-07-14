@@ -1,6 +1,8 @@
 package com.mini.novel.api.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mini.novel.api.model.VipBookPageVo;
 import com.mini.novel.api.model.VipStatusVo;
 import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.api.support.VipPublicationProgress;
@@ -15,6 +17,7 @@ import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,15 +38,19 @@ public class VipController {
     }
 
     @GetMapping("/books")
-    public Result<List<Novel>> books() {
-        List<Novel> books = novelMapper.selectList(new LambdaQueryWrapper<Novel>()
+    public Result<VipBookPageVo> books(
+            @RequestParam(value = "page", defaultValue = "1") long page,
+            @RequestParam(value = "pageSize", defaultValue = "20") long pageSize) {
+        long safePage = Math.max(1, page);
+        long safePageSize = Math.max(1, Math.min(100, pageSize));
+        Page<Novel> result = novelMapper.selectPage(new Page<>(safePage, safePageSize), new LambdaQueryWrapper<Novel>()
                 .ne(Novel::getStatus, 0)
                 .eq(Novel::getVipRequired, true)
                 .like(Novel::getSourceUrl, "book.xbookcn.net")
                 .orderByDesc(Novel::getUpdatedAt)
-                .last("LIMIT 50"));
-        books.forEach(publicationProgress::enrich);
-        return Result.ok(books);
+                .orderByDesc(Novel::getId));
+        result.getRecords().forEach(publicationProgress::enrich);
+        return Result.ok(VipBookPageVo.from(result));
     }
 
     @GetMapping("/plans")
