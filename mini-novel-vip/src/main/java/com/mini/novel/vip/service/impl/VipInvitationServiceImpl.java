@@ -16,10 +16,12 @@ import com.mini.novel.vip.mapper.VipInvitationCodeMapper;
 import com.mini.novel.vip.mapper.VipInvitationRecordMapper;
 import com.mini.novel.vip.mapper.VipOperationAuditMapper;
 import com.mini.novel.vip.service.VipInvitationService;
+import com.mini.novel.vip.service.VipInvitationPolicy;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -148,6 +150,9 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         }
         VipInvitationCode code = invitationCodeMapper.selectById(codeId);
         AppUser owner = code == null ? null : appUserMapper.selectByIdForUpdate(code.getOwnerUserId());
+        if (code != null && VipInvitationPolicy.expired(code.getExpiresAt(), LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "Expired invitation codes cannot be enabled.");
+        }
         if (code == null || owner == null || !isVip(owner)) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "仅有效 VIP 的邀请码可启用");
         }
@@ -209,6 +214,23 @@ public class VipInvitationServiceImpl implements VipInvitationService {
 
     @Override
     @Transactional
+    public VipInvitationCode generateCode(Long userId, Integer maxUses, String expiresAt, Long operatorId, String reason, String requestId) {
+        if (hasRequest(requestId)) return invitationCodeMapper.selectCurrentByOwner(userId);
+        LocalDateTime now = LocalDateTime.now();
+        AppUser user = appUserMapper.selectByIdForUpdate(userId);
+        if (!isVip(user)) throw new BusinessException(ErrorCode.BUSINESS_ERROR, "Only active VIP users can own invitation codes.");
+        if (invitationCodeMapper.selectCurrentByOwnerForUpdate(userId) != null) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "A current invitation code already exists; use reissue instead.");
+        }
+        int quota = VipInvitationPolicy.maxUses(maxUses);
+        LocalDateTime expiry = VipInvitationPolicy.expiresAt(expiresAt, now);
+        VipInvitationCode code = createCode(userId, quota, expiry, operatorId, reason, now);
+        audit("GENERATE_CODE", userId, code.getId(), null, null, code.getCode(), operatorId, reason, requestId, now);
+        return code;
+    }
+
+    @Override
+    @Transactional
     public VipInvitationCode updateQuota(Long codeId, Integer totalQuota, Long operatorId, String reason, String requestId) {
         if (hasRequest(requestId)) {
             return invitationCodeMapper.selectById(codeId);
@@ -232,7 +254,16 @@ public class VipInvitationServiceImpl implements VipInvitationService {
 
     @Override
     public VipInvitationCode currentCode(Long userId) {
-        return invitationCodeMapper.selectCurrentByOwner(userId);
+        return displayStatus(invitationCodeMapper.selectCurrentByOwner(userId));
+    }
+
+    @Override
+    public List<VipInvitationCode> codes(Long userId) {
+        List<VipInvitationCode> rows = invitationCodeMapper.selectList(new LambdaQueryWrapper<VipInvitationCode>()
+                .eq(VipInvitationCode::getOwnerUserId, userId)
+                .orderByDesc(VipInvitationCode::getCreatedAt)
+                .last("LIMIT 100"));
+        rows.forEach(this::displayStatus); return rows;
     }
 
     @Override
@@ -312,16 +343,30 @@ public class VipInvitationServiceImpl implements VipInvitationService {
     }
 
     private VipInvitationCode createCode(Long userId, Long operatorId, String reason, LocalDateTime now) {
+        return createCode(userId, DEFAULT_INVITE_QUOTA, null, operatorId, reason, now);
+    }
+
+    private VipInvitationCode createCode(Long userId, int quota, LocalDateTime expiresAt, Long operatorId, String reason, LocalDateTime now) {
+        DuplicateKeyException last = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try { return insertCode(userId, quota, expiresAt, operatorId, reason, now); }
+            catch (DuplicateKeyException conflict) { last = conflict; }
+        }
+        throw new IllegalStateException("Unable to allocate a unique invitation code after 5 attempts.", last);
+    }
+
+    private VipInvitationCode insertCode(Long userId, int quota, LocalDateTime expiresAt, Long operatorId, String reason, LocalDateTime now) {
         VipInvitationCode code = new VipInvitationCode();
         code.setOwnerUserId(userId);
         code.setCode(generateCode());
         code.setStatus("ENABLED");
-        code.setTotalQuota(DEFAULT_INVITE_QUOTA);
+        code.setTotalQuota(quota);
         code.setUsedQuota(0);
-        code.setRemainingQuota(DEFAULT_INVITE_QUOTA);
+        code.setRemainingQuota(quota);
         code.setCurrent(true);
         code.setGeneratedAt(now);
         code.setEnabledAt(now);
+        code.setExpiresAt(expiresAt);
         code.setOperatorId(operatorId);
         code.setRemark(reason);
         code.setCreatedAt(now);
@@ -408,7 +453,12 @@ public class VipInvitationServiceImpl implements VipInvitationService {
     }
 
     private boolean isUsable(VipInvitationCode code) {
-        return code != null && "ENABLED".equals(code.getStatus()) && safe(code.getRemainingQuota()) > 0;
+        return code != null && "ENABLED".equals(code.getStatus()) && safe(code.getRemainingQuota()) > 0
+                && !VipInvitationPolicy.expired(code.getExpiresAt(), LocalDateTime.now());
+    }
+    private VipInvitationCode displayStatus(VipInvitationCode code) {
+        if (code != null && "ENABLED".equals(code.getStatus()) && VipInvitationPolicy.expired(code.getExpiresAt(), LocalDateTime.now())) code.setStatus("EXPIRED");
+        return code;
     }
 
     private boolean isVip(AppUser user) {

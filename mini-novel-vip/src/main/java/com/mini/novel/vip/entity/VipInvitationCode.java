@@ -23,6 +23,7 @@ public class VipInvitationCode {
     private LocalDateTime disabledAt;
     private LocalDateTime revokedAt;
     private LocalDateTime lastUsedAt;
+    private LocalDateTime expiresAt;
     private Long replacedByCodeId;
     private Long operatorId;
     private String remark;
@@ -55,6 +56,8 @@ public class VipInvitationCode {
     public void setRevokedAt(LocalDateTime revokedAt) { this.revokedAt = revokedAt; }
     public LocalDateTime getLastUsedAt() { return lastUsedAt; }
     public void setLastUsedAt(LocalDateTime lastUsedAt) { this.lastUsedAt = lastUsedAt; }
+    public LocalDateTime getExpiresAt() { return expiresAt; }
+    public void setExpiresAt(LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
     public Long getReplacedByCodeId() { return replacedByCodeId; }
     public void setReplacedByCodeId(Long replacedByCodeId) { this.replacedByCodeId = replacedByCodeId; }
     public Long getOperatorId() { return operatorId; }

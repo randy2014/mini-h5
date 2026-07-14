@@ -57,8 +57,18 @@
         <el-descriptions-item label="状态">{{ inviteCode.status }}</el-descriptions-item>
         <el-descriptions-item label="总额度">{{ inviteCode.totalQuota }}</el-descriptions-item>
         <el-descriptions-item label="剩余额度">{{ inviteCode.remainingQuota }}</el-descriptions-item>
+        <el-descriptions-item label="已使用次数">{{ inviteCode.usedQuota }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ inviteCode.createdAt }}</el-descriptions-item>
+        <el-descriptions-item label="过期时间">{{ inviteCode.expiresAt || '长期有效' }}</el-descriptions-item>
+        <el-descriptions-item label="操作"><el-button link type="primary" @click="copyCode(inviteCode.code)">复制邀请码</el-button></el-descriptions-item>
       </el-descriptions>
       <el-empty v-else description="暂无邀请码" />
+      <el-form v-if="!inviteCode" :inline="true" class="toolbar">
+        <el-form-item label="最大使用次数"><el-input-number v-model="generateForm.maxUses" :min="1" :max="1000" /></el-form-item>
+        <el-form-item label="过期时间"><el-date-picker v-model="generateForm.expiresAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" /></el-form-item>
+        <el-form-item label="原因"><el-input v-model="generateForm.reason" placeholder="生成原因" /></el-form-item>
+        <el-button type="primary" @click="generateInvite">生成邀请码</el-button>
+      </el-form>
       <div class="toolbar">
         <el-input-number v-model="quotaForm.totalQuota" :min="0" />
         <el-input v-model="quotaForm.reason" placeholder="原因" />
@@ -67,6 +77,15 @@
         <el-button :disabled="!inviteCode" @click="setInviteEnabled(false)">停用</el-button>
         <el-button type="warning" @click="reissueInvite">作废重发</el-button>
       </div>
+      <h3>邀请码列表</h3>
+      <el-table :data="inviteCodes">
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column prop="usedQuota" label="已使用" width="80" />
+        <el-table-column prop="totalQuota" label="最大次数" width="90" />
+        <el-table-column prop="createdAt" label="创建时间" width="170" />
+        <el-table-column prop="expiresAt" label="过期时间" width="170" />
+        <el-table-column label="操作"><template #default="{row}"><el-button link type="primary" @click="copyCode(row.code)">复制</el-button><el-button v-if="row.status==='ENABLED'" link type="danger" @click="disableListedCode(row)">禁用</el-button></template></el-table-column>
+      </el-table>
       <h3>邀请记录</h3>
       <el-table :data="inviteRecords">
         <el-table-column prop="codeSnapshot" label="邀请码" width="120" />
@@ -100,9 +119,11 @@ const logVisible = ref(false);
 const inviteVisible = ref(false);
 const inviteCode = ref(null);
 const inviteRecords = ref([]);
+const inviteCodes = ref([]);
 const operationLogs = ref([]);
 const vipForm = reactive({ action: 'UPGRADE', days: 30, expireAt: '', reason: '' });
 const quotaForm = reactive({ totalQuota: 3, reason: '' });
+const generateForm = reactive({ maxUses: 3, expiresAt: '', reason: '' });
 
 function vipText(row) {
   if (row.vipStatus === 2) return '永久VIP';
@@ -141,10 +162,28 @@ async function openInvite(row) {
   currentUser.value = row;
   inviteCode.value = await adminApi.get(`/users/${row.id}/invite-code`);
   inviteRecords.value = await adminApi.get(`/users/${row.id}/invite-records`);
+  inviteCodes.value = await adminApi.get(`/users/${row.id}/invite-codes`);
   operationLogs.value = await adminApi.get(`/users/${row.id}/operation-logs`);
   quotaForm.totalQuota = inviteCode.value?.totalQuota || 3;
   quotaForm.reason = '';
   inviteVisible.value = true;
+}
+async function generateInvite() {
+  if (!generateForm.reason) { ElMessage.warning('请填写生成原因'); return; }
+  await ElMessageBox.confirm('确认生成邀请码？', '二次确认');
+  await adminApi.post(`/users/${currentUser.value.id}/invite-code`, { ...generateForm, operatorId: 1, requestId: requestId('generate') });
+  ElMessage.success('邀请码已生成');
+  await openInvite(currentUser.value);
+}
+async function copyCode(code) {
+  try { await navigator.clipboard.writeText(code); ElMessage.success('邀请码已复制'); }
+  catch { ElMessage.error('复制失败，请手动复制'); }
+}
+async function disableListedCode(row) {
+  await ElMessageBox.confirm('确认禁用该邀请码？', '二次确认');
+  await adminApi.put(`/users/invite-codes/${row.id}/disable`, { operatorId: 1, reason: '后台禁用邀请码', requestId: requestId('disable') });
+  ElMessage.success('邀请码已禁用');
+  await openInvite(currentUser.value);
 }
 async function saveQuota() {
   await adminApi.put(`/users/invite-codes/${inviteCode.value.id}/quota`, { ...quotaForm, operatorId: 1, requestId: requestId('quota') });

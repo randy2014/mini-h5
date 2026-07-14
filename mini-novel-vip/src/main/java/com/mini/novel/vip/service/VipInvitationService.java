@@ -18,9 +18,13 @@ public interface VipInvitationService {
 
     VipInvitationCode reissueCode(Long userId, Long operatorId, String reason, String requestId);
 
+    VipInvitationCode generateCode(Long userId, Integer maxUses, String expiresAt, Long operatorId, String reason, String requestId);
+
     VipInvitationCode updateQuota(Long codeId, Integer totalQuota, Long operatorId, String reason, String requestId);
 
     VipInvitationCode currentCode(Long userId);
+
+    List<VipInvitationCode> codes(Long userId);
 
     List<VipInvitationRecord> records(Long userId);
 

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS vip_invitation_code (
   disabled_at DATETIME NULL,
   revoked_at DATETIME NULL,
   last_used_at DATETIME NULL,
+  expires_at DATETIME NULL,
   replaced_by_code_id BIGINT NULL,
   operator_id BIGINT NULL,
   remark VARCHAR(255) NULL,
