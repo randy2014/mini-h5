@@ -3,6 +3,7 @@ package com.mini.novel.crawler.parser;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.mini.novel.crawler.entity.CrawlerSourceConfig;
+import java.util.HashMap;
 import java.util.Map;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -208,6 +209,162 @@ class XbookcnCrawlerSiteParserTest {
         assertThat(snapshot.title()).isEqualTo("Real Book");
         assertThat(snapshot.chapters()).extracting(ParsedChapterSnapshot::title)
                 .containsExactly("\u7b2c1\u7ae0 Opening", "& Chapter 2 Real Title");
+    }
+
+    @Test
+    void parsesBloggerEntryTitlesAcrossUpdatedMaxPages() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {
+                  "poc": {"singleBookOnly": true, "bookUrl": "https://book.xbookcn.net/search/label/book-a"},
+                  "catalogRules": {"maxPages": 4, "maxChapters": 40}
+                }
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://book.xbookcn.net/"),
+                "https://book.xbookcn.net/", 1).get(0);
+        StringBuilder firstPageLinks = new StringBuilder();
+        for (int i = 1; i <= 20; i++) {
+            String suffix = i == 1 ? "" : "_" + i;
+            firstPageLinks.append("<h3 class='entry-title'><a href='/2024/06/blog-post")
+                    .append(suffix)
+                    .append(".html'>Book A Chapter ")
+                    .append(i)
+                    .append("</a></h3>");
+        }
+        Map<String, Document> pages = new HashMap<>();
+        pages.put("https://book.xbookcn.net/search/label/book-a", Jsoup.parse("""
+                        <h1>Book A</h1>
+                        <a href="/search/label/book-a">Catalog</a>
+                        """ + firstPageLinks + """
+                        <a class="blog-pager-older-link" href="/search/label/book-a?updated-max=2024-06-01T00:00:00-07:00&max-results=20">Older</a>
+                        """, "https://book.xbookcn.net/search/label/book-a"));
+        pages.put("https://book.xbookcn.net/search/label/book-a?updated-max=2024-06-01T00:00:00-07:00&max-results=20", Jsoup.parse("""
+                        <h3 class="entry-title"><a href="/2024/05/blog-post.html">Book A Chapter 21</a></h3>
+                        <h3 class="entry-title"><a href="/2024/05/blog-post_22.html">Book A Chapter 22</a></h3>
+                        """, "https://book.xbookcn.net/search/label/book-a?updated-max=2024-06-01T00:00:00-07:00&max-results=20"));
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, pages::get);
+
+        assertThat(snapshot.chapters()).hasSize(22);
+        assertThat(snapshot.chapters()).extracting(ParsedChapterSnapshot::chapterId)
+                .contains("2024_06_blog_post_html", "2024_06_blog_post_20_html", "2024_05_blog_post_22_html");
+        assertThat(snapshot.chapters()).extracting(ParsedChapterSnapshot::chapterNo)
+                .containsSequence(1, 2, 3, 4, 5);
+    }
+
+    @Test
+    void keepsNumericAndBlogPostChapterIdsDistinct() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {"poc":{"singleBookOnly":true,"bookUrl":"https://book.xbookcn.net/search/label/book-b"}}
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://book.xbookcn.net/"),
+                "https://book.xbookcn.net/", 1).get(0);
+        Map<String, Document> pages = Map.of(
+                "https://book.xbookcn.net/search/label/book-b", Jsoup.parse("""
+                        <h1>Book B</h1>
+                        <a href="/search/label/book-b">Catalog</a>
+                        <h3 class="entry-title"><a href="/2024/07/12.html">Book B Chapter 12</a></h3>
+                        <h3 class="entry-title"><a href="/2024/07/blog-post.html">Book B Chapter 13</a></h3>
+                        <h3 class="entry-title"><a href="/2024/07/blog-post_12.html">Book B Chapter 14</a></h3>
+                        """, "https://book.xbookcn.net/search/label/book-b")
+        );
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, pages::get);
+
+        assertThat(snapshot.chapters()).extracting(ParsedChapterSnapshot::chapterId)
+                .containsExactly("2024_07_12_html", "2024_07_blog_post_html", "2024_07_blog_post_12_html");
+    }
+
+    @Test
+    void ignoresSidebarIntroNavigationAndOtherLabelsWhenEntryTitlesExist() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {"poc":{"singleBookOnly":true,"bookUrl":"https://book.xbookcn.net/search/label/book-c"}}
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://book.xbookcn.net/"),
+                "https://book.xbookcn.net/", 1).get(0);
+        Map<String, Document> pages = Map.of(
+                "https://book.xbookcn.net/search/label/book-c", Jsoup.parse("""
+                        <h1>Book C</h1>
+                        <a href="/search/label/book-c">Catalog</a>
+                        <nav><a href="/2024/07/blog-post_99.html">Other Book Navigation</a></nav>
+                        <aside><a href="/2024/07/blog-post_88.html">Recommended Other Book</a></aside>
+                        <div class="intro"><a href="/2024/07/blog-post_77.html">Intro Link</a></div>
+                        <h3 class="entry-title"><a href="/2024/07/blog-post.html">Book C Chapter 1</a></h3>
+                        <h3 class="entry-title"><a href="/2024/07/blog-post_2.html">Book C Chapter 2</a></h3>
+                        """, "https://book.xbookcn.net/search/label/book-c")
+        );
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, pages::get);
+
+        assertThat(snapshot.chapters()).hasSize(2);
+        assertThat(snapshot.chapters()).extracting(ParsedChapterSnapshot::url)
+                .containsExactly("https://book.xbookcn.net/2024/07/blog-post.html",
+                        "https://book.xbookcn.net/2024/07/blog-post_2.html");
+    }
+
+    @Test
+    void stopsBloggerPaginationWhenNextPageRepeatsWithoutNewChapters() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {
+                  "poc": {"singleBookOnly": true, "bookUrl": "https://book.xbookcn.net/search/label/book-d"},
+                  "catalogRules": {"maxPages": 10}
+                }
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://book.xbookcn.net/"),
+                "https://book.xbookcn.net/", 1).get(0);
+        Map<String, Document> pages = Map.of(
+                "https://book.xbookcn.net/search/label/book-d", Jsoup.parse("""
+                        <h1>Book D</h1>
+                        <a href="/search/label/book-d">Catalog</a>
+                        <h3 class="entry-title"><a href="/2024/08/blog-post.html">Book D Chapter 1</a></h3>
+                        <a class="blog-pager-older-link" href="/search/label/book-d?start=20&max-results=20">Older</a>
+                        """, "https://book.xbookcn.net/search/label/book-d"),
+                "https://book.xbookcn.net/search/label/book-d?start=20&max-results=20", Jsoup.parse("""
+                        <h3 class="entry-title"><a href="/2024/08/blog-post.html">Book D Chapter 1</a></h3>
+                        <a class="blog-pager-older-link" href="/search/label/book-d?start=40&max-results=20">Older</a>
+                        """, "https://book.xbookcn.net/search/label/book-d?start=20&max-results=20")
+        );
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, pages::get);
+
+        assertThat(snapshot.chapters()).hasSize(1);
+    }
+
+    @Test
+    void bloggerFixtureDiscoversYinLongChuXueCandidatesBeyondOneChapter() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {
+                  "poc": {"singleBookOnly": true, "bookUrl": "https://book.xbookcn.net/search/label/yinlong"},
+                  "catalogRules": {"maxPages": 2, "maxChapters": 30}
+                }
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://book.xbookcn.net/"),
+                "https://book.xbookcn.net/", 1).get(0);
+        StringBuilder links = new StringBuilder();
+        for (int i = 1; i <= 24; i++) {
+            String suffix = i == 1 ? "" : "_" + i;
+            links.append("<h3 class='entry-title'><a href='/2024/09/blog-post")
+                    .append(suffix)
+                    .append(".html'>\\u6deb\\u9f99\\u51fa\\u7a74 Chapter ")
+                    .append(i)
+                    .append("</a></h3>");
+        }
+        Map<String, Document> pages = Map.of(
+                "https://book.xbookcn.net/search/label/yinlong", Jsoup.parse("""
+                        <h1>\u6deb\u9f99\u51fa\u7a74</h1>
+                        <a href="/search/label/yinlong">Catalog</a>
+                        """ + links, "https://book.xbookcn.net/search/label/yinlong")
+        );
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, pages::get);
+
+        assertThat(snapshot.chapters()).hasSize(24);
+        assertThat(snapshot.chapters().get(0).chapterId()).isEqualTo("2024_09_blog_post_html");
+        assertThat(snapshot.chapters().get(23).chapterId()).isEqualTo("2024_09_blog_post_24_html");
     }
 
     @Test

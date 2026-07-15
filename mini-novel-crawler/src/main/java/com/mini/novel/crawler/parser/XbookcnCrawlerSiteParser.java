@@ -18,6 +18,10 @@ import org.springframework.util.StringUtils;
 @Order(30)
 public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
     private static final Pattern BOOK_ID_PATTERN = Pattern.compile("/(?:book|novel)/(\\d+|[A-Za-z0-9_-]+)");
+    private static final Pattern BLOGGER_CHAPTER_PATH =
+            Pattern.compile("^/\\d{4}/\\d{2}/(?:\\d+|blog-post(?:_\\d+)?)\\.html$");
+    private static final Pattern CHAPTER_NO_PATTERN =
+            Pattern.compile("(?:\\u7b2c\\s*)?(\\d{1,5})\\s*(?:\\u7ae0|chapter)?", Pattern.CASE_INSENSITIVE);
     private static final int DEFAULT_MAX_CATALOG_PAGES = 20;
     private static final int DEFAULT_MAX_CHAPTERS = 5000;
 
@@ -106,11 +110,23 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
                                                      DocumentFetcher fetcher) throws Exception {
         List<ParsedChapterSnapshot> chapters = new ArrayList<>();
         Set<String> seenPages = new LinkedHashSet<>();
+        Set<String> seenChapterUrls = new LinkedHashSet<>();
         String currentUrl = catalogUrl;
         int maxPages = rules.intValue(DEFAULT_MAX_CATALOG_PAGES, "catalogRules.maxPages");
         while (StringUtils.hasText(currentUrl) && seenPages.size() < maxPages && seenPages.add(currentUrl)) {
             Document page = fetcher.fetch(currentUrl);
-            chapters.addAll(chapterLinks(page, bookTitle, rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters")));
+            List<ParsedChapterSnapshot> pageChapters = chapterLinks(page, bookTitle,
+                    rules.intValue(DEFAULT_MAX_CHAPTERS, "catalogRules.maxChapters"));
+            int added = 0;
+            for (ParsedChapterSnapshot chapter : pageChapters) {
+                if (seenChapterUrls.add(chapter.url())) {
+                    chapters.add(chapter);
+                    added++;
+                }
+            }
+            if (added == 0 && !chapters.isEmpty()) {
+                break;
+            }
             currentUrl = nextCatalogPage(page, currentUrl);
         }
         return unique(chapters);
@@ -119,14 +135,21 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
     private List<ParsedChapterSnapshot> chapterLinks(Document document, String bookTitle, int maxChapters) {
         List<ParsedChapterSnapshot> chapters = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
-        for (Element link : document.select("a[href]")) {
+        List<Element> links = new ArrayList<>(document.select(
+                "h1.entry-title a[href], h2.entry-title a[href], h3.entry-title a[href], "
+                        + ".entry-title a[href], .post-title a[href], .post h1 a[href], .post h2 a[href], "
+                        + ".post h3 a[href], article h1 a[href], article h2 a[href], article h3 a[href]"));
+        if (links.isEmpty()) {
+            links.addAll(document.select("a[href]"));
+        }
+        for (Element link : links) {
             String href = normalize(link.absUrl("href"));
-            String title = cleanChapterTitle(clean(link.text()), bookTitle, chapters.size() + 1);
             if (!isChapterUrl(href) || !seen.add(href)) {
                 continue;
             }
-            int chapterNo = chapters.size() + 1;
-            chapters.add(new ParsedChapterSnapshot(chapterId(href), StringUtils.hasText(title) ? title : "第" + chapterNo + "章",
+            int chapterNo = chapterNo(clean(link.text()), href, chapters.size() + 1);
+            String title = cleanChapterTitle(clean(link.text()), bookTitle, chapterNo);
+            chapters.add(new ParsedChapterSnapshot(chapterId(href), StringUtils.hasText(title) ? title : "Chapter " + chapterNo,
                     href, chapterNo, true));
             if (chapters.size() >= maxChapters) {
                 break;
@@ -140,19 +163,23 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         Set<String> seen = new LinkedHashSet<>();
         for (ParsedChapterSnapshot chapter : chapters) {
             if (seen.add(chapter.url())) {
-                unique.add(new ParsedChapterSnapshot(chapter.chapterId(), chapter.title(), chapter.url(), unique.size() + 1, true));
+                int chapterNo = chapter.chapterNo() > 0 ? chapter.chapterNo() : unique.size() + 1;
+                unique.add(new ParsedChapterSnapshot(chapter.chapterId(), chapter.title(), chapter.url(), chapterNo, true));
             }
         }
         return unique;
     }
 
     private String nextCatalogPage(Document document, String currentUrl) {
-        for (Element link : document.select("a[href]")) {
+        for (Element link : document.select("a[rel=next][href], .blog-pager-older-link[href], a[href]")) {
             String text = clean(link.text()).toLowerCase();
-            if ((text.contains("next") || text.contains("\u4e0b\u4e00\u9875") || text.contains("\u4e0b\u9875"))
-                    && !text.contains("\u4e0b\u4e00\u7ae0") && !text.contains("\u4e0b\u7ae0")) {
+            boolean relNext = "next".equalsIgnoreCase(link.attr("rel")) || link.hasClass("blog-pager-older-link");
+            boolean textNext = (text.contains("next") || text.contains("\u4e0b\u4e00\u9875")
+                    || text.contains("\u4e0b\u9875") || text.contains("older"))
+                    && !text.contains("\u4e0b\u4e00\u7ae0") && !text.contains("\u4e0b\u7ae0");
+            if (relNext || textNext) {
                 String href = normalize(link.absUrl("href"));
-                if (StringUtils.hasText(href) && !href.equals(currentUrl)) {
+                if (StringUtils.hasText(href) && !href.equals(currentUrl) && isCatalogPageUrl(href)) {
                     return href;
                 }
             }
@@ -170,7 +197,21 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
             return false;
         }
         String lower = href.toLowerCase();
-        return lower.contains("chapter") || lower.contains("read") || lower.matches(".*/\\d+\\.html$");
+        return lower.contains("chapter") || lower.contains("read") || BLOGGER_CHAPTER_PATH.matcher(path(href)).find();
+    }
+
+    private boolean isCatalogPageUrl(String href) {
+        if (!StringUtils.hasText(href) || !href.startsWith("https://book.xbookcn.net/")) {
+            return false;
+        }
+        String lower = href.toLowerCase();
+        return lower.contains("/search/label/")
+                || lower.contains("updated-max=")
+                || lower.contains("max-results=")
+                || lower.contains("start=")
+                || lower.contains("by-date=")
+                || lower.contains("catalog")
+                || lower.contains("list");
     }
 
     private String firstHref(Element element) {
@@ -229,9 +270,43 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
     }
 
     private String chapterId(String url) {
-        String normalized = normalize(url);
-        int slash = normalized.lastIndexOf('/');
-        return slash >= 0 ? normalized.substring(slash + 1).replaceAll("\\W+", "") : Integer.toHexString(normalized.hashCode());
+        String normalizedPath = path(url);
+        String stable = normalizedPath.replaceFirst("^/+", "").replaceAll("[^A-Za-z0-9]+", "_").replaceAll("^_+|_+$", "");
+        return StringUtils.hasText(stable) ? stable : Integer.toHexString((url == null ? "" : url).hashCode());
+    }
+
+    private int chapterNo(String title, String href, int fallback) {
+        Matcher titleMatcher = CHAPTER_NO_PATTERN.matcher(clean(title));
+        if (titleMatcher.find()) {
+            try {
+                return Integer.parseInt(titleMatcher.group(1));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        String normalizedPath = path(href);
+        Matcher numericPath = Pattern.compile("/(\\d+)\\.html$").matcher(normalizedPath);
+        if (numericPath.find()) {
+            try {
+                return Integer.parseInt(numericPath.group(1));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        Matcher blogPostSuffix = Pattern.compile("/blog-post_(\\d+)\\.html$").matcher(normalizedPath);
+        if (blogPostSuffix.find()) {
+            try {
+                return Integer.parseInt(blogPostSuffix.group(1));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    private String path(String url) {
+        try {
+            return URI.create(normalize(url)).getPath();
+        } catch (IllegalArgumentException ex) {
+            return "";
+        }
     }
 
     private String normalizeStatus(String value) {
@@ -246,12 +321,11 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
     }
 
     private String cleanBookTitle(String value) {
-        String cleaned = clean(value)
+        return clean(value)
                 .replaceAll("(?i)\\s*[-_|]\\s*(book\\.)?xbookcn(\\.net)?.*$", "")
                 .replaceAll("\\s*[-_|]\\s*(\\u5c0f\\u8bf4|\\u5c0f\\u8bf4\\u7f51|\\u9605\\u8bfb).*$", "")
                 .replaceAll("\\s+", " ")
                 .trim();
-        return cleaned;
     }
 
     private String cleanChapterTitle(String value, String bookTitle, int chapterNo) {
@@ -265,7 +339,7 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         String cleanBookTitle = cleanBookTitle(bookTitle);
         if (StringUtils.hasText(cleanBookTitle) && cleaned.startsWith(cleanBookTitle)) {
             String withoutBook = cleaned.substring(cleanBookTitle.length())
-                    .replaceFirst("^[\\s:：\\-_|　]+", "")
+                    .replaceFirst("^[\\s:\\uff1a\\-_|\\u3000]+", "")
                     .trim();
             if (StringUtils.hasText(withoutBook)) {
                 cleaned = withoutBook;

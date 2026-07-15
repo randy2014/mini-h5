@@ -1118,12 +1118,21 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 .eq("book_raw_id", book.id)
                 .eq("source_chapter_id", sourceChapterId)
                 .last("LIMIT 1"));
-        if (isContentReady(chapter)) {
+        boolean matchedBySourceUrl = false;
+        if (chapter == null && StringUtils.hasText(snapshot.chapterUrl())) {
+            chapter = chapterRawMapper.selectOne(new QueryWrapper<CrawlChapterRaw>()
+                    .eq("book_raw_id", book.id)
+                    .eq("source_url", limit(snapshot.chapterUrl(), 512))
+                    .last("LIMIT 1"));
+            matchedBySourceUrl = chapter != null;
+        }
+        if (hasExistingContent(chapter)) {
             return;
         }
         if (chapter == null) {
             chapter = new CrawlChapterRaw();
             chapter.bookRawId = book.id;
+            chapter.sourceChapterId = sourceChapterId;
             chapter.createdAt = now;
         }
         int chapterNo = parsedChapter == null || parsedChapter.chapterNo() <= 0 ? 1 : parsedChapter.chapterNo();
@@ -1131,13 +1140,27 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 ? "Public chapter entry #" + sourceChapterId
                 : parsedChapter.title();
         boolean vip = parsedChapter != null && parsedChapter.vip();
-        chapter.sourceChapterId = sourceChapterId;
-        chapter.sourceUrl = limit(snapshot.chapterUrl(), 512);
-        chapter.chapterNo = chapterNo;
-        chapter.title = limit(title, 255);
-        chapter.vip = vip;
-        chapter.priceCoin = 0;
-        chapter.contentStatus = "ENTRY_READY";
+        if (!StringUtils.hasText(chapter.sourceChapterId) || matchedBySourceUrl) {
+            chapter.sourceChapterId = sourceChapterId;
+        }
+        if (!StringUtils.hasText(chapter.sourceUrl)) {
+            chapter.sourceUrl = limit(snapshot.chapterUrl(), 512);
+        }
+        if (chapter.chapterNo == null || chapter.chapterNo <= 0) {
+            chapter.chapterNo = chapterNo;
+        }
+        if (!StringUtils.hasText(chapter.title)) {
+            chapter.title = limit(title, 255);
+        }
+        if (chapter.vip == null) {
+            chapter.vip = vip;
+        }
+        if (chapter.priceCoin == null) {
+            chapter.priceCoin = 0;
+        }
+        if (!StringUtils.hasText(chapter.contentStatus)) {
+            chapter.contentStatus = "ENTRY_READY";
+        }
         chapter.crawledAt = now;
         chapter.updatedAt = now;
 
@@ -1168,7 +1191,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         if (StringUtils.hasText(content) && !"RISK_BLOCKED".equals(chapter.contentStatus)) {
             chapter.contentHash = sha256(content);
-            if (!"PENDING_REVIEW".equals(chapter.contentStatus)) {
+            if (isIsolatedReviewSource(source)) {
+                chapter.contentStatus = "PENDING_REVIEW";
+                book.contentStatus = "PENDING_REVIEW";
+            } else if (!"PENDING_REVIEW".equals(chapter.contentStatus)) {
                 chapter.contentStatus = "CONTENT_READY";
                 book.contentStatus = "CONTENT_READY";
             }
@@ -1193,8 +1219,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 || "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType);
     }
 
-    private boolean isContentReady(CrawlChapterRaw chapter) {
-        if (chapter == null || chapter.id == null || !"CONTENT_READY".equals(chapter.contentStatus)) {
+    private boolean hasExistingContent(CrawlChapterRaw chapter) {
+        if (chapter == null || chapter.id == null) {
             return false;
         }
         CrawlContentRaw raw = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
@@ -1204,7 +1230,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (raw == null || raw.contentLength == null || raw.contentLength <= 0) {
             return false;
         }
-        return !StringUtils.hasText(chapter.contentHash) || chapter.contentHash.equals(raw.contentHash);
+        return true;
     }
 
     private String fetchPublicChapterContent(String url, CrawlerSourceConfig source) {
@@ -1412,6 +1438,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         CrawlContentRaw raw = contentRawMapper.selectOne(new QueryWrapper<CrawlContentRaw>()
                 .eq("chapter_raw_id", chapter.id)
                 .last("LIMIT 1"));
+        if (raw != null && raw.contentLength != null && raw.contentLength > 0) {
+            return;
+        }
         if (raw == null) {
             raw = new CrawlContentRaw();
             raw.createdAt = LocalDateTime.now();
