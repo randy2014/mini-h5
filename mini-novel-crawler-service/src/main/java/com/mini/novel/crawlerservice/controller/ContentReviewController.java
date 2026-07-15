@@ -249,6 +249,7 @@ public class ContentReviewController {
                 """, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"),
                     chapter.get("chapterSourceUrl"), mappedChapterId, novelId);
         } else {
+            assertChapterSlotIsStable(chapter, novelId);
             jdbc.update("""
                 INSERT INTO mini_novel.chapter(novel_id,chapter_no,title,content,is_vip,price_coin,source_url,created_at,updated_at)
                 VALUES(?,?,?,?,1,0,?,NOW(),NOW())
@@ -289,6 +290,20 @@ public class ContentReviewController {
             LIMIT 1
             """, (rs, row) -> rs.getLong(1), novelId, ensureNovelMapping(chapter, novelId), chapter.get("sourceChapterId"));
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private void assertChapterSlotIsStable(Map<String, Object> chapter, Long novelId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT id,source_url FROM mini_novel.chapter
+            WHERE novel_id=? AND chapter_no=? LIMIT 1
+            """, novelId, chapter.get("chapterNo"));
+        if (rows.isEmpty()) {
+            return;
+        }
+        Object existingUrl = rows.get(0).get("source_url");
+        if (!Objects.equals(Objects.toString(existingUrl, ""), Objects.toString(chapter.get("chapterSourceUrl"), ""))) {
+            throw new IllegalStateException("Chapter slot already belongs to another source URL; manual mapping repair is required.");
+        }
     }
 
     private Long ensureNovelMapping(Map<String, Object> chapter, Long novelId) {

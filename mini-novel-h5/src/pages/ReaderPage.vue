@@ -197,6 +197,7 @@ async function openCatalog() {
       await loadNextCatalogPage();
     }
   }
+  await loadAllCatalogPages();
 }
 
 function resetCatalog() {
@@ -235,6 +236,12 @@ async function loadNextCatalogPage() {
   } finally {
     catalogRequestInFlight.value = false;
     catalogLoading.value = false;
+  }
+}
+
+async function loadAllCatalogPages() {
+  while (!catalogFinished.value && !catalogError.value) {
+    await loadNextCatalogPage();
   }
 }
 

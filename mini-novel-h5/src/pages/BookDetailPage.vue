@@ -168,6 +168,7 @@ onMounted(async () => {
     activeChapterId.value = targetChapterId;
     resetChapters();
     await loadNextChapterPage();
+    await loadAllChapterPages();
     if (targetChapterId) {
       await loadUntilChapter((chapter) => chapter.id === targetChapterId);
     }
@@ -222,6 +223,12 @@ async function loadNextChapterPage() {
 
 async function loadUntilChapter(predicate) {
   while (!chapters.value.some(predicate) && !chapterFinished.value && !chapterError.value) {
+    await loadNextChapterPage();
+  }
+}
+
+async function loadAllChapterPages() {
+  while (!chapterFinished.value && !chapterError.value) {
     await loadNextChapterPage();
   }
 }
