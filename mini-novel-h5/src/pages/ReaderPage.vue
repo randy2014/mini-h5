@@ -34,28 +34,36 @@
       <div class="catalog-drawer" @click.stop>
         <div class="section-title compact">
           <h2>目录</h2>
-          <span>{{ catalogPage.current || 1 }} / {{ catalogPage.pages || 1 }}</span>
+          <span>已加载 {{ catalogChapters.length }} / {{ catalogPage.total || 0 }}</span>
         </div>
-        <van-loading v-if="catalogLoading" class="center-loading" />
-        <template v-else>
+        <div v-if="catalogError && !catalogChapters.length" class="catalog-load-error">
+          <span>目录加载失败</span>
+          <van-button size="small" plain @click="retryCatalog">重试</van-button>
+        </div>
+        <van-list
+          v-else
+          v-model:loading="catalogLoading"
+          v-model:error="catalogError"
+          :finished="catalogFinished"
+          :immediate-check="false"
+          error-text="目录加载失败，点击重试"
+          :finished-text="catalogChapters.length ? `已加载全部 ${catalogPage.total || catalogChapters.length} 章` : ''"
+          @load="loadNextCatalogPage"
+        >
+          <van-loading v-if="catalogLoading && !catalogChapters.length" class="center-loading" />
           <button
+            v-else
             v-for="item in catalogChapters"
             :key="item.id"
             type="button"
-            :class="{ active: item.id === chapter.id, locked: item.readable === false }"
-            :disabled="item.readable === false"
-            @click="item.readable === false ? null : readCatalog(item)"
+            :class="{ active: item.id === chapter.id }"
+            @click="readCatalog(item)"
           >
             <b>{{ item.title }}</b>
             <small>第 {{ item.chapterNo }} 章</small>
-            <small v-if="item.readable === false">待审核</small>
           </button>
-          <div v-if="catalogPage.pages > 1" class="chapter-pager">
-            <van-button size="small" plain :disabled="catalogPageNo <= 1" @click="loadCatalog(catalogPageNo - 1)">上一页</van-button>
-            <span>{{ catalogPageNo }} / {{ catalogPage.pages }}</span>
-            <van-button size="small" plain :disabled="catalogPageNo >= catalogPage.pages" @click="loadCatalog(catalogPageNo + 1)">下一页</van-button>
-          </div>
-        </template>
+          <van-empty v-if="catalogFinished && !catalogChapters.length" description="暂无已发布章节" />
+        </van-list>
       </div>
     </van-popup>
 
@@ -69,7 +77,7 @@ import { showConfirmDialog, showToast } from 'vant';
 import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } from '../services/book';
 import { formatTextLineBreaks } from '../utils/text';
 
-const CATALOG_PAGE_SIZE = 80;
+const CATALOG_PAGE_SIZE = 50;
 const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
@@ -82,6 +90,9 @@ const chapter = ref({});
 const catalogChapters = ref([]);
 const catalogPageNo = ref(1);
 const catalogPage = ref({ current: 1, pages: 1, total: 0, records: [] });
+const catalogFinished = ref(false);
+const catalogError = ref(false);
+const catalogRequestInFlight = ref(false);
 const totalChapters = ref(0);
 const settings = reactive(loadSettings());
 
@@ -179,24 +190,58 @@ async function readNext() {
 
 async function openCatalog() {
   catalogOpen.value = true;
-  const targetPage = chapter.value.chapterNo ? Math.max(1, Math.ceil(chapter.value.chapterNo / CATALOG_PAGE_SIZE)) : 1;
-  await loadCatalog(targetPage);
+  resetCatalog();
+  await loadNextCatalogPage();
+  if (chapter.value.id) {
+    while (!catalogChapters.value.some((item) => item.id === chapter.value.id) && !catalogFinished.value && !catalogError.value) {
+      await loadNextCatalogPage();
+    }
+  }
 }
 
-async function loadCatalog(page = 1) {
+function resetCatalog() {
+  catalogChapters.value = [];
+  catalogPageNo.value = 1;
+  catalogPage.value = { current: 1, pages: 1, total: 0, records: [] };
+  catalogFinished.value = false;
+  catalogError.value = false;
+}
+
+async function loadNextCatalogPage() {
   const bookId = chapter.value.novelId || route.query.bookId;
-  if (!bookId) {
+  if (!bookId || catalogFinished.value || catalogRequestInFlight.value) {
+    catalogLoading.value = false;
     return;
   }
+  catalogRequestInFlight.value = true;
   catalogLoading.value = true;
+  catalogError.value = false;
   try {
-    const data = await fetchChapters(bookId, page, CATALOG_PAGE_SIZE);
-    catalogPage.value = data || { current: page, pages: 1, total: 0, records: [] };
-    catalogChapters.value = catalogPage.value.records || [];
-    catalogPageNo.value = Number(catalogPage.value.current || page);
+    const data = await fetchChapters(bookId, catalogPageNo.value, CATALOG_PAGE_SIZE);
+    const knownIds = new Set(catalogChapters.value.map((item) => item.id));
+    (data?.records || []).forEach((item) => {
+      if (!knownIds.has(item.id)) {
+        knownIds.add(item.id);
+        catalogChapters.value.push(item);
+      }
+    });
+    catalogPage.value = data || catalogPage.value;
+    const current = Number(data?.current || catalogPageNo.value);
+    const pages = Number(data?.pages || 0);
+    catalogFinished.value = pages === 0 || current >= pages;
+    if (!catalogFinished.value) catalogPageNo.value = current + 1;
+  } catch {
+    catalogError.value = true;
   } finally {
+    catalogRequestInFlight.value = false;
     catalogLoading.value = false;
   }
+}
+
+function retryCatalog() {
+  if (!catalogChapters.value.length) resetCatalog();
+  catalogError.value = false;
+  loadNextCatalogPage();
 }
 
 function readCatalog(item) {
@@ -261,3 +306,7 @@ function restoreScrollPosition() {
   });
 }
 </script>
+
+<style scoped>
+.catalog-load-error { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 0; color:var(--danger); font-size:13px; }
+</style>

@@ -50,47 +50,53 @@
 
       <div class="section-title">
         <h2>目录</h2>
-        <span>第 {{ chapterPage.current || pageNo }} / {{ chapterPage.pages || 1 }} 页</span>
+        <span>已加载 {{ chapters.length }} / {{ chapterPage.total || 0 }} 章</span>
       </div>
 
       <div class="chapter-tools">
         <van-search v-model="chapterKeyword" placeholder="搜索本页章节" shape="round" />
         <van-field v-model="chapterJumpNo" type="digit" placeholder="章号" />
         <van-button size="small" round color="#1f6f64" @click="jumpToChapterNo">跳转</van-button>
-        <van-button size="small" round plain color="#1f6f64" @click="reverseCatalog = !reverseCatalog">
+        <van-button size="small" round plain color="#1f6f64" :loading="orderLoading" @click="toggleCatalogOrder">
           {{ reverseCatalog ? '倒序' : '正序' }}
         </van-button>
       </div>
 
-      <div class="chapter-list">
-        <button
-          v-for="chapter in displayedChapters"
-          :id="`chapter-${chapter.id}`"
-          :key="chapter.id"
-          type="button"
-          :class="{ 'chapter-active': chapter.id === activeChapterId, 'chapter-locked': chapter.readable === false }"
-          :disabled="chapter.readable === false"
-          @click="chapter.readable === false ? null : read(chapter)"
-        >
-          <span>
-            <b>{{ chapter.title }}</b>
-            <small>第 {{ chapter.chapterNo }} 章</small>
-          </span>
-          <van-tag v-if="chapter.readable === false" color="#8b949e">待审核</van-tag>
-          <van-tag v-else-if="chapter.vip" color="#9b7a2f">VIP</van-tag>
-        </button>
+      <div v-if="chapterError && !chapters.length" class="vip-feedback vip-feedback--error chapter-load-error">
+        <van-icon name="warning-o" />
+        <span>目录加载失败，请稍后重试。</span>
+        <button type="button" @click="retryChapters">重新加载</button>
       </div>
-      <van-empty v-if="chapters.length && displayedChapters.length === 0" description="本页没有匹配章节" />
-
-      <div v-if="chapterPage.pages > 1" class="chapter-pager">
-        <van-button size="small" plain :disabled="pageNo <= 1" @click="loadChapters(pageNo - 1)">
-          上一页
-        </van-button>
-        <span>{{ pageNo }} / {{ chapterPage.pages }}</span>
-        <van-button size="small" plain :disabled="pageNo >= chapterPage.pages" @click="loadChapters(pageNo + 1)">
-          下一页
-        </van-button>
-      </div>
+      <van-list
+        v-else
+        v-model:loading="chapterLoading"
+        v-model:error="chapterError"
+        :finished="chapterFinished"
+        :immediate-check="false"
+        error-text="目录加载失败，点击重试"
+        :finished-text="chapters.length ? `已加载全部 ${chapterPage.total || chapters.length} 章` : ''"
+        @load="loadNextChapterPage"
+      >
+        <van-loading v-if="chapterLoading && !chapters.length" class="center-loading" />
+        <div v-else class="chapter-list">
+          <button
+            v-for="chapter in displayedChapters"
+            :id="`chapter-${chapter.id}`"
+            :key="chapter.id"
+            type="button"
+            :class="{ 'chapter-active': chapter.id === activeChapterId }"
+            @click="read(chapter)"
+          >
+            <span>
+              <b>{{ chapter.title }}</b>
+              <small>第 {{ chapter.chapterNo }} 章</small>
+            </span>
+            <van-tag v-if="chapter.vip" color="#9b7a2f">VIP</van-tag>
+          </button>
+        </div>
+        <van-empty v-if="chapterFinished && !chapters.length" description="暂无已发布章节" />
+        <van-empty v-else-if="chapters.length && displayedChapters.length === 0" description="已加载目录中没有匹配章节" />
+      </van-list>
     </template>
   </section>
 </template>
@@ -105,7 +111,7 @@ import { useUserStore } from '../stores/user';
 import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { formatTextLineBreaks } from '../utils/text';
 
-const PAGE_SIZE = 80;
+const PAGE_SIZE = 50;
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
@@ -114,6 +120,11 @@ const book = ref({});
 const chapters = ref([]);
 const pageNo = ref(1);
 const chapterPage = ref({ current: 1, pages: 1, total: 0, records: [] });
+const chapterLoading = ref(false);
+const chapterError = ref(false);
+const chapterFinished = ref(false);
+const chapterRequestInFlight = ref(false);
+const orderLoading = ref(false);
 const activeChapterId = ref(Number(route.query.chapterId || 0));
 const pendingScrollChapterId = ref(0);
 const chapterKeyword = ref('');
@@ -154,10 +165,12 @@ onMounted(async () => {
     book.value = await fetchBook(route.params.id);
     const progress = readProgress();
     const targetChapterId = Number(route.query.chapterId || progress.chapterId || 0);
-    const targetChapterNo = Number(route.query.chapterNo || progress.chapterNo || 0);
     activeChapterId.value = targetChapterId;
-    const targetPage = targetChapterNo ? Math.max(1, Math.ceil(targetChapterNo / PAGE_SIZE)) : 1;
-    await loadChapters(targetPage);
+    resetChapters();
+    await loadNextChapterPage();
+    if (targetChapterId) {
+      await loadUntilChapter((chapter) => chapter.id === targetChapterId);
+    }
     pendingScrollChapterId.value = targetChapterId;
   } finally {
     loading.value = false;
@@ -168,15 +181,55 @@ onMounted(async () => {
   }
 });
 
-async function loadChapters(targetPage = 1, focusChapterId = 0) {
-  const data = await fetchChapters(route.params.id, targetPage, PAGE_SIZE);
-  chapterPage.value = data || { current: targetPage, pages: 1, total: 0, records: [] };
-  chapters.value = chapterPage.value.records || [];
-  pageNo.value = Number(chapterPage.value.current || targetPage);
-  if (focusChapterId) {
-    activeChapterId.value = Number(focusChapterId);
-    scrollToChapter(focusChapterId);
+function resetChapters() {
+  chapters.value = [];
+  pageNo.value = 1;
+  chapterPage.value = { current: 1, pages: 1, total: 0, records: [] };
+  chapterFinished.value = false;
+  chapterError.value = false;
+}
+
+async function loadNextChapterPage() {
+  if (chapterFinished.value || chapterRequestInFlight.value) {
+    chapterLoading.value = false;
+    return;
   }
+  chapterRequestInFlight.value = true;
+  chapterLoading.value = true;
+  chapterError.value = false;
+  try {
+    const data = await fetchChapters(route.params.id, pageNo.value, PAGE_SIZE);
+    const incoming = data?.records || [];
+    const knownIds = new Set(chapters.value.map((chapter) => chapter.id));
+    incoming.forEach((chapter) => {
+      if (!knownIds.has(chapter.id)) {
+        knownIds.add(chapter.id);
+        chapters.value.push(chapter);
+      }
+    });
+    chapterPage.value = data || chapterPage.value;
+    const current = Number(data?.current || pageNo.value);
+    const pages = Number(data?.pages || 0);
+    chapterFinished.value = pages === 0 || current >= pages;
+    if (!chapterFinished.value) pageNo.value = current + 1;
+  } catch {
+    chapterError.value = true;
+  } finally {
+    chapterRequestInFlight.value = false;
+    chapterLoading.value = false;
+  }
+}
+
+async function loadUntilChapter(predicate) {
+  while (!chapters.value.some(predicate) && !chapterFinished.value && !chapterError.value) {
+    await loadNextChapterPage();
+  }
+}
+
+function retryChapters() {
+  if (!chapters.value.length) resetChapters();
+  chapterError.value = false;
+  loadNextChapterPage();
 }
 
 function readContinue() {
@@ -198,15 +251,26 @@ async function jumpToChapterNo() {
     showToast('请输入章节号');
     return;
   }
-  const targetPage = Math.max(1, Math.ceil(no / PAGE_SIZE));
-  await loadChapters(targetPage);
+  await loadUntilChapter((chapter) => Number(chapter.chapterNo) === no);
   const target = chapters.value.find((chapter) => Number(chapter.chapterNo) === no);
   if (!target) {
-    showToast('该页未找到章节');
+    showToast('未找到已发布的该章节');
     return;
   }
   activeChapterId.value = target.id;
   scrollToChapter(target.id);
+}
+
+async function toggleCatalogOrder() {
+  if (!reverseCatalog.value && !chapterFinished.value) {
+    orderLoading.value = true;
+    while (!chapterFinished.value && !chapterError.value) {
+      await loadNextChapterPage();
+    }
+    orderLoading.value = false;
+    if (chapterError.value) return;
+  }
+  reverseCatalog.value = !reverseCatalog.value;
 }
 
 function read(chapter) {
@@ -260,3 +324,8 @@ function formatIntro(value) {
   return formatTextLineBreaks(value);
 }
 </script>
+
+<style scoped>
+.chapter-load-error { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; margin:0 14px; padding:12px; border:1px solid rgba(180,75,75,.16); border-radius:var(--radius); background:#fff1f0; color:var(--danger); font-size:13px; }
+.chapter-load-error button { padding:4px 0; border:0; background:transparent; color:inherit; font-weight:800; }
+</style>

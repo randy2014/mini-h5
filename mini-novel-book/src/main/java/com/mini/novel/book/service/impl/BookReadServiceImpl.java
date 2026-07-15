@@ -98,7 +98,8 @@ public class BookReadServiceImpl implements BookReadService {
                         Chapter::getVip, Chapter::getPriceCoin, Chapter::getSourceUrl, Chapter::getCreatedAt,
                         Chapter::getUpdatedAt)
                 .eq(Chapter::getNovelId, novelId)
-                .orderByAsc(Chapter::getChapterNo));
+                .orderByAsc(Chapter::getChapterNo)
+                .orderByAsc(Chapter::getId));
     }
 
     @Override

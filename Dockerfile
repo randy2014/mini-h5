@@ -29,7 +29,7 @@ COPY mini-novel-application/pom.xml mini-novel-application/pom.xml
 COPY . .
 RUN --mount=type=cache,target=/root/.m2 \
     find /root/.m2/repository -name "*.lastUpdated" -delete 2>/dev/null || true; \
-    mvn -U -pl mini-novel-api -am -Dtest=VipBookPageVoTest -Dsurefire.failIfNoSpecifiedTests=false test && \
+    mvn -U -pl mini-novel-api -am -Dtest=VipBookPageVoTest,NovelControllerChapterPaginationTest -Dsurefire.failIfNoSpecifiedTests=false test && \
     mvn -U -pl mini-novel-application -am package -DskipTests
 
 FROM eclipse-temurin:17-jre
