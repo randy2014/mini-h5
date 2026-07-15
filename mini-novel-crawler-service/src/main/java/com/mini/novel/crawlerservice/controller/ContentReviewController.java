@@ -195,7 +195,7 @@ public class ContentReviewController {
     private Map<String, Object> chapterForUpdate(Long id) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT c.id chapterRawId,c.book_raw_id bookRawId,c.content_status contentStatus,r.id contentRawId,
-                   c.chapter_no chapterNo,c.source_chapter_id sourceChapterId,c.title chapterTitle,c.source_url chapterSourceUrl,r.content,
+                   c.chapter_no chapterNo,c.source_chapter_id sourceChapterId,c.title chapterTitle,c.source_url chapterSourceUrl,r.content,r.content_hash contentHash,
                    b.source_code sourceCode,b.source_book_id sourceBookId,b.source_url bookSourceUrl,
                    b.title bookTitle,b.author,b.intro,b.cover_url coverUrl
             FROM mini_novel_crawler.crawl_chapter_raw c JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
@@ -240,37 +240,102 @@ public class ContentReviewController {
             novelId = ids.get(0);
             jdbc.update("UPDATE mini_novel.novel SET status=1,vip_required=1,free_chapter_count=0,offline_reason=NULL,offline_at=NULL,operator_id=?,updated_at=NOW() WHERE id=?", operatorId, novelId);
         }
-        jdbc.update("""
-            INSERT INTO mini_novel.chapter(novel_id,chapter_no,title,content,is_vip,price_coin,source_url,created_at,updated_at)
-            VALUES(?,?,?,?,1,0,?,NOW(),NOW())
-            ON DUPLICATE KEY UPDATE title=VALUES(title),content=VALUES(content),is_vip=1,source_url=VALUES(source_url),updated_at=NOW()
-            """, novelId, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"), chapter.get("chapterSourceUrl"));
+        Long mappedChapterId = mappedChapterId(chapter, novelId);
+        if (mappedChapterId != null) {
+            jdbc.update("""
+                UPDATE mini_novel.chapter
+                SET chapter_no=?,title=?,content=?,is_vip=1,price_coin=0,source_url=?,updated_at=NOW()
+                WHERE id=? AND novel_id=?
+                """, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"),
+                    chapter.get("chapterSourceUrl"), mappedChapterId, novelId);
+        } else {
+            jdbc.update("""
+                INSERT INTO mini_novel.chapter(novel_id,chapter_no,title,content,is_vip,price_coin,source_url,created_at,updated_at)
+                VALUES(?,?,?,?,1,0,?,NOW(),NOW())
+                ON DUPLICATE KEY UPDATE title=VALUES(title),content=VALUES(content),is_vip=1,source_url=VALUES(source_url),updated_at=NOW()
+                """, novelId, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"), chapter.get("chapterSourceUrl"));
+        }
         syncChapterMapping(chapter, novelId);
         refreshNovel(novelId);
     }
 
     private void syncChapterMapping(Map<String, Object> chapter, Long novelId) {
+        Long novelMappingId = ensureNovelMapping(chapter, novelId);
         String publicationUrl = chapter.get("bookSourceUrl") + "#rawBook=" + chapter.get("bookRawId");
-        List<Long> mappingIds = jdbc.query("""
-            SELECT id FROM mini_novel.novel_source_mapping
-            WHERE source_code=? AND source_book_id=? AND (novel_id=? OR source_url IN (?,?))
-            ORDER BY novel_id=? DESC LIMIT 1
-            """, (rs, row) -> rs.getLong(1), chapter.get("sourceCode"), chapter.get("sourceBookId"),
-                novelId, publicationUrl, chapter.get("bookSourceUrl"), novelId);
-        if (mappingIds.isEmpty()) {
-            return;
-        }
-        List<Long> chapterIds = jdbc.query("SELECT id FROM mini_novel.chapter WHERE novel_id=? AND chapter_no=? LIMIT 1",
-                (rs, row) -> rs.getLong(1), novelId, chapter.get("chapterNo"));
+        jdbc.update("UPDATE mini_novel.novel SET source_url=? WHERE id=? AND source_url=?", publicationUrl, novelId, chapter.get("bookSourceUrl"));
+        List<Long> chapterIds = jdbc.query("SELECT id FROM mini_novel.chapter WHERE novel_id=? AND source_url=? LIMIT 1",
+                (rs, row) -> rs.getLong(1), novelId, chapter.get("chapterSourceUrl"));
         if (chapterIds.isEmpty()) {
             return;
         }
         jdbc.update("""
-            UPDATE mini_novel.chapter_source_mapping
-            SET chapter_id=?,source_title=?,source_url=?,chapter_no=?,is_vip=1,content_status='CONTENT_READY',updated_at=NOW()
-            WHERE novel_mapping_id=? AND source_chapter_id=?
-            """, chapterIds.get(0), chapter.get("chapterTitle"), chapter.get("chapterSourceUrl"),
-                chapter.get("chapterNo"), mappingIds.get(0), chapter.get("sourceChapterId"));
+            INSERT INTO mini_novel.chapter_source_mapping
+              (novel_mapping_id,chapter_id,source_chapter_id,source_url,source_title,chapter_no,is_vip,content_hash,content_status,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,1,?,'CONTENT_READY',NOW(),NOW())
+            ON DUPLICATE KEY UPDATE
+              chapter_id=VALUES(chapter_id),source_title=VALUES(source_title),source_url=VALUES(source_url),
+              chapter_no=VALUES(chapter_no),is_vip=1,content_hash=VALUES(content_hash),content_status='CONTENT_READY',updated_at=NOW()
+            """, novelMappingId, chapterIds.get(0), chapter.get("sourceChapterId"), chapter.get("chapterSourceUrl"),
+                chapter.get("chapterTitle"), chapter.get("chapterNo"), chapter.get("contentHash"));
+    }
+
+    private Long mappedChapterId(Map<String, Object> chapter, Long novelId) {
+        List<Long> ids = jdbc.query("""
+            SELECT csm.chapter_id
+            FROM mini_novel.novel_source_mapping nsm
+            JOIN mini_novel.chapter_source_mapping csm ON csm.novel_mapping_id=nsm.id
+            JOIN mini_novel.chapter c ON c.id=csm.chapter_id AND c.novel_id=?
+            WHERE csm.novel_mapping_id=? AND csm.source_chapter_id=?
+            LIMIT 1
+            """, (rs, row) -> rs.getLong(1), novelId, ensureNovelMapping(chapter, novelId), chapter.get("sourceChapterId"));
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private Long ensureNovelMapping(Map<String, Object> chapter, Long novelId) {
+        String title = Objects.toString(chapter.get("bookTitle"), "");
+        String author = Objects.toString(chapter.get("author"), "");
+        String normalizedTitle = normalizeIdentity(title);
+        String normalizedAuthor = normalizeIdentity(author);
+        List<Long> identityIds = jdbc.query("""
+            SELECT id FROM mini_novel.novel_identity
+            WHERE normalized_title=? AND normalized_author=? LIMIT 1
+            """, (rs, row) -> rs.getLong(1), normalizedTitle, normalizedAuthor);
+        Long identityId;
+        if (identityIds.isEmpty()) {
+            jdbc.update("""
+                INSERT INTO mini_novel.novel_identity
+                  (canonical_title,canonical_author,normalized_title,normalized_author,novel_id,match_status,confidence_score,created_at,updated_at)
+                VALUES (?,?,?,?,?,'ACTIVE',100,NOW(),NOW())
+                """, limit(title, 128), limit(StringUtils.hasText(author) ? author : "Unknown", 64),
+                    limit(normalizedTitle, 128), limit(normalizedAuthor, 64), novelId);
+            identityId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        } else {
+            identityId = identityIds.get(0);
+            jdbc.update("UPDATE mini_novel.novel_identity SET novel_id=?,updated_at=NOW() WHERE id=?", novelId, identityId);
+        }
+        jdbc.update("""
+            INSERT INTO mini_novel.novel_source_mapping
+              (identity_id,novel_id,source_code,source_book_id,source_url,source_title,source_author,content_status,match_status,confidence_score,last_crawled_at,created_at,updated_at)
+            VALUES (?,?,?,?,?, ?,?,'CONTENT_READY','MATCHED',100,NOW(),NOW(),NOW())
+            ON DUPLICATE KEY UPDATE
+              identity_id=VALUES(identity_id),novel_id=VALUES(novel_id),source_url=VALUES(source_url),
+              source_title=VALUES(source_title),source_author=VALUES(source_author),
+              content_status='CONTENT_READY',match_status='MATCHED',confidence_score=100,last_crawled_at=NOW(),updated_at=NOW()
+            """, identityId, novelId, chapter.get("sourceCode"), chapter.get("sourceBookId"),
+                chapter.get("bookSourceUrl"), limit(title, 128), limit(StringUtils.hasText(author) ? author : "Unknown", 64));
+        return jdbc.queryForObject("""
+            SELECT id FROM mini_novel.novel_source_mapping
+            WHERE source_code=? AND source_book_id=? LIMIT 1
+            """, Long.class, chapter.get("sourceCode"), chapter.get("sourceBookId"));
+    }
+
+    private String normalizeIdentity(String value) {
+        if (!StringUtils.hasText(value)) return "";
+        return value.toLowerCase().replaceAll("[\\s\\p{Punct}]+", "").trim();
+    }
+    private String limit(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) return value;
+        return value.substring(0, maxLength);
     }
     private void unpublishChapter(Map<String, Object> chapter) {
         String publicationUrl = chapter.get("bookSourceUrl") + "#rawBook=" + chapter.get("bookRawId");
