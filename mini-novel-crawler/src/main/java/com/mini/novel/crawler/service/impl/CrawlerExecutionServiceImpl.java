@@ -1,5 +1,7 @@
 package com.mini.novel.crawler.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mini.novel.book.entity.Chapter;
 import com.mini.novel.book.entity.ChapterSourceMapping;
@@ -12,6 +14,7 @@ import com.mini.novel.crawler.entity.CrawlChapterRaw;
 import com.mini.novel.crawler.entity.CrawlContentRaw;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
 import com.mini.novel.crawler.entity.CrawlRankSource;
+import com.mini.novel.crawler.entity.CrawlSourceCredential;
 import com.mini.novel.crawler.entity.CrawlTaskRecord;
 import com.mini.novel.crawler.entity.CrawlerAuthorizedBook;
 import com.mini.novel.crawler.entity.CrawlerSourceConfig;
@@ -20,6 +23,7 @@ import com.mini.novel.crawler.mapper.CrawlChapterRawMapper;
 import com.mini.novel.crawler.mapper.CrawlContentRawMapper;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.mapper.CrawlRankSourceMapper;
+import com.mini.novel.crawler.mapper.CrawlSourceCredentialMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerAuthorizedBookMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
@@ -45,9 +49,11 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.jsoup.Jsoup;
+import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
@@ -79,11 +85,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     private final CrawlChapterRawMapper chapterRawMapper;
     private final CrawlContentRawMapper contentRawMapper;
     private final CrawlMergeTaskMapper mergeTaskMapper;
+    private final CrawlSourceCredentialMapper credentialMapper;
     private final NovelSourceMappingMapper novelSourceMappingMapper;
     private final ChapterSourceMappingMapper chapterSourceMappingMapper;
     private final ChapterMapper chapterMapper;
     private final CrawlerMergeService mergeService;
     private final List<CrawlerSiteParser> siteParsers;
+    private final ObjectMapper objectMapper;
     private final TaskExecutor applicationTaskExecutor;
 
     public CrawlerExecutionServiceImpl(CrawlTaskRecordMapper taskMapper,
@@ -94,11 +102,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                                        CrawlChapterRawMapper chapterRawMapper,
                                        CrawlContentRawMapper contentRawMapper,
                                        CrawlMergeTaskMapper mergeTaskMapper,
+                                       CrawlSourceCredentialMapper credentialMapper,
                                        NovelSourceMappingMapper novelSourceMappingMapper,
                                        ChapterSourceMappingMapper chapterSourceMappingMapper,
                                        ChapterMapper chapterMapper,
                                        CrawlerMergeService mergeService,
                                        List<CrawlerSiteParser> siteParsers,
+                                       ObjectMapper objectMapper,
                                        @Qualifier("applicationTaskExecutor") TaskExecutor applicationTaskExecutor) {
         this.taskMapper = taskMapper;
         this.sourceMapper = sourceMapper;
@@ -108,11 +118,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         this.chapterRawMapper = chapterRawMapper;
         this.contentRawMapper = contentRawMapper;
         this.mergeTaskMapper = mergeTaskMapper;
+        this.credentialMapper = credentialMapper;
         this.novelSourceMappingMapper = novelSourceMappingMapper;
         this.chapterSourceMappingMapper = chapterSourceMappingMapper;
         this.chapterMapper = chapterMapper;
         this.mergeService = mergeService;
         this.siteParsers = siteParsers;
+        this.objectMapper = objectMapper;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
 
@@ -204,11 +216,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, b.sourceBookId, 0L, "", rank.rankUrl))
                             .toList();
                 } else {
-                    Document rankPage = fetch(rank.rankUrl);
+                    Document rankPage = fetch(rank.rankUrl, source);
                     seeds = parser.parseBookSeeds(source, rankPage, rank.rankUrl, maxBooks(rank));
                 }
                 if (seeds.isEmpty() && isQidian(source, rank.rankUrl) && !rank.rankUrl.contains("m.qidian.com")) {
-                    Document mobilePage = fetch("https://m.qidian.com/");
+                    Document mobilePage = fetch("https://m.qidian.com/", source);
                     seeds = parser.parseBookSeeds(source, mobilePage, "https://m.qidian.com/", maxBooks(rank));
                 }
 
@@ -734,11 +746,15 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private Document fetch(String url) throws IOException {
+        return fetch(url, null);
+    }
+
+    private Document fetch(String url, CrawlerSourceConfig source) throws IOException {
         validateUrl(url);
         IOException lastException = null;
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
-                return Jsoup.connect(url)
+                Connection connection = Jsoup.connect(url)
                         .userAgent(url.contains("m.qidian.com") ? MOBILE_USER_AGENT : USER_AGENT)
                         .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
                         .header("Accept-Language", "zh-CN,zh;q=0.9")
@@ -747,14 +763,45 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                         .header("Sec-Fetch-Mode", "navigate")
                         .header("Sec-Fetch-Site", "same-origin")
                         .header("Upgrade-Insecure-Requests", "1")
-                        .timeout(FETCH_TIMEOUT_MILLIS)
-                        .get();
+                        .timeout(FETCH_TIMEOUT_MILLIS);
+                applyCredentialHeaders(connection, source);
+                return connection.get();
             } catch (IOException ex) {
                 lastException = ex;
                 sleepBeforeRetry(attempt);
             }
         }
         throw lastException;
+    }
+
+    private void applyCredentialHeaders(Connection connection, CrawlerSourceConfig source) {
+        if (source == null || source.id == null || !"COOKIE".equalsIgnoreCase(source.authMode)) {
+            return;
+        }
+        CrawlSourceCredential credential = credentialMapper.selectOne(new QueryWrapper<CrawlSourceCredential>()
+                .eq("source_id", source.id)
+                .eq("enabled", true)
+                .orderByDesc("updated_at")
+                .last("LIMIT 1"));
+        if (credential == null) {
+            return;
+        }
+        if (StringUtils.hasText(credential.cookieText)) {
+            connection.header("Cookie", credential.cookieText);
+        }
+        if (StringUtils.hasText(credential.headersJson)) {
+            try {
+                Map<String, String> headers = objectMapper.readValue(credential.headersJson, new TypeReference<>() {});
+                headers.forEach((name, value) -> {
+                    if (StringUtils.hasText(name) && StringUtils.hasText(value)
+                            && !"cookie".equalsIgnoreCase(name)) {
+                        connection.header(name, value);
+                    }
+                });
+            } catch (Exception ex) {
+                log.warn("Ignoring invalid crawler credential headers for source {}", source.sourceCode);
+            }
+        }
     }
 
     private String origin(String url) {
@@ -1174,7 +1221,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             while (StringUtils.hasText(currentUrl) && visited.size() < maxPages
                 && visited.add(normalizeFetchUrl(currentUrl))) {
                 validateUrl(currentUrl);
-                Document document = fetch(currentUrl);
+                Document document = fetch(currentUrl, source);
                 String nextUrl = nextChapterPageUrl(document, currentUrl, rules);
                 removeRuleSelectors(document, rules);
                 String pageText = extractChapterText(document, rules);
