@@ -334,7 +334,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             upsertAuthorizedBook(source, snapshot);
             return BookOutcome.successOnly();
         }
-        if (isH528AuthorizedSource(source)) {
+        if (isH528AuthorizedSource(source) || isNovel69hAuthorizedSource(source)) {
             upsertH528AuthorizedBook(source, snapshot);
         }
         if (isXbookcnAuthorizedSource(source) && !canCrawlAuthorizedChapters(source, snapshot)) {
@@ -666,6 +666,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return source != null && "h528_authorized".equalsIgnoreCase(source.sourceCode);
     }
 
+    private boolean isNovel69hAuthorizedSource(CrawlerSourceConfig source) {
+        return source != null && "novel69h_authorized".equalsIgnoreCase(source.sourceCode);
+    }
+
     private boolean canCrawlAuthorizedChapters(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
         if (!isXbookcnAuthorizedSource(source) || snapshot == null || !StringUtils.hasText(snapshot.sourceBookId())) {
             return false;
@@ -772,7 +776,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             book.allowStore = true;
             book.allowDisplay = true;
             book.allowVipDisplay = true;
-            book.proofRef = "h528_authorized_source";
+            book.proofRef = source.sourceCode + "_source";
             book.discoveredAt = now;
             book.authorizedAt = now;
             book.reviewedAt = now;
