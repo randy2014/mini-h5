@@ -35,6 +35,8 @@ public class Novel {
     private String reviewProgress;
     @TableField(exist = false)
     private String publishStatus;
+    @TableField(exist = false)
+    private String categoryName;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -80,4 +82,6 @@ public class Novel {
     public void setReviewProgress(String reviewProgress) { this.reviewProgress = reviewProgress; }
     public String getPublishStatus() { return publishStatus; }
     public void setPublishStatus(String publishStatus) { this.publishStatus = publishStatus; }
+    public String getCategoryName() { return categoryName; }
+    public void setCategoryName(String categoryName) { this.categoryName = categoryName; }
 }
