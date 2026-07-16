@@ -22,12 +22,13 @@ INSERT INTO crawl_source (
       'targetAudience', 'VIP_MANUAL_REVIEW'
     ),
     'poc', JSON_OBJECT(
-      'singleBookOnly', true,
+      'mode', 'BATCH',
+      'singleBookOnly', false,
       'metadataOnly', false,
       'bookUrl', 'http://www.h528.com/post/28936.html'
     ),
     'rankRules', JSON_OBJECT(
-      'bookList', '.post h2 a[href]'
+      'bookList', '.post h2 a[href], h3 a[rel=bookmark][href]'
     ),
     'chapterRules', JSON_OBJECT(
       'content', '.post .entry || .entry',
@@ -42,7 +43,7 @@ INSERT INTO crawl_source (
   ),
   0,
   70,
-  'Strictly isolated authorized single-post PoC; disabled by default; no batch crawling.'
+  'Strictly isolated authorized h528 single-post-as-book source; disabled by default; batch crawling is manually controlled.'
 ) ON DUPLICATE KEY UPDATE
   name = VALUES(name),
   base_url = VALUES(base_url),
@@ -66,15 +67,25 @@ INSERT INTO crawl_rank_source (
   enabled
 ) SELECT
   @h528_source_id,
-  'h528 authorized single-post PoC',
-  'SINGLE_BOOK_AUTHORIZED',
+  'h528 authorized latest posts',
+  'H528_AUTHORIZED_POSTS',
   'http://www.h528.com/',
   1,
-  1,
+  20,
   0
 WHERE @h528_source_id IS NOT NULL
   AND NOT EXISTS (
     SELECT 1 FROM crawl_rank_source
     WHERE source_id = @h528_source_id
-      AND rank_type = 'SINGLE_BOOK_AUTHORIZED'
+      AND rank_type = 'H528_AUTHORIZED_POSTS'
   );
+
+UPDATE crawl_rank_source r
+JOIN crawl_source s ON s.id = r.source_id
+SET r.rank_name = 'h528 authorized latest posts',
+    r.rank_type = 'H528_AUTHORIZED_POSTS',
+    r.rank_url = 'http://www.h528.com/',
+    r.max_books = 20,
+    r.enabled = 0,
+    r.updated_at = NOW()
+WHERE s.source_code = 'h528_authorized';

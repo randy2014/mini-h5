@@ -149,7 +149,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         if (item == null || item.bookRawId == null || item.mergeTaskId == null) throw new IllegalArgumentException("Merge item does not exist.");
         CrawlBookRaw book = bookRawMapper.selectById(item.bookRawId);
         CrawlMergeTask task = mergeTaskMapper.selectById(item.mergeTaskId);
-        if (book == null || task == null || !"xbookcn_authorized".equalsIgnoreCase(book.sourceCode)) throw new IllegalArgumentException("Only isolated authorized books can use this approval.");
+        if (book == null || task == null || !isReviewOnlySource(book)) throw new IllegalArgumentException("Only isolated authorized books can use this approval.");
         CrawlerAuthorizedBook authorized = authorizedBookMapper.selectOne(new QueryWrapper<CrawlerAuthorizedBook>()
                 .eq("source_code", book.sourceCode).eq("source_book_id", book.sourceBookId)
                 .eq("authorization_status", "AUTHORIZED").eq("review_status", "APPROVED")
@@ -634,9 +634,6 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     private boolean isReviewOnlySource(CrawlBookRaw book) {
         if (book == null) {
             return false;
-        }
-        if ("xbookcn_authorized".equalsIgnoreCase(book.sourceCode)) {
-            return true;
         }
         return book.rawJson != null && book.rawJson.contains("\"isolation\":\"VIP_REVIEW\"");
     }

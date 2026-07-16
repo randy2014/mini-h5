@@ -2,7 +2,7 @@
   <section>
     <el-row :gutter="12" class="stats"><el-col v-for="item in cards" :key="item.label" :xs="12" :sm="6"><el-card shadow="never"><div class="label">{{item.label}}</div><div class="value">{{item.value}}</div></el-card></el-col></el-row>
     <el-card shadow="never">
-      <template #header><div class="bar"><b>成人授权内容审核</b><el-button @click="load">刷新</el-button></div></template>
+      <template #header><div class="bar"><b>成人授权内容审核</b><div><el-select v-model="sourceCode" style="width:180px;margin-right:10px" @change="switchSource"><el-option label="xbookcn_authorized" value="xbookcn_authorized"/><el-option label="h528_authorized" value="h528_authorized"/></el-select><el-button @click="load">刷新</el-button></div></div></template>
       <el-alert title="只有已保存到隔离区的待审正文才能审核；仅有状态但无正文的章节显示为“待重新采集”。审核不会自动上架。" type="warning" :closable="false" show-icon/>
       <el-table :data="books" v-loading="loading" class="table">
         <el-table-column prop="title" label="书名" min-width="160"/><el-table-column prop="sourceCode" label="来源" width="180"/><el-table-column prop="chapterCount" label="目录章节" width="90"/><el-table-column prop="reviewableCount" label="可审核正文" width="105"/><el-table-column prop="recrawlCount" label="待重采" width="85"/><el-table-column prop="blockedCount" label="硬拦截" width="85"/><el-table-column prop="missingCount" label="缺失" width="75"/>
@@ -21,15 +21,16 @@
 </template>
 <script setup>
 import{computed,onMounted,ref}from'vue';import{ElMessage,ElMessageBox}from'element-plus';import{crawlerApi}from'../services/http';
-const summary=ref({}),books=ref([]),chapters=ref([]),total=ref(0),page=ref(1),loading=ref(false),chapterLoading=ref(false),drawer=ref(false),current=ref(null),contentVisible=ref(false),isolatedContent=ref('');
+const sourceCode=ref('xbookcn_authorized'),summary=ref({}),books=ref([]),chapters=ref([]),total=ref(0),page=ref(1),loading=ref(false),chapterLoading=ref(false),drawer=ref(false),current=ref(null),contentVisible=ref(false),isolatedContent=ref('');
 const cards=computed(()=>[{label:'待审状态总数',value:summary.value.pendingTotal||0},{label:'可审核正文数',value:summary.value.reviewableTotal||0},{label:'待重新采集数',value:summary.value.recrawlTotal||0},{label:'硬拦截数',value:summary.value.blockedTotal||0}]);
 const canApproveBook=computed(()=>current.value&&current.value.reviewableCount>0&&!current.value.blockedCount&&!current.value.missingCount&&!current.value.recrawlCount);
-async function load(){loading.value=true;try{summary.value=await crawlerApi.get('/content-review/summary');const d=await crawlerApi.get('/content-review/books',{params:{page:page.value,size:20}});books.value=d.records;total.value=d.total}finally{loading.value=false}}
-async function openBook(row){current.value=row;drawer.value=true;await loadChapters()}async function loadChapters(){chapterLoading.value=true;try{chapters.value=await crawlerApi.get(`/content-review/books/${current.value.bookRawId}/chapters`)}finally{chapterLoading.value=false}}
-async function viewContent(row){const d=await crawlerApi.get(`/content-review/chapters/${row.chapterRawId}/content`);isolatedContent.value=d.content;contentVisible.value=true}
+async function load(){loading.value=true;try{const params={sourceCode:sourceCode.value};summary.value=await crawlerApi.get('/content-review/summary',{params});const d=await crawlerApi.get('/content-review/books',{params:{...params,page:page.value,size:20}});books.value=d.records;total.value=d.total}finally{loading.value=false}}
+async function switchSource(){page.value=1;current.value=null;chapters.value=[];drawer.value=false;await load()}
+async function openBook(row){current.value=row;drawer.value=true;await loadChapters()}async function loadChapters(){chapterLoading.value=true;try{chapters.value=await crawlerApi.get(`/content-review/books/${current.value.bookRawId}/chapters`,{params:{sourceCode:sourceCode.value}})}finally{chapterLoading.value=false}}
+async function viewContent(row){const d=await crawlerApi.get(`/content-review/chapters/${row.chapterRawId}/content`,{params:{sourceCode:sourceCode.value}});isolatedContent.value=d.content;contentVisible.value=true}
 async function ask(decision,target){try{return(await ElMessageBox.prompt(`确认${decision==='APPROVE'?'批准':'拒绝'}${target}？请输入审核备注。`,'审核确认',{inputPattern:/\S+/,inputErrorMessage:'审核备注不能为空',type:'warning'})).value}catch{return null}}
-async function decideChapter(row,decision){const remark=await ask(decision,`章节 #${row.chapterNo}`);if(remark===null)return;await crawlerApi.post(`/content-review/chapters/${row.chapterRawId}/decision`,{decision,remark});ElMessage.success('审核结果已记录');await refresh()}
-async function decideBook(decision){const remark=await ask(decision,'整本书');if(remark===null)return;await crawlerApi.post(`/content-review/books/${current.value.bookRawId}/decision`,{decision,remark});ElMessage.success('整书审核结果已记录');await refresh()}
+async function decideChapter(row,decision){const remark=await ask(decision,`章节 #${row.chapterNo}`);if(remark===null)return;await crawlerApi.post(`/content-review/chapters/${row.chapterRawId}/decision`,{decision,remark},{params:{sourceCode:sourceCode.value}});ElMessage.success('审核结果已记录');await refresh()}
+async function decideBook(decision){const remark=await ask(decision,'整本书');if(remark===null)return;await crawlerApi.post(`/content-review/books/${current.value.bookRawId}/decision`,{decision,remark},{params:{sourceCode:sourceCode.value}});ElMessage.success('整书审核结果已记录');await refresh()}
 async function refresh(){await load();const row=books.value.find(x=>x.bookRawId===current.value.bookRawId);if(row)current.value=row;await loadChapters()}
 function stateText(v){return{CONTENT_READY:'正文已通过',PENDING_REVIEW:'待人工审核',EXPLICIT_MINOR_BLOCKED:'明确未成年人硬拦截',MISSING:'待重新采集',REVIEW_REJECTED:'已拒绝'}[v]||v}function stateType(v){return{CONTENT_READY:'success',PENDING_REVIEW:'warning',EXPLICIT_MINOR_BLOCKED:'danger',MISSING:'info',REVIEW_REJECTED:'danger'}[v]||'info'}onMounted(load);
 </script>

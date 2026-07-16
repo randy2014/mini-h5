@@ -132,6 +132,7 @@
             <el-table-column prop="sourceId" label="源 ID" width="90" />
             <el-table-column prop="name" label="名称" min-width="150" />
             <el-table-column prop="authMode" label="认证方式" width="110" />
+            <el-table-column label="Cookie配置" width="110"><template #default="{row}"><el-tag :type="row.credentialConfigured?'success':'info'">{{row.credentialConfigured?'已配置':'未配置'}}</el-tag></template></el-table-column>
             <el-table-column prop="username" label="用户名" width="160" />
             <el-table-column prop="status" label="校验状态" width="120" />
             <el-table-column label="状态" width="90">
@@ -376,7 +377,7 @@
             <el-table-column label="操作" width="180" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="retryMergeItem(row)">重新清洗</el-button>
-                <el-button v-if="row.sourceCode === 'xbookcn_authorized'" link type="success" @click="approveAuthorizedMergeItem(row)">批准入库</el-button>
+                <el-button v-if="isAuthorizedVipSource(row.sourceCode)" link type="success" @click="approveAuthorizedMergeItem(row)">批准入库</el-button>
                 <el-button link type="danger" @click="ignoreMergeItem(row)">忽略</el-button>
               </template>
             </el-table-column>
@@ -518,7 +519,11 @@ function statusType(status) {
       ? 'danger'
       : status === 'RUNNING' || status === 'MERGING'
         ? 'warning'
-        : 'info';
+    : 'info';
+}
+
+function isAuthorizedVipSource(sourceCode) {
+  return ['xbookcn_authorized', 'h528_authorized'].includes(sourceCode);
 }
 
 function taskPercent(row) {
@@ -643,6 +648,7 @@ function editSource(row) {
 }
 
 async function saveCredential() {
+  await ElMessageBox.confirm('Cookie 保存后不会再次显示明文；确认保存该凭据配置？', '安全确认');
   const payload = { ...credentialForm };
   if (!payload.passwordCipher) payload.passwordCipher = '__KEEP__';
   if (!payload.cookieText) payload.cookieText = '__KEEP__';

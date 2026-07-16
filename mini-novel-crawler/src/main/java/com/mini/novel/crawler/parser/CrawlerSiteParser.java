@@ -18,4 +18,8 @@ public interface CrawlerSiteParser {
     default ParsedBookSnapshot fetchBook(CrawlerSourceConfig source, ParsedBookSeed seed, DocumentFetcher fetcher) throws Exception {
         return fetchBook(seed, fetcher);
     }
+
+    default String nextRankPage(CrawlerSourceConfig source, Document document, String rankUrl) {
+        return "";
+    }
 }

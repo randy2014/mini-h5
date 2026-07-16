@@ -216,8 +216,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, b.sourceBookId, 0L, "", rank.rankUrl))
                             .toList();
                 } else {
-                    Document rankPage = fetch(rank.rankUrl, source);
-                    seeds = parser.parseBookSeeds(source, rankPage, rank.rankUrl, maxBooks(rank));
+                    seeds = collectRankSeeds(source, rank, parser);
                 }
                 if (seeds.isEmpty() && isQidian(source, rank.rankUrl) && !rank.rankUrl.contains("m.qidian.com")) {
                     Document mobilePage = fetch("https://m.qidian.com/", source);
@@ -335,6 +334,9 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             upsertAuthorizedBook(source, snapshot);
             return BookOutcome.successOnly();
         }
+        if (isH528AuthorizedSource(source)) {
+            upsertH528AuthorizedBook(source, snapshot);
+        }
         if (isXbookcnAuthorizedSource(source) && !canCrawlAuthorizedChapters(source, snapshot)) {
             return BookOutcome.failed();
         }
@@ -358,6 +360,41 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 (int) Math.max(0, afterChapters - beforeChapters),
                 (int) Math.min(beforeChapters, afterChapters), 0, stats.riskBlocked(), stats.pendingReview(),
                 completed ? 0 : 1, true);
+    }
+
+    private List<ParsedBookSeed> collectRankSeeds(CrawlerSourceConfig source, CrawlRankSource rank,
+                                                  CrawlerSiteParser parser) throws IOException {
+        int maxBooks = maxBooks(rank);
+        List<ParsedBookSeed> seeds = new ArrayList<>();
+        Set<String> seenUrls = new LinkedHashSet<>();
+        Set<String> seenPages = new LinkedHashSet<>();
+        String currentUrl = rank.rankUrl;
+        int maxPages = isH528AuthorizedSource(source) ? 50 : 1;
+        while (StringUtils.hasText(currentUrl) && seenPages.size() < maxPages && seenPages.add(currentUrl)
+                && seeds.size() < maxBooks) {
+            Document rankPage = fetch(currentUrl, source);
+            List<ParsedBookSeed> pageSeeds = parser.parseBookSeeds(source, rankPage, currentUrl, maxBooks - seeds.size());
+            int added = 0;
+            for (ParsedBookSeed seed : pageSeeds) {
+                if (seenUrls.add(seed.url())) {
+                    seeds.add(seed);
+                    added++;
+                    if (seeds.size() >= maxBooks) {
+                        break;
+                    }
+                }
+            }
+            if (!isH528AuthorizedSource(source) || (added == 0 && !seeds.isEmpty())) {
+                break;
+            }
+            String nextUrl = parser.nextRankPage(source, rankPage, currentUrl);
+            if (!StringUtils.hasText(nextUrl) || seenPages.contains(nextUrl)) {
+                break;
+            }
+            currentUrl = nextUrl;
+            sleepBeforeRetry(1);
+        }
+        return seeds;
     }
 
     private BookOutcome processAuthorizedBookWithTimeout(CrawlTaskRecord task, CrawlerSourceConfig source,
@@ -625,6 +662,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return source != null && "xbookcn_authorized".equalsIgnoreCase(source.sourceCode);
     }
 
+    private boolean isH528AuthorizedSource(CrawlerSourceConfig source) {
+        return source != null && "h528_authorized".equalsIgnoreCase(source.sourceCode);
+    }
+
     private boolean canCrawlAuthorizedChapters(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
         if (!isXbookcnAuthorizedSource(source) || snapshot == null || !StringUtils.hasText(snapshot.sourceBookId())) {
             return false;
@@ -702,6 +743,48 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         } else if (CompanyAuthorization.isActive(source, CompanyAuthorization.read(source), LocalDate.now())) {
             CompanyAuthorization.apply(book, CompanyAuthorization.read(source));
         }
+        book.updatedAt = now;
+        if (book.id == null) {
+            authorizedBookMapper.insert(book);
+        } else {
+            authorizedBookMapper.updateById(book);
+        }
+    }
+
+    private void upsertH528AuthorizedBook(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
+        if (source == null || snapshot == null || !StringUtils.hasText(snapshot.sourceBookId())) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        CrawlerAuthorizedBook book = authorizedBookMapper.selectOne(new QueryWrapper<CrawlerAuthorizedBook>()
+                .eq("source_code", source.sourceCode)
+                .eq("source_book_id", snapshot.sourceBookId())
+                .last("LIMIT 1"));
+        if (book == null) {
+            book = new CrawlerAuthorizedBook();
+            book.sourceCode = source.sourceCode;
+            book.sourceBookId = snapshot.sourceBookId();
+            book.authorizationStatus = "AUTHORIZED";
+            book.reviewStatus = "APPROVED";
+            book.riskLevel = "LOW";
+            book.allowCrawlMeta = true;
+            book.allowCrawlChapters = true;
+            book.allowStore = true;
+            book.allowDisplay = true;
+            book.allowVipDisplay = true;
+            book.proofRef = "h528_authorized_source";
+            book.discoveredAt = now;
+            book.authorizedAt = now;
+            book.reviewedAt = now;
+            book.createdAt = now;
+        }
+        book.bookUrl = limit(snapshot.sourceUrl(), 512);
+        book.title = limit(snapshot.title(), 128);
+        book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "", 64);
+        book.intro = snapshot.intro();
+        book.categoryName = limit(snapshot.categoryName(), 64);
+        book.tagsJson = StringUtils.hasText(snapshot.tagsJson()) ? snapshot.tagsJson() : "[]";
+        book.coverUrl = limit(snapshot.coverUrl(), 512);
         book.updatedAt = now;
         if (book.id == null) {
             authorizedBookMapper.insert(book);
