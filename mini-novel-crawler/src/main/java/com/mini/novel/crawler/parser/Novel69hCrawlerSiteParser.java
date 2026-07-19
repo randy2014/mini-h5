@@ -43,8 +43,7 @@ public class Novel69hCrawlerSiteParser implements CrawlerSiteParser {
         Set<String> seen = new LinkedHashSet<>();
         String selector = firstNonBlank(rules.text("rankRules.bookList"),
                 ".L-main-col a[href*='/erotic-novel/'][href*='article-'], "
-                        + "main a[href*='/erotic-novel/'][href*='article-'], "
-                        + "a[href*='/erotic-novel/'][href*='article-']");
+                        + "main a[href*='/erotic-novel/'][href*='article-']");
         for (Element link : document.select(selector)) {
             String href = normalizeArticleUrl(link.absUrl("href"));
             if (!isArticleUrl(href) || !seen.add(href)) {

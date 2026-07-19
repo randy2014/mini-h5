@@ -89,6 +89,28 @@ class H528CrawlerSiteParserTest {
     }
 
     @Test
+    void leavesCategoryBlankWhenPostMetadataHasNoCategory() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {"poc":{"singleBookOnly":true,"bookUrl":"http://www.h528.com/post/27807.html"}}
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "http://www.h528.com/"),
+                "http://www.h528.com/", 1).get(0);
+        Document page = Jsoup.parse("""
+                <html><body><div class="post">
+                  <h2>No Category Story</h2>
+                  <div class="entry"><p>Body text.</p></div>
+                </div><aside><a href="/post/category/sidebar">Sidebar Category</a></aside></body></html>
+                """, "http://www.h528.com/post/27807.html");
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, url -> page);
+
+        assertThat(snapshot.sourceBookId()).isEqualTo("27807");
+        assertThat(snapshot.categoryName()).isBlank();
+        assertThat(snapshot.tagsJson()).isEqualTo("[]");
+    }
+
+    @Test
     void findsNextHomePageFromNavigation() {
         CrawlerSourceConfig source = source("""
                 {"poc":{"mode":"BATCH"}}

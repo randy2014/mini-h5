@@ -216,7 +216,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                             .map(b -> new ParsedBookSeed(b.bookUrl, b.title, b.author, b.sourceBookId, 0L, "", rank.rankUrl))
                             .toList();
                 } else {
-                    seeds = collectRankSeeds(source, rank, parser);
+                    seeds = collectRankSeeds(task, source, rank, parser);
                 }
                 if (seeds.isEmpty() && isQidian(source, rank.rankUrl) && !rank.rankUrl.contains("m.qidian.com")) {
                     Document mobilePage = fetch("https://m.qidian.com/", source);
@@ -296,8 +296,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                         updatedBooks, insertedChapters, updatedChapters, deduplicated,
                         riskBlockedCount, pendingReviewCount, timeoutCount, failed, continuationId, selectedIds, batchTimedOut,
                         approvedContentRetryIds(task).isEmpty())
-                        : "Crawler finished: discovered " + total + ", saved " + success
-                        + ", failed " + failed + ", merge task reports merged counts.";
+                        : publicCrawlerMessage(source, total, success, failed);
             }
         } catch (Exception ex) {
             task.status = "FAILED";
@@ -362,32 +361,54 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 completed ? 0 : 1, true);
     }
 
-    private List<ParsedBookSeed> collectRankSeeds(CrawlerSourceConfig source, CrawlRankSource rank,
-                                                  CrawlerSiteParser parser) throws IOException {
+    private List<ParsedBookSeed> collectRankSeeds(CrawlTaskRecord task, CrawlerSourceConfig source,
+                                                  CrawlRankSource rank, CrawlerSiteParser parser) throws IOException {
         int maxBooks = maxBooks(rank);
         List<ParsedBookSeed> seeds = new ArrayList<>();
         Set<String> seenUrls = new LinkedHashSet<>();
         Set<String> seenPages = new LinkedHashSet<>();
-        String currentUrl = rank.rankUrl;
-        int maxPages = isH528AuthorizedSource(source) ? 50 : 1;
+        String currentUrl = isNovel69hAuthorizedSource(source) ? firstNonBlank(novel69hStartPage(task), rank.rankUrl) : rank.rankUrl;
+        int maxPages = isH528AuthorizedSource(source) ? 50 : isNovel69hAuthorizedSource(source) ? 10 : 1;
         while (StringUtils.hasText(currentUrl) && seenPages.size() < maxPages && seenPages.add(currentUrl)
                 && seeds.size() < maxBooks) {
             Document rankPage = fetch(currentUrl, source);
             List<ParsedBookSeed> pageSeeds = parser.parseBookSeeds(source, rankPage, currentUrl, maxBooks - seeds.size());
             int added = 0;
+            int newlyDiscovered = 0;
+            int existing = 0;
             for (ParsedBookSeed seed : pageSeeds) {
                 if (seenUrls.add(seed.url())) {
                     seeds.add(seed);
                     added++;
+                    if (rawBookExists(source, seed.sourceBookId())) {
+                        existing++;
+                    } else {
+                        newlyDiscovered++;
+                    }
                     if (seeds.size() >= maxBooks) {
                         break;
                     }
                 }
             }
-            if (!isH528AuthorizedSource(source) || (added == 0 && !seeds.isEmpty())) {
+            String nextUrl = parser.nextRankPage(source, rankPage, currentUrl);
+            if (isNovel69hAuthorizedSource(source)) {
+                String continuation = StringUtils.hasText(nextUrl) && !seenPages.contains(nextUrl) ? nextUrl : "";
+                log.info("69hnovel rank page: taskId={}, page={}, discovered={}, existing={}, added={}, failed=0, continuation={}",
+                        task.id, currentUrl, pageSeeds.size(), existing, newlyDiscovered,
+                        StringUtils.hasText(continuation) ? continuation : "none");
+                task.message = "69hnovel discovery: page=" + limit(currentUrl, 160)
+                        + ", discovered=" + seeds.size()
+                        + ", existing=" + existing
+                        + ", added=" + newlyDiscovered
+                        + ", failed=0"
+                        + ", continuation=" + (StringUtils.hasText(continuation) ? "pageUrl:" + continuation : "none")
+                        + ".";
+                task.updatedAt = LocalDateTime.now();
+                taskMapper.updateById(task);
+            }
+            if ((!isH528AuthorizedSource(source) && !isNovel69hAuthorizedSource(source)) || (added == 0 && !seeds.isEmpty())) {
                 break;
             }
-            String nextUrl = parser.nextRankPage(source, rankPage, currentUrl);
             if (!StringUtils.hasText(nextUrl) || seenPages.contains(nextUrl)) {
                 break;
             }
@@ -395,6 +416,60 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             sleepBeforeRetry(1);
         }
         return seeds;
+    }
+
+    private String publicCrawlerMessage(CrawlerSourceConfig source, int total, int success, int failed) {
+        String message = "Crawler finished: discovered " + total + ", saved " + success
+                + ", failed " + failed + ", merge task reports merged counts";
+        if (isNovel69hAuthorizedSource(source)) {
+            String continuation = novel69hContinuation(previousNovel69hMessage(source));
+            message += ", continuation=" + (StringUtils.hasText(continuation) ? "pageUrl:" + continuation : "none");
+        }
+        return message + ".";
+    }
+
+    private String previousNovel69hMessage(CrawlerSourceConfig source) {
+        if (!isNovel69hAuthorizedSource(source) || source.id == null) {
+            return "";
+        }
+        List<CrawlTaskRecord> tasks = taskMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
+                .eq("source_id", source.id)
+                .in("status", List.of("SUCCESS", "PARTIAL_SUCCESS", "RUNNING"))
+                .orderByDesc("id")
+                .last("LIMIT 1"));
+        return tasks.isEmpty() ? "" : tasks.get(0).message;
+    }
+
+    private String novel69hStartPage(CrawlTaskRecord task) {
+        if (task == null) {
+            return "";
+        }
+        String continuation = novel69hContinuation(task.targetUrl);
+        if (StringUtils.hasText(continuation)) {
+            return continuation;
+        }
+        List<CrawlTaskRecord> previousTasks = taskMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
+                .eq("source_id", task.sourceId)
+                .in("status", List.of("SUCCESS", "PARTIAL_SUCCESS"))
+                .lt("id", task.id)
+                .orderByDesc("id")
+                .last("LIMIT 20"));
+        for (CrawlTaskRecord previous : previousTasks) {
+            continuation = novel69hContinuation(previous.message);
+            if (StringUtils.hasText(continuation)) {
+                return continuation;
+            }
+        }
+        return "";
+    }
+
+    private String novel69hContinuation(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("continuation=pageUrl:([^,\\s]+)")
+                .matcher(value);
+        return matcher.find() ? matcher.group(1).replaceAll("\\.$", "") : "";
     }
 
     private BookOutcome processAuthorizedBookWithTimeout(CrawlTaskRecord task, CrawlerSourceConfig source,
@@ -931,7 +1006,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.author = limit(StringUtils.hasText(snapshot.author()) ? snapshot.author() : "Unknown", 64);
         book.intro = snapshot.intro();
         book.coverUrl = limit(snapshot.coverUrl(), 512);
-        book.categoryName = limit(firstNonBlank(snapshot.categoryName(), rank.rankName, "Unknown"), 64);
+        book.categoryName = limit(rawCategoryName(source, rank, snapshot), 64);
         book.bookStatus = normalizeBookStatus(snapshot.bookStatus());
         book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;
@@ -964,6 +1039,23 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 authorizedBook == null ? null : authorizedBook.sourceBookId,
                 snapshot.sourceBookId(),
                 sha256(snapshot.sourceUrl()).substring(0, 24));
+        Long count = bookRawMapper.selectCount(new QueryWrapper<CrawlBookRaw>()
+                .eq("source_code", source.sourceCode)
+                .eq("source_book_id", sourceBookId));
+        return count != null && count > 0;
+    }
+
+    private String rawCategoryName(CrawlerSourceConfig source, CrawlRankSource rank, ParsedBookSnapshot snapshot) {
+        if (isH528AuthorizedSource(source) || isNovel69hAuthorizedSource(source)) {
+            return snapshot == null ? "" : firstNonBlank(snapshot.categoryName());
+        }
+        return firstNonBlank(snapshot == null ? "" : snapshot.categoryName(), rank.rankName, "Unknown");
+    }
+
+    private boolean rawBookExists(CrawlerSourceConfig source, String sourceBookId) {
+        if (source == null || !StringUtils.hasText(source.sourceCode) || !StringUtils.hasText(sourceBookId)) {
+            return false;
+        }
         Long count = bookRawMapper.selectCount(new QueryWrapper<CrawlBookRaw>()
                 .eq("source_code", source.sourceCode)
                 .eq("source_book_id", sourceBookId));

@@ -78,6 +78,40 @@ class Novel69hCrawlerSiteParserTest {
     }
 
     @Test
+    void infersNextRankPageWhenPaginationLinkIsMissing() {
+        CrawlerSourceConfig source = source("{}");
+        Document rank = Jsoup.parse("<main></main>", "https://www.69hnovel.com/erotic-novel-02.html");
+
+        assertThat(parser.nextRankPage(source, rank, "https://www.69hnovel.com/erotic-novel-02.html"))
+                .isEqualTo("https://www.69hnovel.com/erotic-novel-03.html");
+    }
+
+    @Test
+    void keepsCategoryFromMainArticleInsteadOfSidebar() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {"poc":{"singleBookOnly":true,"bookUrl":"https://www.69hnovel.com/erotic-novel/story/article-12609.html"}}
+                """);
+        ParsedBookSeed seed = parser.parseBookSeeds(source,
+                Jsoup.parse("<html></html>", "https://www.69hnovel.com/erotic-novel.html"),
+                "https://www.69hnovel.com/erotic-novel.html", 1).get(0);
+        Document page = Jsoup.parse("""
+                <html><body>
+                <article>
+                  <h1>Title</h1>
+                  <a href="/erotic-novel/story.html">\u6027\u7d93\u9a57</a>
+                  <p>Body text.</p>
+                </article>
+                <aside><a href="/erotic-novel/wife.html">\u4eba\u59bb\u719f\u5973 999</a></aside>
+                </body></html>
+                """, "https://www.69hnovel.com/erotic-novel/story/article-12609.html");
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, url -> page);
+
+        assertThat(snapshot.categoryName()).isEqualTo("\u6027\u7ecf\u9a8c");
+        assertThat(snapshot.tagsJson()).isEqualTo("[\"\u6027\u7ecf\u9a8c\"]");
+    }
+
+    @Test
     void propagatesAccessFailure() {
         CrawlerSourceConfig source = source("""
                 {"poc":{"singleBookOnly":true,"bookUrl":"https://www.69hnovel.com/erotic-novel/story/article-12608.html"}}

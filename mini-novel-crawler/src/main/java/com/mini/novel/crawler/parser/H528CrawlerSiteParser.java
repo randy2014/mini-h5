@@ -90,7 +90,7 @@ public class H528CrawlerSiteParser implements CrawlerSiteParser {
                 seed.title(),
                 "h528-" + postId)));
         String author = simplified(firstNonBlank(firstAuthor(detail), "Unknown"));
-        String category = simplified(firstNonBlank(firstCategory(detail), "AUTHORIZED_VIP"));
+        String category = simplified(firstCategory(detail));
         String content = simplified(extractEntryText(detail, CrawlerRuleConfig.from(source)));
         long wordCount = content.length();
 
