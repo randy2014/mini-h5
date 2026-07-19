@@ -272,6 +272,44 @@ CREATE TABLE IF NOT EXISTS chapter_source_mapping (
   KEY idx_chapter_no (novel_mapping_id, chapter_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS vip_category (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(64) NOT NULL,
+  normalized_name VARCHAR(64) NOT NULL,
+  sort INT NOT NULL DEFAULT 100,
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_vip_category_normalized_name (normalized_name),
+  KEY idx_vip_category_enabled_sort (enabled, sort, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Independent VIP category table';
+
+CREATE TABLE IF NOT EXISTS novel_vip_category_mapping (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  novel_id BIGINT NOT NULL,
+  vip_category_id BIGINT NOT NULL,
+  source_code VARCHAR(64) NOT NULL,
+  source_book_id VARCHAR(128) NOT NULL,
+  source_category_name VARCHAR(64),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_novel_vip_category (novel_id),
+  KEY idx_vip_category_novel (vip_category_id, novel_id),
+  KEY idx_source_book (source_code, source_book_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Novel to independent VIP category mapping';
+
+CREATE TABLE IF NOT EXISTS vip_source_category_mapping (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  source_code VARCHAR(64) NOT NULL,
+  source_category_name VARCHAR(64) NOT NULL,
+  normalized_name VARCHAR(64) NOT NULL,
+  vip_category_id BIGINT NOT NULL,
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_vip_source_category (source_code, normalized_name),
+  KEY idx_vip_source_category_target (vip_category_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Source category to independent VIP category mapping';
 CREATE DATABASE IF NOT EXISTS mini_novel_crawler DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE mini_novel_crawler;
 

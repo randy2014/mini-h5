@@ -13,6 +13,7 @@ const routes = [
       { path: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: '首页' } },
       { path: 'articles', component: () => import('../views/ArticleView.vue'), meta: { title: '文章管理' } },
       { path: 'categories', component: () => import('../views/CategoryView.vue'), meta: { title: '分类管理' } },
+      { path: 'vip-categories', component: () => import('../views/VipCategoryView.vue'), meta: { title: 'VIP 分类管理' } },
       { path: 'users', component: () => import('../views/UserView.vue'), meta: { title: '用户管理' } },
       { path: 'vip', component: () => import('../views/VipView.vue'), meta: { title: 'VIP 管理' } },
       { path: 'orders', component: () => import('../views/OrderView.vue'), meta: { title: '付费管理' } },

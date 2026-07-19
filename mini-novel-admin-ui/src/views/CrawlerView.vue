@@ -523,7 +523,7 @@ function statusType(status) {
 }
 
 function isAuthorizedVipSource(sourceCode) {
-  return ['xbookcn_authorized', 'h528_authorized'].includes(sourceCode);
+  return ['xbookcn_authorized', 'h528_authorized', 'novel69h_authorized'].includes(sourceCode);
 }
 
 function taskPercent(row) {

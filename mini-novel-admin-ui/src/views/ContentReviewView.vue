@@ -2,7 +2,7 @@
   <section>
     <el-row :gutter="12" class="stats"><el-col v-for="item in cards" :key="item.label" :xs="12" :sm="6"><el-card shadow="never"><div class="label">{{item.label}}</div><div class="value">{{item.value}}</div></el-card></el-col></el-row>
     <el-card shadow="never">
-      <template #header><div class="bar"><b>成人授权内容审核</b><div><el-select v-model="sourceCode" style="width:180px;margin-right:10px" @change="switchSource"><el-option label="xbookcn_authorized" value="xbookcn_authorized"/><el-option label="h528_authorized" value="h528_authorized"/></el-select><el-button @click="load">刷新</el-button></div></div></template>
+      <template #header><div class="bar"><b>成人授权内容审核</b><div><el-select v-model="sourceCode" style="width:210px;margin-right:10px" @change="switchSource"><el-option label="xbookcn_authorized" value="xbookcn_authorized"/><el-option label="h528_authorized" value="h528_authorized"/><el-option label="novel69h_authorized" value="novel69h_authorized"/></el-select><el-button @click="load">刷新</el-button></div></div></template>
       <el-alert title="只有已保存到隔离区的待审正文才能审核；仅有状态但无正文的章节显示为“待重新采集”。审核不会自动上架。" type="warning" :closable="false" show-icon/>
       <el-table :data="books" v-loading="loading" class="table">
         <el-table-column prop="title" label="书名" min-width="160"/><el-table-column prop="sourceCode" label="来源" width="180"/><el-table-column prop="chapterCount" label="目录章节" width="90"/><el-table-column prop="reviewableCount" label="可审核正文" width="105"/><el-table-column prop="recrawlCount" label="待重采" width="85"/><el-table-column prop="blockedCount" label="硬拦截" width="85"/><el-table-column prop="missingCount" label="缺失" width="75"/>

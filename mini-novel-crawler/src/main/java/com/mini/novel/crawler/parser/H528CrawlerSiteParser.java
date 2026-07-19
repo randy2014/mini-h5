@@ -159,7 +159,7 @@ public class H528CrawlerSiteParser implements CrawlerSiteParser {
     }
 
     private String firstCategory(Document document) {
-        for (Element link : document.select("a[href*='/post/category/'], a[rel=category tag]")) {
+        for (Element link : categoryLinks(document)) {
             String text = clean(link.text());
             if (StringUtils.hasText(text)) {
                 return text;
@@ -184,7 +184,7 @@ public class H528CrawlerSiteParser implements CrawlerSiteParser {
     private String tagsJson(Document document) {
         List<String> tags = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
-        for (Element link : document.select("a[href*='/post/category/'], a[rel=category tag]")) {
+        for (Element link : categoryLinks(document)) {
             String tag = simplified(clean(link.text()));
             if (StringUtils.hasText(tag) && seen.add(tag)) {
                 tags.add(tag);
@@ -198,6 +198,14 @@ public class H528CrawlerSiteParser implements CrawlerSiteParser {
             json.append('"').append(tags.get(i).replace("\\", "\\\\").replace("\"", "\\\"")).append('"');
         }
         return json.append(']').toString();
+    }
+
+    private List<Element> categoryLinks(Document document) {
+        Element container = document.selectFirst(".post .postmetadata, article .postmetadata, .narrowcolumn .post .postmetadata");
+        if (container == null) {
+            return List.of();
+        }
+        return container.select("a[href*='/post/category/'], a[rel=category tag]");
     }
 
     private String extractEntryText(Document document, CrawlerRuleConfig rules) {

@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Value;
@@ -218,7 +219,7 @@ public class ContentReviewController {
             SELECT c.id chapterRawId,c.book_raw_id bookRawId,c.content_status contentStatus,r.id contentRawId,
                    c.chapter_no chapterNo,c.source_chapter_id sourceChapterId,c.title chapterTitle,c.source_url chapterSourceUrl,r.content,r.content_hash contentHash,
                    b.source_code sourceCode,b.source_book_id sourceBookId,b.source_url bookSourceUrl,
-                   b.title bookTitle,b.author,b.intro,b.cover_url coverUrl
+                   b.title bookTitle,b.author,b.intro,b.cover_url coverUrl,b.category_name categoryName
             FROM mini_novel_crawler.crawl_chapter_raw c JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
             WHERE c.id=? AND b.source_code=? FOR UPDATE
@@ -261,6 +262,7 @@ public class ContentReviewController {
             novelId = ids.get(0);
             jdbc.update("UPDATE mini_novel.novel SET status=1,vip_required=1,free_chapter_count=0,offline_reason=NULL,offline_at=NULL,operator_id=?,updated_at=NOW() WHERE id=?", operatorId, novelId);
         }
+        syncVipCategory(chapter, novelId);
         Long mappedChapterId = mappedChapterId(chapter, novelId);
         if (mappedChapterId != null) {
             jdbc.update("""
@@ -279,6 +281,40 @@ public class ContentReviewController {
         }
         syncChapterMapping(chapter, novelId);
         refreshNovel(novelId);
+    }
+
+    private void syncVipCategory(Map<String, Object> chapter, Long novelId) {
+        String sourceCategory = Objects.toString(chapter.get("categoryName"), "");
+        String categoryName = normalizeVipCategoryName(sourceCategory);
+        String normalizedName = normalizeCategoryKey(categoryName);
+        Long categoryId = mappedVipCategoryId(Objects.toString(chapter.get("sourceCode"), ""), normalizedName);
+        if (categoryId == null) {
+            jdbc.update("""
+                INSERT INTO mini_novel.vip_category(name,normalized_name,sort,enabled,created_at,updated_at)
+                VALUES(?,?,100,1,NOW(),NOW())
+                ON DUPLICATE KEY UPDATE name=VALUES(name),enabled=1,updated_at=NOW()
+                """, categoryName, normalizedName);
+            categoryId = jdbc.queryForObject("""
+                SELECT id FROM mini_novel.vip_category WHERE normalized_name=? LIMIT 1
+                """, Long.class, normalizedName);
+        }
+        jdbc.update("""
+            INSERT INTO mini_novel.novel_vip_category_mapping
+              (novel_id,vip_category_id,source_code,source_book_id,source_category_name,created_at,updated_at)
+            VALUES(?,?,?,?,?,NOW(),NOW())
+            ON DUPLICATE KEY UPDATE
+              vip_category_id=VALUES(vip_category_id),source_code=VALUES(source_code),
+              source_book_id=VALUES(source_book_id),source_category_name=VALUES(source_category_name),updated_at=NOW()
+            """, novelId, categoryId, chapter.get("sourceCode"), chapter.get("sourceBookId"), limit(sourceCategory, 64));
+    }
+
+    private Long mappedVipCategoryId(String sourceCode, String normalizedName) {
+        List<Long> ids = jdbc.query("""
+            SELECT vip_category_id
+            FROM mini_novel.vip_source_category_mapping
+            WHERE source_code=? AND normalized_name=? AND enabled=1 LIMIT 1
+            """, (rs, row) -> rs.getLong(1), sourceCode, normalizedName);
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     private void syncChapterMapping(Map<String, Object> chapter, Long novelId) {
@@ -368,6 +404,21 @@ public class ContentReviewController {
     private String normalizeIdentity(String value) {
         if (!StringUtils.hasText(value)) return "";
         return value.toLowerCase().replaceAll("[\\s\\p{Punct}]+", "").trim();
+    }
+    private String normalizeVipCategoryName(String value) {
+        if (!StringUtils.hasText(value)) return "\u5176\u4ed6";
+        String cleaned = value.replaceAll("[\\[\\]\"]", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (!StringUtils.hasText(cleaned) || "AUTHORIZED_VIP".equalsIgnoreCase(cleaned) || "UNKNOWN".equalsIgnoreCase(cleaned)) {
+            return "\u5176\u4ed6";
+        }
+        return limit(cleaned, 64);
+    }
+    private String normalizeCategoryKey(String value) {
+        String normalized = normalizeVipCategoryName(value).toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s\\p{Punct}]+", "");
+        return StringUtils.hasText(normalized) ? limit(normalized, 64) : "other";
     }
     private String limit(String value, int maxLength) {
         if (value == null || value.length() <= maxLength) return value;
