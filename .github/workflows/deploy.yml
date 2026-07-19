@@ -78,8 +78,12 @@ jobs:
           APP_PORT=8080
           H5_PORT=5173
           ADMIN_PORT=5180
-          DEPLOY_SHA=${{ github.sha }}
           ENV
           chmod +x deploy/deploy.sh
           ./deploy/deploy.sh
+          if grep -q '^DEPLOY_SHA=' .env; then
+            sed -i 's/^DEPLOY_SHA=.*/DEPLOY_SHA=${{ github.sha }}/' .env
+          else
+            printf '\nDEPLOY_SHA=%s\n' '${{ github.sha }}' >> .env
+          fi
           EOF

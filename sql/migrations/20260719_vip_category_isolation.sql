@@ -125,10 +125,25 @@ ON DUPLICATE KEY UPDATE
   source_category_name=VALUES(source_category_name),
   updated_at=NOW();
 
-UPDATE mini_novel_crawler.crawl_book_raw
-SET tags_json = CASE
-  WHEN category_name IS NULL OR TRIM(category_name) = '' OR UPPER(TRIM(category_name)) IN ('UNKNOWN','AUTHORIZED_VIP') THEN '[]'
-  ELSE JSON_ARRAY(TRIM(category_name))
-END,
-updated_at = NOW()
-WHERE source_code = 'h528_authorized';
+SET @has_h528_tags_json := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = 'mini_novel_crawler'
+    AND TABLE_NAME = 'crawl_book_raw'
+    AND COLUMN_NAME = 'tags_json'
+);
+
+SET @h528_tags_sql := IF(
+  @has_h528_tags_json > 0,
+  'UPDATE mini_novel_crawler.crawl_book_raw
+   SET tags_json = CASE
+     WHEN category_name IS NULL OR TRIM(category_name) = '''' OR UPPER(TRIM(category_name)) IN (''UNKNOWN'',''AUTHORIZED_VIP'') THEN ''[]''
+     ELSE JSON_ARRAY(TRIM(category_name))
+   END,
+   updated_at = NOW()
+   WHERE source_code = ''h528_authorized''',
+  'SELECT ''skip h528 tags_json cleanup: column missing'' AS message'
+);
+PREPARE h528_tags_stmt FROM @h528_tags_sql;
+EXECUTE h528_tags_stmt;
+DEALLOCATE PREPARE h528_tags_stmt;
