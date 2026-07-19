@@ -70,9 +70,9 @@ public class VipController {
         long safePage = Math.max(1, page);
         long safePageSize = Math.max(1, Math.min(100, pageSize));
         Map<Long, VipCategory> categories = validCategories();
-        LambdaQueryWrapper<Novel> query = vipBooksQuery(category, categories.keySet())
-                .orderByDesc(Novel::getUpdatedAt)
-                .orderByDesc(Novel::getId);
+        QueryWrapper<Novel> query = vipBooksQuery(category, categories.keySet())
+                .orderByDesc("updated_at")
+                .orderByDesc("id");
         Page<Novel> result = novelMapper.selectPage(new Page<>(safePage, safePageSize), query);
         result.getRecords().forEach(novel -> {
             normalizeVipCategory(novel, categories);
@@ -101,10 +101,10 @@ public class VipController {
         return Result.ok(result);
     }
 
-    LambdaQueryWrapper<Novel> vipBooksQuery(String category, Set<Long> validCategoryIds) {
-        LambdaQueryWrapper<Novel> query = new LambdaQueryWrapper<Novel>()
-                .ne(Novel::getStatus, 0)
-                .eq(Novel::getVipRequired, true)
+    QueryWrapper<Novel> vipBooksQuery(String category, Set<Long> validCategoryIds) {
+        QueryWrapper<Novel> query = new QueryWrapper<Novel>()
+                .ne("status", 0)
+                .eq("vip_required", true)
                 .exists("""
                         SELECT 1
                         FROM novel_source_mapping vip_mapping

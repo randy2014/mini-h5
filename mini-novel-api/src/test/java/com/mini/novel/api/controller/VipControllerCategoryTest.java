@@ -76,7 +76,7 @@ class VipControllerCategoryTest {
         VipCategory city = category(7L, "city", 10);
         VipCategory empty = category(8L, " ", 20);
         when(vipCategoryMapper.selectList(any())).thenReturn(List.of(city, empty));
-        when(novelMapper.selectCount(any())).thenReturn(4L, 2L, 0L, 2L);
+        when(novelMapper.selectCount(any())).thenReturn(4L, 2L, 2L);
 
         List<VipBookCategoryVo> categories = controller.categories().data();
 
