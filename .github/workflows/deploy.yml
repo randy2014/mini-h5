@@ -19,6 +19,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Test crawler service
+        run: mvn -U -pl mini-novel-crawler-service -am test
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build admin UI
+        working-directory: mini-novel-admin-ui
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
       - name: Check deploy secrets
         id: deploy-secrets
         run: |
