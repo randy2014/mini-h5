@@ -1,0 +1,4 @@
+interface:
+  display_name: "授权成人内容采集"
+  short_description: "规范实施授权成人来源采集、隔离审核、完整性核账与安全发布"
+  default_prompt: "使用授权成人内容采集流程评估来源、设计解析、核对完整性，并通过人工审核后发布。"

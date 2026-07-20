@@ -40,3 +40,11 @@ Thumbs.db
 # Codex/local automation metadata
 .agents/
 .codex/
+
+# Project-scoped Codex skill
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/authorized-adult-content-crawler/
+!.agents/skills/authorized-adult-content-crawler/**
