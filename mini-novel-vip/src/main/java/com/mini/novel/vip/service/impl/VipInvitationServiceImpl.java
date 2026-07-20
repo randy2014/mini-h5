@@ -26,12 +26,14 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
 public class VipInvitationServiceImpl implements VipInvitationService {
     private static final int DEFAULT_INVITE_QUOTA = 3;
+    private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder(12);
     private static final LocalDateTime PERMANENT_EXPIRE_AT = LocalDateTime.of(2099, 12, 31, 23, 59, 59);
 
     private final AppUserMapper appUserMapper;
@@ -56,13 +58,15 @@ public class VipInvitationServiceImpl implements VipInvitationService {
 
     @Override
     @Transactional
-    public LoginResult loginOrCreate(String mobile, String invitationCode) {
+    public LoginResult loginOrCreate(String mobile, String password, String invitationCode) {
         LocalDateTime now = LocalDateTime.now();
         String code = normalizeCode(invitationCode);
         AppUser user = appUserMapper.selectByMobileForUpdate(mobile);
         boolean newAccount = user == null;
         if (newAccount) {
-            user = createUser(mobile, now);
+            user = createUser(mobile, password, now);
+        } else {
+            verifyOrInitializePassword(user, password, now);
         }
         if (user.getStatus() != null && user.getStatus() == 0) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "账号已被禁用");
@@ -307,9 +311,10 @@ public class VipInvitationServiceImpl implements VipInvitationService {
                 .last("LIMIT 200"));
     }
 
-    private AppUser createUser(String mobile, LocalDateTime now) {
+    private AppUser createUser(String mobile, String password, LocalDateTime now) {
         AppUser user = new AppUser();
         user.setMobile(mobile);
+        user.setPasswordHash(PASSWORD_ENCODER.encode(password));
         user.setNickname("读者" + mobile.substring(mobile.length() - 4));
         user.setStatus(1);
         user.setVipStatus(0);
@@ -317,6 +322,21 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         user.setUpdatedAt(now);
         appUserMapper.insert(user);
         return user;
+    }
+
+    private void verifyOrInitializePassword(AppUser user, String password, LocalDateTime now) {
+        if (!StringUtils.hasText(user.getPasswordHash())) {
+            AppUser update = new AppUser();
+            update.setId(user.getId());
+            update.setPasswordHash(PASSWORD_ENCODER.encode(password));
+            update.setUpdatedAt(now);
+            appUserMapper.updateById(update);
+            user.setPasswordHash(update.getPasswordHash());
+            return;
+        }
+        if (!PASSWORD_ENCODER.matches(password, user.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "手机号或密码错误");
+        }
     }
 
     private void applyInvitation(AppUser user, VipInvitationCode inviterCode, LocalDateTime now) {

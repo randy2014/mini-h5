@@ -2,7 +2,16 @@
   <section class="page with-tab vip-page">
     <van-nav-bar title="VIP 专区" left-arrow @click-left="$router.back()" />
 
-    <div v-if="!confirmed" class="vip-adult-gate">
+    <van-loading v-if="statusLoading" class="center-loading" />
+
+    <div v-else-if="!status.active" class="vip-access-denied">
+      <van-icon name="lock" />
+      <h1>需要 VIP 资格</h1>
+      <p>当前账号暂未开通有效 VIP，专区书单与章节信息不会展示。</p>
+      <van-button type="primary" to="/h5/profile">返回个人中心</van-button>
+    </div>
+
+    <div v-else-if="!confirmed" class="vip-adult-gate">
       <div class="vip-gate-icon"><van-icon name="shield-o" /></div>
       <div class="vip-gate-copy">
         <h1>成人内容提示</h1>
@@ -25,14 +34,12 @@
         <van-icon name="diamond-o" />
       </section>
 
-      <section class="vip-status-strip" :class="{ inactive: !status.active }">
+      <section class="vip-status-strip">
         <span class="vip-status-dot" />
         <div>
-          <strong>{{ status.active ? 'VIP 权益已生效' : '当前为普通用户' }}</strong>
-          <small v-if="status.active">有效期至 {{ expiryLabel }}</small>
-          <small v-else>可浏览书单，开通后阅读正文</small>
+          <strong>VIP 权益已生效</strong>
+          <small>有效期至 {{ expiryLabel }}</small>
         </div>
-        <van-button v-if="!status.active" size="small" plain to="/h5/profile">获取资格</van-button>
       </section>
 
       <div class="vip-age-note">
@@ -126,6 +133,7 @@ const categories = ref([{ key: 'all', categoryId: null, categoryName: '全部', 
 const selectedCategory = ref('all');
 const categoryError = ref(false);
 const status = ref({ active: false, vipExpireTime: null });
+const statusLoading = ref(true);
 const statusError = ref(false);
 const pageSize = 20;
 let requestVersion = 0;
@@ -147,6 +155,9 @@ async function loadStatus() {
     status.value = await fetchVipStatus();
   } catch {
     statusError.value = true;
+    status.value = { active: false, vipExpireTime: null };
+  } finally {
+    statusLoading.value = false;
   }
 }
 
@@ -234,20 +245,21 @@ function retryBooks() {
 function confirm() {
   localStorage.setItem(key, 'yes');
   confirmed.value = true;
-  loadStatus();
   loadCategories();
 }
 
-onMounted(() => {
-  if (confirmed.value) {
-    loadStatus();
-    loadCategories();
-  }
+onMounted(async () => {
+  await loadStatus();
+  if (status.value.active && confirmed.value) loadCategories();
 });
 </script>
 
 <style scoped>
 .vip-page { padding-top: 0; }
+.vip-access-denied { display:flex; min-height:52vh; padding:30px 20px; align-items:center; justify-content:center; flex-direction:column; text-align:center; }
+.vip-access-denied > .van-icon { color:var(--muted); font-size:42px; }
+.vip-access-denied h1 { margin:14px 0 6px; font-size:22px; }
+.vip-access-denied p { max-width:320px; margin:0 0 18px; color:var(--muted); font-size:14px; line-height:1.7; }
 .vip-channel-head { display:flex; align-items:center; justify-content:space-between; min-height:106px; margin:14px 0 10px; padding:18px; border-radius:var(--radius); background:var(--ink); color:#fffdf6; }
 .vip-channel-head p,.vip-channel-head h1,.vip-channel-head span { margin:0; }
 .vip-channel-head p { color:#a9d3ca; font-size:12px; font-weight:800; }

@@ -47,14 +47,19 @@ public class NovelController {
     }
 
     @GetMapping("/{novelId}")
-    public Result<Novel> detail(@PathVariable("novelId") Long novelId) {
-        return Result.ok(publicationProgress.enrich(bookReadService.getNovel(novelId)));
+    public Result<Novel> detail(@PathVariable("novelId") Long novelId,
+                                @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Novel novel = bookReadService.getNovel(novelId);
+        requireVipForNovel(novel, userId);
+        return Result.ok(publicationProgress.enrich(novel));
     }
 
     @GetMapping("/{novelId}/chapters")
     public Result<Page<Chapter>> chapters(@PathVariable("novelId") Long novelId,
                                           @RequestParam(value = "page", defaultValue = "1") long page,
-                                          @RequestParam(value = "size", defaultValue = "80") long size) {
+                                          @RequestParam(value = "size", defaultValue = "80") long size,
+                                          @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        requireVipForNovel(bookReadService.getNovel(novelId), userId);
         return Result.ok(bookReadService.listChapters(novelId, page, size));
     }
 
@@ -89,5 +94,12 @@ public class NovelController {
             throw new BusinessException(ErrorCode.VIP_REQUIRED, "下一章需要开通 VIP 后阅读");
         }
         return Result.ok(chapter);
+    }
+
+    private void requireVipForNovel(Novel novel, Long headerUserId) {
+        if (Boolean.TRUE.equals(novel.getVipRequired())
+                && !vipAccessService.hasActiveVip(currentUserResolver.resolveUserId(headerUserId))) {
+            throw new BusinessException(ErrorCode.VIP_REQUIRED, "需要有效 VIP 资格");
+        }
     }
 }

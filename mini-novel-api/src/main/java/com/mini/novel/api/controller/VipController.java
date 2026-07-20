@@ -15,6 +15,8 @@ import com.mini.novel.book.mapper.NovelMapper;
 import com.mini.novel.book.mapper.NovelVipCategoryMappingMapper;
 import com.mini.novel.book.mapper.VipCategoryMapper;
 import com.mini.novel.common.result.Result;
+import com.mini.novel.common.exception.BusinessException;
+import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.vip.entity.VipPlan;
 import com.mini.novel.vip.mapper.VipPlanMapper;
@@ -67,6 +69,7 @@ public class VipController {
             @RequestParam(value = "page", defaultValue = "1") long page,
             @RequestParam(value = "pageSize", defaultValue = "20") long pageSize,
             @RequestParam(value = "category", defaultValue = CATEGORY_ALL) String category) {
+        requireActiveVip();
         long safePage = Math.max(1, page);
         long safePageSize = Math.max(1, Math.min(100, pageSize));
         Map<Long, VipCategory> categories = validCategories();
@@ -83,6 +86,7 @@ public class VipController {
 
     @GetMapping("/categories")
     public Result<List<VipBookCategoryVo>> categories() {
+        requireActiveVip();
         Map<Long, VipCategory> categories = validCategories();
         long total = novelMapper.selectCount(vipBooksQuery(CATEGORY_ALL, categories.keySet()));
         List<VipBookCategoryVo> result = new java.util.ArrayList<>();
@@ -163,6 +167,13 @@ public class VipController {
                 .filter(category -> category.getId() != null && StringUtils.hasText(category.getName()))
                 .collect(Collectors.toMap(VipCategory::getId, category -> category,
                         (left, right) -> left, LinkedHashMap::new));
+    }
+
+    private void requireActiveVip() {
+        AppUser user = currentUserResolver.requireUser(null);
+        if (!vipAccessService.hasActiveVip(user.getId())) {
+            throw new BusinessException(ErrorCode.VIP_REQUIRED, "需要有效 VIP 资格");
+        }
     }
 
     private void normalizeVipCategory(Novel novel, Map<Long, VipCategory> categories) {

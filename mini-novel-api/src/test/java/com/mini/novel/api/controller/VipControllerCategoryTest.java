@@ -20,6 +20,9 @@ import com.mini.novel.book.mapper.VipCategoryMapper;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.vip.mapper.VipPlanMapper;
 import com.mini.novel.vip.service.VipAccessService;
+import com.mini.novel.user.entity.AppUser;
+import com.mini.novel.common.exception.BusinessException;
+import com.mini.novel.common.exception.ErrorCode;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +46,10 @@ class VipControllerCategoryTest {
     void setUp() {
         controller = new VipController(vipPlanMapper, currentUserResolver, vipAccessService,
                 novelMapper, vipCategoryMapper, novelVipCategoryMappingMapper, publicationProgress);
+        AppUser vip = new AppUser();
+        vip.setId(1L);
+        org.mockito.Mockito.lenient().when(currentUserResolver.requireUser(null)).thenReturn(vip);
+        org.mockito.Mockito.lenient().when(vipAccessService.hasActiveVip(1L)).thenReturn(true);
     }
 
     @Test
@@ -104,6 +111,20 @@ class VipControllerCategoryTest {
         assertTrue(sql.contains("novel_vip_category_mapping"));
         assertFalse(sql.contains("novel.category_id"));
         assertFalse(sql.contains(" FROM category "));
+    }
+
+    @Test
+    void ordinaryUserCannotQueryVipMetadata() {
+        when(vipAccessService.hasActiveVip(1L)).thenReturn(false);
+
+        BusinessException booksError = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class, () -> controller.books(1, 20, "all"));
+        BusinessException categoriesError = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class, controller::categories);
+
+        assertEquals(ErrorCode.VIP_REQUIRED, booksError.getCode());
+        assertEquals(ErrorCode.VIP_REQUIRED, categoriesError.getCode());
+        org.mockito.Mockito.verifyNoInteractions(novelMapper, vipCategoryMapper);
     }
 
     private VipCategory category(Long id, String name, int sort) {

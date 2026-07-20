@@ -10,9 +10,19 @@
         maxlength="11"
         type="tel"
         name="mobile"
-        autocomplete="tel"
+        autocomplete="username"
         label="手机号"
         placeholder="请输入 11 位手机号"
+      />
+      <van-field
+        v-model="password"
+        clearable
+        type="password"
+        name="password"
+        autocomplete="current-password"
+        maxlength="72"
+        label="密码"
+        placeholder="请输入密码（至少 8 位）"
       />
       <van-field
         v-model="verifyCode"
@@ -62,6 +72,7 @@ const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
 const mobile = ref(readRememberedMobile());
+const password = ref('');
 const verifyCode = ref('');
 const captchaId = ref('');
 const captchaImage = ref('');
@@ -79,10 +90,15 @@ async function submit() {
     showToast('请输入 4 位图形验证码');
     return;
   }
+  if (password.value.length < 8 || password.value.length > 72) {
+    showToast('请输入 8 至 72 位密码');
+    return;
+  }
   loading.value = true;
   try {
     const data = await userStore.signIn({
       mobile: value,
+      password: password.value,
       captchaId: captchaId.value,
       captchaCode: verifyCode.value.trim(),
       invitationCode: invitationCode.value.trim()

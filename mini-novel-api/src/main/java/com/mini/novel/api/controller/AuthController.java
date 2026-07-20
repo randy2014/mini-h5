@@ -40,7 +40,7 @@ public class AuthController {
         captchaService.verify(request.getCaptchaId(), request.getCaptchaCode());
         String mobile = normalizeMobile(request.getMobile());
         VipInvitationService.LoginResult loginResult = vipInvitationService.loginOrCreate(
-                mobile, request.getInvitationCode());
+                mobile, request.getPassword(), request.getInvitationCode());
         AppUser user = loginResult.getUser();
         if (user.getStatus() != null && user.getStatus() == 0) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "账号已被禁用");

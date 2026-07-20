@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,6 +32,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class VipInvitationLoginServiceTest {
+    private static final String PASSWORD = "LocalTestPassword!1";
     private AppUserMapper appUserMapper;
     private UserVipMapper userVipMapper;
     private VipInvitationCodeMapper codeMapper;
@@ -58,10 +60,12 @@ class VipInvitationLoginServiceTest {
     void blankInvitationCreatesOrdinaryUser() {
         stubNewUser(11L);
 
-        VipInvitationService.LoginResult result = service.loginOrCreate("13800000000", " ");
+        VipInvitationService.LoginResult result = service.loginOrCreate("13800000000", PASSWORD, " ");
 
         assertFalse(result.getUser().getVipStatus() != null && result.getUser().getVipStatus() > 0);
         assertNull(result.getLoginErrorCode());
+        assertTrue(result.getUser().getPasswordHash().startsWith("$2"));
+        assertFalse(result.getUser().getPasswordHash().contains(PASSWORD));
         verify(codeMapper, never()).selectByCodeForUpdate(any());
     }
 
@@ -72,7 +76,7 @@ class VipInvitationLoginServiceTest {
         when(recordMapper.selectByInviteeForUpdate(12L)).thenReturn(null);
         when(codeMapper.selectByCodeForUpdate("PROMO")).thenReturn(code);
 
-        VipInvitationService.LoginResult result = service.loginOrCreate("13800000001", "PROMO");
+        VipInvitationService.LoginResult result = service.loginOrCreate("13800000001", PASSWORD, "PROMO");
 
         assertFalse(result.getUser().getVipStatus() != null && result.getUser().getVipStatus() > 0);
         assertEquals("INVITE_INVALID", result.getLoginErrorCode());
@@ -103,7 +107,7 @@ class VipInvitationLoginServiceTest {
         when(codeMapper.selectCurrentByOwner(21L)).thenReturn(null, code("ENABLED", 3, null));
         when(appUserMapper.selectById(21L)).thenAnswer(ignored -> vipUser(21L));
 
-        VipInvitationService.LoginResult result = service.loginOrCreate("13800000002", "SECRET-CODE");
+        VipInvitationService.LoginResult result = service.loginOrCreate("13800000002", PASSWORD, "SECRET-CODE");
 
         assertTrue(result.getUser().getVipStatus() > 0);
         assertTrue(result.isInviteCodeApplied());
@@ -127,7 +131,7 @@ class VipInvitationLoginServiceTest {
         when(codeMapper.selectCurrentByOwner(22L)).thenReturn(code("ENABLED", 3, null));
         when(appUserMapper.selectById(22L)).thenAnswer(ignored -> vipUser(22L));
 
-        VipInvitationService.LoginResult result = service.loginOrCreate("13800000003", "PROMO");
+        VipInvitationService.LoginResult result = service.loginOrCreate("13800000003", PASSWORD, "PROMO");
 
         assertTrue(result.getUser().getVipStatus() > 0);
         assertTrue(result.isInviteCodeApplied());
@@ -145,7 +149,7 @@ class VipInvitationLoginServiceTest {
         when(codeMapper.selectCurrentByOwner(24L)).thenReturn(null, code("ENABLED", 3, null));
         when(appUserMapper.selectById(24L)).thenAnswer(ignored -> vipUser(24L));
 
-        VipInvitationService.LoginResult result = service.loginOrCreate("13800000005", "PROMO");
+        VipInvitationService.LoginResult result = service.loginOrCreate("13800000005", PASSWORD, "PROMO");
 
         assertTrue(result.isInviteCodeApplied());
         verify(recordMapper, never()).insert(any(VipInvitationRecord.class));
@@ -159,7 +163,7 @@ class VipInvitationLoginServiceTest {
         when(codeMapper.selectCurrentByOwner(23L)).thenReturn(code("ENABLED", 3, null));
         when(codeMapper.selectByCodeForUpdate("INVALID")).thenReturn(null);
 
-        VipInvitationService.LoginResult result = service.loginOrCreate("13800000004", "INVALID");
+        VipInvitationService.LoginResult result = service.loginOrCreate("13800000004", PASSWORD, "INVALID");
 
         assertTrue(result.getUser().getVipStatus() > 0);
         assertEquals("INVITE_INVALID", result.getLoginErrorCode());
@@ -177,6 +181,20 @@ class VipInvitationLoginServiceTest {
         assertNotNull(inviteeLock);
         assertTrue(String.join(" ", codeLock.value()).toUpperCase().contains("FOR UPDATE"));
         assertTrue(String.join(" ", inviteeLock.value()).toUpperCase().contains("FOR UPDATE"));
+    }
+
+    @Test
+    void wrongPasswordIsRejectedBeforeInvitationProcessing() {
+        AppUser existing = ordinaryUser(25L);
+        existing.setPasswordHash(new BCryptPasswordEncoder().encode(PASSWORD));
+        when(appUserMapper.selectByMobileForUpdate("13800000006")).thenReturn(existing);
+
+        com.mini.novel.common.exception.BusinessException error = org.junit.jupiter.api.Assertions.assertThrows(
+                com.mini.novel.common.exception.BusinessException.class,
+                () -> service.loginOrCreate("13800000006", "WrongPassword!1", "PROMO"));
+
+        assertEquals(com.mini.novel.common.exception.ErrorCode.UNAUTHORIZED, error.getCode());
+        verify(codeMapper, never()).selectByCodeForUpdate(any());
     }
 
     private void stubNewUser(long id) {
@@ -200,11 +218,18 @@ class VipInvitationLoginServiceTest {
     }
 
     private static AppUser vipUser(long id) {
+        AppUser user = ordinaryUser(id);
+        user.setPasswordHash(new BCryptPasswordEncoder().encode(PASSWORD));
+        user.setVipStatus(2);
+        user.setVipExpireTime(LocalDateTime.of(2099, 12, 31, 23, 59));
+        return user;
+    }
+
+    private static AppUser ordinaryUser(long id) {
         AppUser user = new AppUser();
         user.setId(id);
         user.setStatus(1);
-        user.setVipStatus(2);
-        user.setVipExpireTime(LocalDateTime.of(2099, 12, 31, 23, 59));
+        user.setVipStatus(0);
         return user;
     }
 }

@@ -19,7 +19,8 @@ public class CurrentUserResolver {
         if (StpUtil.isLogin()) {
             return StpUtil.getLoginIdAsLong();
         }
-        return headerUserId;
+        // Never trust a caller-controlled user id when there is no authenticated session.
+        return null;
     }
 
     public AppUser requireUser(Long headerUserId) {
