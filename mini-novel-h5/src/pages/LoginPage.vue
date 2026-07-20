@@ -3,12 +3,14 @@
     <van-nav-bar title="登录" left-arrow @click-left="goBack" />
     <div class="login-panel">
       <h1>欢迎回来</h1>
-      <p>登录即注册，新账号未填邀请码将创建普通账号。</p>
+      <p>邀请码有效时自动开通 VIP，未填写或无效均可正常登录。</p>
       <van-field
         v-model="mobile"
         clearable
         maxlength="11"
         type="tel"
+        name="mobile"
+        autocomplete="tel"
         label="手机号"
         placeholder="请输入 11 位手机号"
       />
@@ -16,6 +18,8 @@
         v-model="verifyCode"
         clearable
         maxlength="4"
+        name="captcha"
+        autocomplete="off"
         label="验证码"
         placeholder="请输入图中字符"
       >
@@ -26,45 +30,46 @@
           </button>
         </template>
       </van-field>
-      <van-cell title="邀请码" :value="showInvite ? '收起' : inviteSummary" is-link @click="showInvite = !showInvite" />
       <van-field
-        v-if="showInvite"
         v-model="invitationCode"
         clearable
         maxlength="32"
+        name="invitation-code"
+        autocomplete="off"
         label="邀请码"
-        placeholder="新账号可填写 VIP 邀请码"
+        placeholder="选填，有效邀请码自动开通 VIP"
       />
       <van-button block round color="#1f6f64" :loading="loading" @click="submit()">登录</van-button>
-      <div class="demo-actions">
-        <van-button plain size="small" :disabled="loading" @click="quickLogin('13800000001')">普通用户</van-button>
-        <van-button plain size="small" :disabled="loading" @click="quickLogin('13800000002')">VIP 用户</van-button>
-      </div>
     </div>
   </section>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { showConfirmDialog, showToast } from 'vant';
+import { showToast } from 'vant';
 import { useUserStore } from '../stores/user';
 import { fetchCaptcha } from '../services/user';
+import {
+  clearSavedInvitation,
+  readRememberedMobile,
+  readSavedInvitation,
+  saveInvitation,
+  saveRememberedMobile
+} from '../services/loginPreferences';
 
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
-const mobile = ref('13800000001');
+const mobile = ref(readRememberedMobile());
 const verifyCode = ref('');
 const captchaId = ref('');
 const captchaImage = ref('');
 const captchaLoading = ref(false);
-const invitationCode = ref('');
-const showInvite = ref(false);
+const invitationCode = ref(readSavedInvitation());
 const loading = ref(false);
-const inviteSummary = '选填';
 
-async function submit(confirmCreateNormal = false) {
+async function submit() {
   const value = mobile.value.trim();
   if (!/^1\d{10}$/.test(value)) {
     showToast('请输入正确的手机号');
@@ -80,31 +85,24 @@ async function submit(confirmCreateNormal = false) {
       mobile: value,
       captchaId: captchaId.value,
       captchaCode: verifyCode.value.trim(),
-      invitationCode: invitationCode.value.trim(),
-      confirmCreateNormal
+      invitationCode: invitationCode.value.trim()
     });
-    if (data.loginErrorCode === 'INVITE_ONLY_ON_CREATE') {
-      showToast(data.message || '邀请码仅首次创建生效，请联系客服升级');
+    saveRememberedMobile(value);
+    if (invitationCode.value.trim()) {
+      invitationCode.value = '';
+      clearSavedInvitation();
     }
-    showToast('登录成功');
+    if (data.loginErrorCode === 'INVITE_INVALID') {
+      showToast(data.message || '邀请码无效，已按普通用户登录');
+    } else {
+      showToast('登录成功');
+    }
     router.replace(String(route.query.redirect || '/h5/profile'));
   } catch (error) {
-    if (String(error.message || '').includes('新账号未填邀请码')) {
-      confirmNormalAccount();
-      return;
-    }
     await loadCaptcha();
-    if (String(error.message || '').includes('邀请码不可用')) {
-      showInvite.value = true;
-    }
   } finally {
     loading.value = false;
   }
-}
-
-function quickLogin(value) {
-  mobile.value = value;
-  showToast('请输入图形验证码后登录');
 }
 
 async function loadCaptcha() {
@@ -120,21 +118,16 @@ async function loadCaptcha() {
   }
 }
 
-onMounted(loadCaptcha);
+watch(invitationCode, (value) => saveInvitation(value));
 
-async function confirmNormalAccount() {
-  try {
-    await showConfirmDialog({
-      title: '创建普通账号',
-      message: '新账号未填写邀请码，将创建普通账号，后续只能联系客服或后台人工升级 VIP。',
-      confirmButtonText: '创建普通账号',
-      cancelButtonText: '返回填写邀请码'
-    });
-    submit(true);
-  } catch {
-    showInvite.value = true;
+onMounted(() => {
+  const linkedInvitation = String(route.query.invite || '').trim();
+  if (linkedInvitation) {
+    invitationCode.value = linkedInvitation;
+    saveInvitation(linkedInvitation);
   }
-}
+  loadCaptcha();
+});
 
 function goBack() {
   if (window.history.length > 1) {

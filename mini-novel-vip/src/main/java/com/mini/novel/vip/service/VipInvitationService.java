@@ -7,7 +7,7 @@ import com.mini.novel.vip.entity.VipOperationAudit;
 import java.util.List;
 
 public interface VipInvitationService {
-    LoginResult loginOrCreate(String mobile, String invitationCode, boolean confirmCreateNormal);
+    LoginResult loginOrCreate(String mobile, String invitationCode);
 
     VipAdminResult adjustVip(Long userId, String action, Integer days, String expireAt, Long operatorId,
                              String reason, String requestId);

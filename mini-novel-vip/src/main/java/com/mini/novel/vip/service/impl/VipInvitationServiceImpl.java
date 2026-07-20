@@ -18,6 +18,10 @@ import com.mini.novel.vip.mapper.VipOperationAuditMapper;
 import com.mini.novel.vip.service.VipInvitationService;
 import com.mini.novel.vip.service.VipInvitationPolicy;
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -52,39 +56,55 @@ public class VipInvitationServiceImpl implements VipInvitationService {
 
     @Override
     @Transactional
-    public LoginResult loginOrCreate(String mobile, String invitationCode, boolean confirmCreateNormal) {
+    public LoginResult loginOrCreate(String mobile, String invitationCode) {
         LocalDateTime now = LocalDateTime.now();
         String code = normalizeCode(invitationCode);
-        AppUser existing = appUserMapper.selectByMobileForUpdate(mobile);
-        if (existing != null) {
-            LoginResult result = result(existing, false);
-            if (StringUtils.hasText(code) && !isVip(existing)) {
-                result.setLoginErrorCode("INVITE_ONLY_ON_CREATE");
-                result.setMessage("邀请码仅首次创建账号时生效，请联系客服升级 VIP");
+        AppUser user = appUserMapper.selectByMobileForUpdate(mobile);
+        boolean newAccount = user == null;
+        if (newAccount) {
+            user = createUser(mobile, now);
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "账号已被禁用");
+        }
+        LoginResult result = result(user, newAccount);
+        if (!StringUtils.hasText(code)) {
+            return result;
+        }
+        if (isVip(user)) {
+            if (!isUsable(invitationCodeMapper.selectByCodeForUpdate(code))) {
+                result.setLoginErrorCode("INVITE_INVALID");
+                result.setMessage("邀请码无效，已按普通用户登录");
             }
             return result;
         }
-        if (!StringUtils.hasText(code) && !confirmCreateNormal) {
-            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "新账号未填邀请码将创建普通账号");
-        }
-
-        VipInvitationCode inviterCode = null;
-        if (StringUtils.hasText(code)) {
-            inviterCode = invitationCodeMapper.selectByCodeForUpdate(code);
-            if (!isUsable(inviterCode)) {
-                throw new BusinessException(ErrorCode.BUSINESS_ERROR, "邀请码不可用，可重新填写或不使用邀请码创建普通账号");
-            }
-        }
-
-        AppUser user = createUser(mobile, now);
-        LoginResult result = result(user, true);
-        if (inviterCode != null) {
-            applyInvitation(user, inviterCode, now);
-            result.setInviteCodeApplied(true);
-            result.setInviteQuotaLeft(inviterCode.getRemainingQuota());
-            result.setExclusiveInviteCode(ensureCurrentCode(user.getId(), 0L, "邀请注册自动生成", now).getCode());
+        VipInvitationRecord applied = invitationRecordMapper.selectByInviteeForUpdate(user.getId());
+        if (applied != null) {
+            grantInvitationVip(user, now);
             result.setUser(appUserMapper.selectById(user.getId()));
+            result.setInviteCodeApplied(true);
+            return result;
         }
+        VipInvitationCode inviterCode = invitationCodeMapper.selectByCodeForUpdate(code);
+        // The code-row lock serializes consumers of the same invitation. Re-check after
+        // acquiring it so a concurrent retry by the same user remains idempotent.
+        applied = invitationRecordMapper.selectByInviteeForUpdate(user.getId());
+        if (applied != null) {
+            grantInvitationVip(user, now);
+            result.setUser(appUserMapper.selectById(user.getId()));
+            result.setInviteCodeApplied(true);
+            return result;
+        }
+        if (!isUsable(inviterCode)) {
+            result.setLoginErrorCode("INVITE_INVALID");
+            result.setMessage("邀请码无效，已按普通用户登录");
+            return result;
+        }
+        applyInvitation(user, inviterCode, now);
+        result.setInviteCodeApplied(true);
+        result.setInviteQuotaLeft(inviterCode.getRemainingQuota());
+        result.setExclusiveInviteCode(ensureCurrentCode(user.getId(), 0L, "邀请注册自动生成", now).getCode());
+        result.setUser(appUserMapper.selectById(user.getId()));
         return result;
     }
 
@@ -208,7 +228,9 @@ public class VipInvitationServiceImpl implements VipInvitationService {
             old.setReplacedByCodeId(code.getId());
             invitationCodeMapper.updateById(old);
         }
-        audit("REISSUE_CODE", userId, code.getId(), null, old == null ? null : old.getCode(), code.getCode(), operatorId, reason, requestId, now);
+        audit("REISSUE_CODE", userId, code.getId(), null,
+                old == null ? null : codeFingerprint(old.getCode()), codeFingerprint(code.getCode()),
+                operatorId, reason, requestId, now);
         return code;
     }
 
@@ -225,7 +247,8 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         int quota = VipInvitationPolicy.maxUses(maxUses);
         LocalDateTime expiry = VipInvitationPolicy.expiresAt(expiresAt, now);
         VipInvitationCode code = createCode(userId, quota, expiry, operatorId, reason, now);
-        audit("GENERATE_CODE", userId, code.getId(), null, null, code.getCode(), operatorId, reason, requestId, now);
+        audit("GENERATE_CODE", userId, code.getId(), null, null, codeFingerprint(code.getCode()),
+                operatorId, reason, requestId, now);
         return code;
     }
 
@@ -314,7 +337,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
 
         VipInvitationRecord record = new VipInvitationRecord();
         record.setInvitationCodeId(inviterCode.getId());
-        record.setCodeSnapshot(inviterCode.getCode());
+        record.setCodeSnapshot(codeFingerprint(inviterCode.getCode()));
         record.setInviterUserId(inviterCode.getOwnerUserId());
         record.setInviteeUserId(user.getId());
         record.setStatus("ACTIVATED");
@@ -324,7 +347,19 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         record.setUpdatedAt(now);
         invitationRecordMapper.insert(record);
         insertUserVip(user.getId(), PERMANENT_EXPIRE_AT, "INVITATION", record.getId(), inviterCode.getOwnerUserId(), "邀请注册激活", now);
-        audit("INVITE_ACTIVATE", user.getId(), inviterCode.getId(), record.getId(), null, inviterCode.getCode(), inviterCode.getOwnerUserId(), "邀请注册激活", null, now);
+        audit("INVITE_ACTIVATE", user.getId(), inviterCode.getId(), record.getId(), null,
+                invitationAuditJson(inviterCode), inviterCode.getOwnerUserId(), "邀请注册激活", null, now);
+    }
+
+    private void grantInvitationVip(AppUser user, LocalDateTime now) {
+        AppUser vip = new AppUser();
+        vip.setId(user.getId());
+        vip.setVipStatus(2);
+        vip.setVipExpireTime(PERMANENT_EXPIRE_AT);
+        vip.setVipSource("INVITATION");
+        vip.setVipActivatedAt(now);
+        vip.setUpdatedAt(now);
+        appUserMapper.updateById(vip);
     }
 
     private VipInvitationCode ensureCurrentCode(Long userId, Long operatorId, String reason, LocalDateTime now) {
@@ -475,6 +510,22 @@ public class VipInvitationServiceImpl implements VipInvitationService {
 
     private String generateCode() {
         return "VIP" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
+    }
+
+    private String codeFingerprint(String code) {
+        if (!StringUtils.hasText(code)) return null;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(code.getBytes(StandardCharsets.UTF_8));
+            return "sha256:" + HexFormat.of().formatHex(digest, 0, 12);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is unavailable", ex);
+        }
+    }
+
+    private String invitationAuditJson(VipInvitationCode code) {
+        return "{\"codeFingerprint\":\"" + codeFingerprint(code.getCode())
+                + "\",\"remainingQuota\":" + code.getRemainingQuota() + "}";
     }
 
     private LocalDateTime parseExpireAt(String value) {

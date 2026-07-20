@@ -8,8 +8,7 @@
         <span>{{ statusText }}</span>
       </div>
       <div class="profile-actions">
-        <van-button v-if="isAuthenticated" round size="small" plain color="#fffdf6" @click="signOut">退出</van-button>
-        <van-button v-else round size="small" color="#1f6f64" to="/h5/login">登录</van-button>
+        <van-button v-if="!isAuthenticated" round size="small" color="#1f6f64" to="/h5/login">登录</van-button>
       </div>
     </div>
 
@@ -20,6 +19,18 @@
       <van-cell v-if="profile?.vipActive" title="剩余名额" :value="String(profile?.inviteQuotaLeft ?? 0)" />
       <van-cell title="阅读历史" value="待接入" />
       <van-cell title="账号设置" value="待接入" />
+      <van-cell
+        v-if="isAuthenticated"
+        class="logout-cell"
+        title="退出登录"
+        :value="loggingOut ? '处理中…' : ''"
+        :clickable="!loggingOut"
+        @click="signOut"
+      >
+        <template #icon>
+          <van-icon :name="loggingOut ? 'replay' : 'revoke'" :class="{ rotating: loggingOut }" />
+        </template>
+      </van-cell>
     </div>
 
     <section class="soft-panel profile-reader-settings">
@@ -56,7 +67,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { useUserStore } from '../stores/user';
@@ -65,6 +76,7 @@ const router = useRouter();
 const userStore = useUserStore();
 const profile = computed(() => userStore.profile);
 const isAuthenticated = computed(() => userStore.isAuthenticated);
+const loggingOut = ref(false);
 const statusLabel = computed(() => {
   if (!isAuthenticated.value) return '未登录';
   return profile.value?.vipActive ? 'VIP 会员' : '普通用户';
@@ -98,9 +110,15 @@ function setTheme(theme) {
 }
 
 async function signOut() {
-  await userStore.signOut();
-  showToast('已退出登录');
-  router.replace('/h5/home');
+  if (loggingOut.value) return;
+  loggingOut.value = true;
+  try {
+    await userStore.signOut();
+    showToast('已退出登录');
+    router.replace('/h5/home');
+  } finally {
+    loggingOut.value = false;
+  }
 }
 
 async function copyInviteCode() {

@@ -968,6 +968,31 @@ a {
   border-radius: 8px;
 }
 
+.logout-cell {
+  min-height: 48px;
+  color: var(--danger);
+}
+
+.logout-cell .van-cell__title,
+.logout-cell .van-icon {
+  color: var(--danger);
+}
+
+.logout-cell .van-icon {
+  display: inline-flex;
+  min-width: 28px;
+  align-items: center;
+  font-size: 18px;
+}
+
+.logout-cell .rotating {
+  animation: logout-spin 0.8s linear infinite;
+}
+
+@keyframes logout-spin {
+  to { transform: rotate(360deg); }
+}
+
 .login-panel .van-cell {
   margin: 14px 0;
   border-radius: 8px;
@@ -988,12 +1013,6 @@ a {
   display: block;
   width: 120px;
   height: 44px;
-}
-
-.demo-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
 }
 
 .plan-card em {

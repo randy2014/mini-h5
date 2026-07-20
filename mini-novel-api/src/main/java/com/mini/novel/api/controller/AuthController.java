@@ -37,20 +37,10 @@ public class AuthController {
 
     @PostMapping("/login")
     public Result<UserProfileVo> login(@Valid @RequestBody LoginRequest request) {
-        String verifiedCaptcha = captchaService.verify(request.getCaptchaId(), request.getCaptchaCode());
+        captchaService.verify(request.getCaptchaId(), request.getCaptchaCode());
         String mobile = normalizeMobile(request.getMobile());
-        VipInvitationService.LoginResult loginResult;
-        try {
-            loginResult = vipInvitationService.loginOrCreate(
-                    mobile,
-                    request.getInvitationCode(),
-                    Boolean.TRUE.equals(request.getConfirmCreateNormal()));
-        } catch (BusinessException ex) {
-            if ("新账号未填邀请码将创建普通账号".equals(ex.getMessage())) {
-                captchaService.restore(request.getCaptchaId(), verifiedCaptcha);
-            }
-            throw ex;
-        }
+        VipInvitationService.LoginResult loginResult = vipInvitationService.loginOrCreate(
+                mobile, request.getInvitationCode());
         AppUser user = loginResult.getUser();
         if (user.getStatus() != null && user.getStatus() == 0) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "账号已被禁用");
