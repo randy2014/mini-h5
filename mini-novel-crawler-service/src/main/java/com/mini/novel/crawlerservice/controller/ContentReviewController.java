@@ -11,9 +11,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,17 +34,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/crawler/content-review")
 public class ContentReviewController {
     private static final String DEFAULT_SOURCE = "xbookcn_authorized";
+    private static final int MAX_BATCH_SIZE = 100;
+    private static final Set<String> BATCH_REVIEW_SOURCES = Set.of("h528_authorized", "novel69h_authorized");
     private final JdbcTemplate jdbc;
     private final CrawlerAuthorizedBookAuditMapper audits;
     private final ObjectMapper json;
     private final String adminToken;
+    private final TransactionTemplate transactionTemplate;
 
     public ContentReviewController(JdbcTemplate jdbc, CrawlerAuthorizedBookAuditMapper audits, ObjectMapper json,
-                                   @Value("${admin.review-token:dev-admin-token}") String adminToken) {
+                                   @Value("${admin.review-token:dev-admin-token}") String adminToken,
+                                   PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
         this.audits = audits;
         this.json = json;
         this.adminToken = adminToken;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @GetMapping("/summary")
@@ -138,6 +147,45 @@ public class ContentReviewController {
                                                       @RequestParam(required = false) String sourceCode,
                                                       @PathVariable Long chapterRawId, @RequestBody Decision request) {
         requireAdmin(token); validateDecision(request, operatorId);
+        return Result.ok(applyChapterDecision(chapterRawId, sourceCode, request, operatorId, "CHAPTER_REVIEW_"));
+    }
+
+    @PostMapping("/chapters/batch-decision")
+    public Result<Map<String, Object>> decideChapters(@RequestHeader(value = "X-Admin-Token", required = false) String token,
+                                                       @RequestHeader(value = "X-Operator-Id", defaultValue = "0") Long operatorId,
+                                                       @RequestParam String sourceCode,
+                                                       @RequestBody BatchDecision request) {
+        requireAdmin(token);
+        validateBatchDecision(request, operatorId);
+        if (!isBatchReviewSource(sourceCode)) {
+            throw new IllegalArgumentException("Batch review is limited to h528_authorized and novel69h_authorized.");
+        }
+        authorizedVipSource(sourceCode);
+        List<Long> ids = uniqueBatchIds(request.chapterRawIds);
+        List<Map<String, Object>> results = new ArrayList<>();
+        int success = 0;
+        for (Long chapterRawId : ids) {
+            try {
+                Map<String, Object> item = transactionTemplate.execute(status ->
+                        applyChapterDecision(chapterRawId, sourceCode, request, operatorId, "BATCH_CHAPTER_REVIEW_"));
+                results.add(item);
+                success++;
+            } catch (RuntimeException error) {
+                results.add(Map.of("chapterRawId", chapterRawId, "success", false,
+                        "reason", safeFailureReason(error)));
+            }
+        }
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("requestedCount", request.chapterRawIds.size());
+        response.put("uniqueCount", ids.size());
+        response.put("successCount", success);
+        response.put("failureCount", ids.size() - success);
+        response.put("results", results);
+        return Result.ok(response);
+    }
+
+    private Map<String, Object> applyChapterDecision(Long chapterRawId, String sourceCode, Decision request,
+                                                      Long operatorId, String actionPrefix) {
         Map<String, Object> chapter = chapterForUpdate(chapterRawId, sourceCode);
         String before = Objects.toString(chapter.get("contentStatus"), "");
         if ("RISK_BLOCKED".equals(before)) throw new IllegalArgumentException("Explicit-minor hard-blocked chapters cannot be approved or changed here.");
@@ -145,9 +193,9 @@ public class ContentReviewController {
         String after = "APPROVE".equals(request.decision) ? "CONTENT_READY" : "REVIEW_REJECTED";
         jdbc.update("UPDATE mini_novel_crawler.crawl_chapter_raw SET content_status=?,updated_at=NOW() WHERE id=?", after, chapterRawId);
         if ("APPROVE".equals(request.decision)) publishChapter(chapter, operatorId); else unpublishChapter(chapter);
-        audit(chapter, before, after, operatorId, "CHAPTER_REVIEW_" + request.decision, request.remark);
+        audit(chapter, before, after, operatorId, actionPrefix + request.decision, request.remark);
         recomputeBook(((Number) chapter.get("bookRawId")).longValue());
-        return Result.ok(Map.of("chapterRawId", chapterRawId, "before", before, "after", after));
+        return Map.of("chapterRawId", chapterRawId, "success", true, "before", before, "after", after);
     }
 
     @PostMapping("/books/{bookRawId}/decision")
@@ -197,6 +245,26 @@ public class ContentReviewController {
         if (request == null || !("APPROVE".equals(request.decision) || "REJECT".equals(request.decision))) throw new IllegalArgumentException("Decision must be APPROVE or REJECT.");
         if (!StringUtils.hasText(request.remark)) throw new IllegalArgumentException("Review remark is required.");
         if (operatorId == null || operatorId <= 0) throw new SecurityException("A valid administrator operator id is required.");
+    }
+    private void validateBatchDecision(BatchDecision request, Long operatorId) {
+        validateDecision(request, operatorId);
+        if (request.chapterRawIds == null || request.chapterRawIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one chapter is required.");
+        }
+        if (request.chapterRawIds.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("A batch cannot contain more than 100 chapters.");
+        }
+        if (request.chapterRawIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("Chapter ids must be positive integers.");
+        }
+    }
+    static List<Long> uniqueBatchIds(List<Long> ids) {
+        return ids == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(ids));
+    }
+    static boolean isBatchReviewSource(String sourceCode) { return BATCH_REVIEW_SOURCES.contains(sourceCode); }
+    private String safeFailureReason(RuntimeException error) {
+        String message = error.getMessage();
+        return StringUtils.hasText(message) ? message : "Review failed and this item was rolled back.";
     }
     private String authorizedVipSource(String sourceCode) {
         String source = StringUtils.hasText(sourceCode) ? sourceCode : DEFAULT_SOURCE;
@@ -463,6 +531,7 @@ public class ContentReviewController {
     }
     private long number(Object value) { return value instanceof Number n ? n.longValue() : 0; }
     public static class Decision { public String decision; public String remark; }
+    public static class BatchDecision extends Decision { public List<Long> chapterRawIds; }
 
     @ExceptionHandler(SecurityException.class) @ResponseStatus(org.springframework.http.HttpStatus.UNAUTHORIZED)
     public Result<Void> unauthorized(SecurityException e) { return Result.fail(401, e.getMessage()); }
