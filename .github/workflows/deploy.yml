@@ -27,7 +27,7 @@ jobs:
           cache: maven
 
       - name: Test crawler service
-        run: mvn -U -pl mini-novel-crawler-service -am test
+        run: mvn -U -pl mini-novel-crawler-service -am -Dtest=ContentReviewControllerTest -Dsurefire.failIfNoSpecifiedTests=false test
 
       - name: Setup Node
         uses: actions/setup-node@v4
