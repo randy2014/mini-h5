@@ -19,7 +19,7 @@ const routes = [
       { path: 'book/:id', name: 'book-detail', component: () => import('../pages/BookDetailPage.vue'), meta: { title: '书籍详情' } },
       { path: 'read/:id', name: 'reader', component: () => import('../pages/ReaderPage.vue'), meta: { title: '阅读' } },
       { path: 'login', name: 'login', component: () => import('../pages/LoginPage.vue'), meta: { title: '登录' } },
-      { path: 'vip', name: 'vip', component: () => import('../pages/VipPage.vue'), meta: { title: 'VIP 专区', auth: true, tab: true } }
+      { path: 'vip', name: 'vip', component: () => import('../pages/VipPage.vue'), meta: { title: 'VIP 专区', tab: true } }
     ]
   }
 ];

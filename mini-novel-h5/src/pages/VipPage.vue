@@ -6,9 +6,13 @@
 
     <div v-else-if="!status.active" class="vip-access-denied">
       <van-icon name="lock" />
-      <h1>需要 VIP 资格</h1>
-      <p>当前账号暂未开通有效 VIP，专区书单与章节信息不会展示。</p>
-      <van-button type="primary" to="/h5/profile">返回个人中心</van-button>
+      <h1>{{ isAuthenticated ? '需要 VIP 资格' : '探索 VIP 专区' }}</h1>
+      <p v-if="isAuthenticated">当前账号暂未开通有效 VIP，可使用邀请码获取资格；专区书单与章节信息不会展示。</p>
+      <p v-else>登录后可验证 VIP 资格或使用邀请码；未获得资格前不会展示专区书单与章节信息。</p>
+      <div class="vip-access-actions">
+        <van-button type="primary" :to="loginTarget">{{ isAuthenticated ? '使用邀请码' : '登录并验证资格' }}</van-button>
+        <van-button plain to="/h5/home">返回首页</van-button>
+      </div>
     </div>
 
     <div v-else-if="!confirmed" class="vip-adult-gate">
@@ -117,6 +121,7 @@
 import { computed, onMounted, ref } from 'vue';
 import BookCard from '../components/BookCard.vue';
 import { fetchVipBooks, fetchVipCategories, fetchVipStatus } from '../services/vip';
+import { canRequestVipContent, shouldCheckVipStatus } from '../services/vipAccess';
 
 const key = 'mini_novel_vip_adult_confirmed';
 const adult = ref(false);
@@ -133,10 +138,13 @@ const categories = ref([{ key: 'all', categoryId: null, categoryName: '全部', 
 const selectedCategory = ref('all');
 const categoryError = ref(false);
 const status = ref({ active: false, vipExpireTime: null });
-const statusLoading = ref(true);
+const isAuthenticated = Boolean(localStorage.getItem('mini_novel_auth_token'));
+const statusLoading = ref(shouldCheckVipStatus(isAuthenticated));
 const statusError = ref(false);
 const pageSize = 20;
 let requestVersion = 0;
+
+const loginTarget = { path: '/h5/login', query: { redirect: '/h5/vip' } };
 
 const currentCategoryName = computed(() => {
   return categories.value.find((category) => category.key === selectedCategory.value)?.categoryName || '全部';
@@ -162,6 +170,7 @@ async function loadStatus() {
 }
 
 async function loadCategories() {
+  if (!canRequestVipContent(isAuthenticated, status.value)) return;
   categoryError.value = false;
   try {
     const result = await fetchVipCategories();
@@ -177,6 +186,10 @@ async function loadCategories() {
 }
 
 async function loadNextPage() {
+  if (!canRequestVipContent(isAuthenticated, status.value)) {
+    loading.value = false;
+    return;
+  }
   if (finished.value || requestInFlight.value) {
     loading.value = false;
     return;
@@ -249,8 +262,9 @@ function confirm() {
 }
 
 onMounted(async () => {
+  if (!shouldCheckVipStatus(isAuthenticated)) return;
   await loadStatus();
-  if (status.value.active && confirmed.value) loadCategories();
+  if (canRequestVipContent(isAuthenticated, status.value) && confirmed.value) loadCategories();
 });
 </script>
 
@@ -260,6 +274,7 @@ onMounted(async () => {
 .vip-access-denied > .van-icon { color:var(--muted); font-size:42px; }
 .vip-access-denied h1 { margin:14px 0 6px; font-size:22px; }
 .vip-access-denied p { max-width:320px; margin:0 0 18px; color:var(--muted); font-size:14px; line-height:1.7; }
+.vip-access-actions { display:grid; width:min(320px,100%); grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .vip-channel-head { display:flex; align-items:center; justify-content:space-between; min-height:106px; margin:14px 0 10px; padding:18px; border-radius:var(--radius); background:var(--ink); color:#fffdf6; }
 .vip-channel-head p,.vip-channel-head h1,.vip-channel-head span { margin:0; }
 .vip-channel-head p { color:#a9d3ca; font-size:12px; font-weight:800; }
