@@ -89,7 +89,8 @@ public class ContentReviewController {
               SUM(c.content_status='RISK_BLOCKED') blockedCount,
               SUM(c.content_status='ENTRY_READY') missingCount,
               SUM(c.content_status='CONTENT_READY') readyCount,
-              SUM(c.content_status='REVIEW_REJECTED') rejectedCount
+              SUM(c.content_status='REVIEW_REJECTED') rejectedCount,
+              GROUP_CONCAT(CASE WHEN c.content_status='PENDING_REVIEW' AND r.id IS NOT NULL THEN c.id END ORDER BY c.id) reviewableChapterIdsCsv
             FROM mini_novel_crawler.crawl_book_raw b
             JOIN mini_novel_crawler.crawl_chapter_raw c ON c.book_raw_id=b.id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
@@ -528,6 +529,9 @@ public class ContentReviewController {
     private void decorateBook(Map<String, Object> row) {
         long reviewable = number(row.get("reviewableCount")), recrawl = number(row.get("recrawlCount")), blocked = number(row.get("blockedCount"));
         List<String> labels = new ArrayList<>(); if (blocked > 0) labels.add("EXPLICIT_MINOR_BLOCKED"); if (reviewable > 0) labels.add("PENDING_REVIEW"); if (recrawl > 0) labels.add("MISSING_CONTENT"); row.put("riskLabels", labels);
+        String csv = Objects.toString(row.remove("reviewableChapterIdsCsv"), "");
+        List<Long> ids = StringUtils.hasText(csv) ? java.util.Arrays.stream(csv.split(",")).map(Long::valueOf).toList() : List.of();
+        row.put("reviewableChapterIds", ids);
     }
     private long number(Object value) { return value instanceof Number n ? n.longValue() : 0; }
     public static class Decision { public String decision; public String remark; }

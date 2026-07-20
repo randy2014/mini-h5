@@ -13,7 +13,13 @@
         </el-select>
         <el-alert title="仅展示 AUTHORIZED_VIP 隔离内容；免费来源不会进入此审核入口。" type="warning" :closable="false" />
       </div>
-      <el-table :data="books" v-loading="loading" class="table">
+      <div class="actions">
+        <el-button type="success" :disabled="!selectedBooks.length || batchLoading" :loading="batchLoading" @click="batchBookRows('APPROVE')">批量批准当前页（{{ selectedBooks.length }} 本）</el-button>
+        <el-button type="danger" :disabled="!selectedBooks.length || batchLoading" :loading="batchLoading" @click="batchBookRows('REJECT')">批量拒绝当前页（{{ selectedBooks.length }} 本）</el-button>
+        <el-button :disabled="!books.some(isBookReviewable) || batchLoading" @click="selectCurrentBookPage">全选当前页可审核书目</el-button>
+      </div>
+      <el-table ref="bookTable" :data="books" v-loading="loading" class="table" @selection-change="selectedBooks = $event">
+        <el-table-column type="selection" width="48" :selectable="isBookReviewable" />
         <el-table-column prop="title" label="书名" min-width="220" />
         <el-table-column prop="sourceCode" label="来源" width="190" />
         <el-table-column prop="chapterCount" label="目录章节" width="90" />
@@ -69,6 +75,7 @@ import { crawlerApi } from '../services/http'
 const sourceCode = ref('h528_authorized')
 const summary = ref({})
 const books = ref([])
+const selectedBooks = ref([])
 const chapters = ref([])
 const selected = ref([])
 const total = ref(0)
@@ -81,6 +88,7 @@ const batchLoading = ref(false)
 const drawer = ref(false)
 const current = ref(null)
 const chapterTable = ref(null)
+const bookTable = ref(null)
 const contentVisible = ref(false)
 const isolatedContent = ref('')
 
@@ -94,6 +102,7 @@ const pagedChapters = computed(() => chapters.value.slice((chapterPage.value - 1
 const pageReviewable = computed(() => pagedChapters.value.filter(isReviewable))
 
 function isReviewable(row) { return row.reviewState === 'PENDING_REVIEW' && Number(row.contentLength) > 0 }
+function isBookReviewable(row) { return Array.isArray(row.reviewableChapterIds) && row.reviewableChapterIds.length > 0 }
 async function load() {
   loading.value = true
   try {
@@ -105,6 +114,7 @@ async function load() {
   } finally { loading.value = false }
 }
 async function switchSource() { page.value = 1; current.value = null; chapters.value = []; drawer.value = false; await load() }
+function selectCurrentBookPage() { selectedBooks.value = []; bookTable.value?.clearSelection(); books.value.filter(isBookReviewable).forEach(row => bookTable.value?.toggleRowSelection(row, true)) }
 async function openBook(row) { current.value = row; chapterPage.value = 1; drawer.value = true; await loadChapters() }
 async function loadChapters() {
   chapterLoading.value = true
@@ -142,6 +152,24 @@ async function batchDecision(decision) {
       await ElMessageBox.alert(`成功 ${result.successCount} 条，失败 ${result.failureCount} 条。\n${failures}`, '批量审核部分完成', { type: 'warning' })
     } else ElMessage.success(`批量审核完成：成功 ${result.successCount} 条`)
     await refresh()
+  } finally { batchLoading.value = false }
+}
+async function batchBookRows(decision) {
+  const ids = [...new Set(selectedBooks.value.flatMap(row => row.reviewableChapterIds || []))]
+  if (ids.length > 100) { ElMessage.warning('当前选择超过单批 100 章，请减少选择数量'); return }
+  const remark = await ask(decision, `${sourceCode.value} 当前页选中的 ${selectedBooks.value.length} 本、${ids.length} 个章节`)
+  if (remark === null) return
+  await executeBatch(decision, remark, ids)
+}
+async function executeBatch(decision, remark, ids) {
+  batchLoading.value = true
+  try {
+    const result = await crawlerApi.post('/content-review/chapters/batch-decision', { decision, remark, chapterRawIds: ids }, { params: { sourceCode: sourceCode.value } })
+    if (result.failureCount) {
+      const failures = result.results.filter(item => !item.success).map(item => `#${item.chapterRawId}: ${item.reason}`).join('\n')
+      await ElMessageBox.alert(`成功 ${result.successCount} 条，失败 ${result.failureCount} 条。\n${failures}`, '批量审核部分完成', { type: 'warning' })
+    } else ElMessage.success(`批量审核完成：成功 ${result.successCount} 条`)
+    selectedBooks.value = []; bookTable.value?.clearSelection(); await refresh()
   } finally { batchLoading.value = false }
 }
 async function refresh() {
