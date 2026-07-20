@@ -380,7 +380,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 if (seenUrls.add(seed.url())) {
                     seeds.add(seed);
                     added++;
-                    if (rawBookExists(source, seed.sourceBookId())) {
+                    if (rawBookExists(source, seed.intro())) {
                         existing++;
                     } else {
                         newlyDiscovered++;
