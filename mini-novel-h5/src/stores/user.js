@@ -1,9 +1,6 @@
 import { defineStore } from 'pinia';
 import { fetchProfile, login, logout } from '../services/user';
-
-const USER_ID_KEY = 'mini_novel_user_id';
-const TOKEN_KEY = 'mini_novel_auth_token';
-const TOKEN_NAME_KEY = 'mini_novel_auth_token_name';
+import { clearAuthenticationStorage, TOKEN_KEY, TOKEN_NAME_KEY, USER_ID_KEY } from '../services/authStorage';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -51,9 +48,7 @@ export const useUserStore = defineStore('user', {
       this.token = '';
       this.tokenName = 'Authorization';
       this.profile = null;
-      localStorage.removeItem(USER_ID_KEY);
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(TOKEN_NAME_KEY);
+      clearAuthenticationStorage();
     }
   }
 });

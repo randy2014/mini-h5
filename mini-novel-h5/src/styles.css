@@ -973,9 +973,22 @@ a {
   color: var(--danger);
 }
 
+.profile-danger-list {
+  margin-top: 18px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(180, 75, 75, 0.12);
+}
+
 .logout-cell .van-cell__title,
 .logout-cell .van-icon {
   color: var(--danger);
+}
+
+.logout-cell .van-cell__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .logout-cell .van-icon {

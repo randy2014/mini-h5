@@ -61,9 +61,10 @@ import { showToast } from 'vant';
 import { useUserStore } from '../stores/user';
 import { fetchCaptcha } from '../services/user';
 import {
-  clearSavedInvitation,
+  clearSubmittedInvitation,
   readRememberedMobile,
   readSavedInvitation,
+  safeRedirect,
   saveInvitation,
   saveRememberedMobile
 } from '../services/loginPreferences';
@@ -105,15 +106,15 @@ async function submit() {
     });
     saveRememberedMobile(value);
     if (invitationCode.value.trim()) {
+      clearSubmittedInvitation(invitationCode.value);
       invitationCode.value = '';
-      clearSavedInvitation();
     }
     if (data.loginErrorCode === 'INVITE_INVALID') {
       showToast(data.message || '邀请码无效，已按普通用户登录');
     } else {
       showToast('登录成功');
     }
-    router.replace(String(route.query.redirect || '/h5/profile'));
+    router.replace(safeRedirect(route.query.redirect));
   } catch (error) {
     await loadCaptcha();
   } finally {
@@ -137,11 +138,6 @@ async function loadCaptcha() {
 watch(invitationCode, (value) => saveInvitation(value));
 
 onMounted(() => {
-  const linkedInvitation = String(route.query.invite || '').trim();
-  if (linkedInvitation) {
-    invitationCode.value = linkedInvitation;
-    saveInvitation(linkedInvitation);
-  }
   loadCaptcha();
 });
 

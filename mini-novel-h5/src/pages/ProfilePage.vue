@@ -19,18 +19,6 @@
       <van-cell v-if="profile?.vipActive" title="剩余名额" :value="String(profile?.inviteQuotaLeft ?? 0)" />
       <van-cell title="阅读历史" value="待接入" />
       <van-cell title="账号设置" value="待接入" />
-      <van-cell
-        v-if="isAuthenticated"
-        class="logout-cell"
-        title="退出登录"
-        :value="loggingOut ? '处理中…' : ''"
-        :clickable="!loggingOut"
-        @click="signOut"
-      >
-        <template #icon>
-          <van-icon :name="loggingOut ? 'replay' : 'revoke'" :class="{ rotating: loggingOut }" />
-        </template>
-      </van-cell>
     </div>
 
     <section class="soft-panel profile-reader-settings">
@@ -63,13 +51,27 @@
         </div>
       </div>
     </section>
+
+    <div v-if="isAuthenticated" class="setting-list profile-danger-list">
+      <van-cell
+        class="logout-cell"
+        title="退出登录"
+        :value="loggingOut ? '处理中…' : ''"
+        :clickable="!loggingOut"
+        @click="requestSignOut"
+      >
+        <template #icon>
+          <van-icon :name="loggingOut ? 'replay' : 'revoke'" :class="{ rotating: loggingOut }" />
+        </template>
+      </van-cell>
+    </div>
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { showToast } from 'vant';
+import { showConfirmDialog, showToast } from 'vant';
 import { useUserStore } from '../stores/user';
 
 const router = useRouter();
@@ -109,8 +111,19 @@ function setTheme(theme) {
   settings.theme = theme;
 }
 
-async function signOut() {
+async function requestSignOut() {
   if (loggingOut.value) return;
+  try {
+    await showConfirmDialog({
+      title: '退出登录',
+      message: '退出后需要重新输入密码登录，已记忆的手机号和未核销邀请码会保留。',
+      confirmButtonText: '退出',
+      cancelButtonText: '取消',
+      confirmButtonColor: '#b44b4b'
+    });
+  } catch {
+    return;
+  }
   loggingOut.value = true;
   try {
     await userStore.signOut();

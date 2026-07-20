@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { consumeInvitationQuery, safeRedirect } from '../services/loginPreferences';
 
 const routes = [
   {
@@ -36,10 +37,14 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   document.title = `${to.meta.title || 'Mini Novel'} - Mini Novel`;
+  const consumed = consumeInvitationQuery(to.query);
+  if (consumed.found) {
+    return { path: to.path, query: consumed.query, hash: to.hash, replace: true };
+  }
   if (to.meta.auth && !localStorage.getItem('mini_novel_auth_token')) {
     return {
       path: '/h5/login',
-      query: { redirect: to.fullPath }
+      query: { redirect: safeRedirect(to.fullPath, '/h5/home') }
     };
   }
 });
