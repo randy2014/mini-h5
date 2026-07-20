@@ -1,6 +1,9 @@
 server:
   port: 8080
 
+app:
+  public-h5-base-url: ${PUBLIC_H5_BASE_URL:https://xs2026.site}
+
 spring:
   application:
     name: mini-novel

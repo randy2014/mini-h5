@@ -2,6 +2,7 @@ package com.mini.novel.admin.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mini.novel.common.result.Result;
+import com.mini.novel.admin.service.InvitationQrCodeService;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.vip.entity.VipAdjustLog;
@@ -25,6 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.beans.factory.annotation.Value;
 import java.util.Objects;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -33,14 +37,16 @@ public class AdminUserController {
     private final AppUserMapper appUserMapper;
     private final VipAdjustLogMapper vipAdjustLogMapper;
     private final VipInvitationService vipInvitationService;
+    private final InvitationQrCodeService invitationQrCodeService;
     private final String adminToken;
 
     public AdminUserController(AppUserMapper appUserMapper, VipAdjustLogMapper vipAdjustLogMapper,
-                               VipInvitationService vipInvitationService,
+                               VipInvitationService vipInvitationService, InvitationQrCodeService invitationQrCodeService,
                                @Value("${admin.review-token:dev-admin-token}") String adminToken) {
         this.appUserMapper = appUserMapper;
         this.vipAdjustLogMapper = vipAdjustLogMapper;
         this.vipInvitationService = vipInvitationService;
+        this.invitationQrCodeService = invitationQrCodeService;
         this.adminToken = adminToken;
     }
 
@@ -128,6 +134,18 @@ public class AdminUserController {
     public Result<VipInvitationCode> inviteCodeQuota(@PathVariable("codeId") Long codeId, @RequestBody InviteQuotaRequest request, @RequestHeader(value="X-Admin-Token",required=false) String token) {
         requireAdmin(token);
         return Result.ok(vipInvitationService.updateQuota(codeId, request.totalQuota(), request.operatorId(), request.reason(), request.requestId()));
+    }
+
+    @GetMapping(value = "/invite-codes/{codeId}/qr", produces = MediaType.IMAGE_PNG_VALUE)
+    public ResponseEntity<byte[]> invitationQrCode(@PathVariable("codeId") Long codeId,
+            @RequestHeader(value = "X-Admin-Token", required = false) String token) {
+        requireAdmin(token);
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_PNG)
+                .cacheControl(CacheControl.noStore().mustRevalidate())
+                .header("Pragma", "no-cache")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(invitationQrCodeService.generate(codeId));
     }
 
     @GetMapping("/{id}/invite-records")

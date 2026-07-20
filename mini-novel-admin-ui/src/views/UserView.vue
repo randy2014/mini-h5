@@ -60,7 +60,12 @@
         <el-descriptions-item label="已使用次数">{{ inviteCode.usedQuota }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ inviteCode.createdAt }}</el-descriptions-item>
         <el-descriptions-item label="过期时间">{{ inviteCode.expiresAt || '长期有效' }}</el-descriptions-item>
-        <el-descriptions-item label="操作"><el-button link type="primary" @click="copyCode(inviteCode.code)">复制邀请码</el-button></el-descriptions-item>
+        <el-descriptions-item label="操作">
+          <el-button link type="primary" @click="copyCode(inviteCode.code)">复制邀请码</el-button>
+          <el-tooltip :content="qrUnavailableReason(inviteCode)" :disabled="canGenerateQr(inviteCode)">
+            <span><el-button link type="primary" :icon="Grid" :disabled="!canGenerateQr(inviteCode)" @click="previewQr(inviteCode)">二维码</el-button></span>
+          </el-tooltip>
+        </el-descriptions-item>
       </el-descriptions>
       <el-empty v-else description="暂无邀请码" />
       <el-form v-if="!inviteCode" :inline="true" class="toolbar">
@@ -84,7 +89,13 @@
         <el-table-column prop="totalQuota" label="最大次数" width="90" />
         <el-table-column prop="createdAt" label="创建时间" width="170" />
         <el-table-column prop="expiresAt" label="过期时间" width="170" />
-        <el-table-column label="操作"><template #default="{row}"><el-button link type="primary" @click="copyCode(row.code)">复制</el-button><el-button v-if="row.status==='ENABLED'" link type="danger" @click="disableListedCode(row)">禁用</el-button></template></el-table-column>
+        <el-table-column label="操作" min-width="180"><template #default="{row}">
+          <el-button link type="primary" @click="copyCode(row.code)">复制</el-button>
+          <el-tooltip :content="qrUnavailableReason(row)" :disabled="canGenerateQr(row)">
+            <span><el-button link type="primary" :icon="Grid" :disabled="!canGenerateQr(row)" @click="previewQr(row)">二维码</el-button></span>
+          </el-tooltip>
+          <el-button v-if="row.status==='ENABLED'" link type="danger" @click="disableListedCode(row)">禁用</el-button>
+        </template></el-table-column>
       </el-table>
       <h3>邀请记录</h3>
       <el-table :data="inviteRecords">
@@ -101,12 +112,22 @@
         <el-table-column prop="createdAt" label="时间" width="180" />
       </el-table>
     </el-drawer>
+    <el-dialog v-model="qrVisible" title="邀请码二维码" width="400px" @closed="releaseQr">
+      <div class="qr-preview" v-loading="qrLoading">
+        <img v-if="qrUrl" :src="qrUrl" alt="邀请码登录二维码" />
+      </div>
+      <template #footer>
+        <el-button @click="qrVisible=false">关闭</el-button>
+        <el-button type="primary" :icon="Download" :disabled="!qrUrl" @click="downloadQr">下载 PNG</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { Download, Grid } from '@element-plus/icons-vue';
 import { adminApi } from '../services/http';
 
 const rows = ref([]);
@@ -121,6 +142,9 @@ const inviteCode = ref(null);
 const inviteRecords = ref([]);
 const inviteCodes = ref([]);
 const operationLogs = ref([]);
+const qrVisible = ref(false);
+const qrLoading = ref(false);
+const qrUrl = ref('');
 const vipForm = reactive({ action: 'UPGRADE', days: 30, expireAt: '', reason: '' });
 const quotaForm = reactive({ totalQuota: 3, reason: '' });
 const generateForm = reactive({ maxUses: 3, expiresAt: '', reason: '' });
@@ -179,6 +203,40 @@ async function copyCode(code) {
   try { await navigator.clipboard.writeText(code); ElMessage.success('邀请码已复制'); }
   catch { ElMessage.error('复制失败，请手动复制'); }
 }
+function canGenerateQr(invitation) {
+  return invitation?.status === 'ENABLED'
+    && Number(invitation.remainingQuota) > 0
+    && (!invitation.expiresAt || new Date(invitation.expiresAt).getTime() > Date.now());
+}
+function qrUnavailableReason(invitation) {
+  if (!invitation || invitation.status !== 'ENABLED') return '邀请码未启用';
+  if (Number(invitation.remainingQuota) <= 0) return '邀请码额度已用尽';
+  if (invitation.expiresAt && new Date(invitation.expiresAt).getTime() <= Date.now()) return '邀请码已过期';
+  return '';
+}
+async function previewQr(invitation) {
+  if (!canGenerateQr(invitation)) return;
+  releaseQr();
+  qrVisible.value = true;
+  qrLoading.value = true;
+  try {
+    const blob = await adminApi.get(`/users/invite-codes/${invitation.id}/qr`, { responseType: 'blob' });
+    qrUrl.value = URL.createObjectURL(blob);
+  } finally {
+    qrLoading.value = false;
+  }
+}
+function downloadQr() {
+  if (!qrUrl.value) return;
+  const anchor = document.createElement('a');
+  anchor.href = qrUrl.value;
+  anchor.download = 'invitation-qr.png';
+  anchor.click();
+}
+function releaseQr() {
+  if (qrUrl.value) URL.revokeObjectURL(qrUrl.value);
+  qrUrl.value = '';
+}
 async function disableListedCode(row) {
   await ElMessageBox.confirm('确认禁用该邀请码？', '二次确认');
   await adminApi.put(`/users/invite-codes/${row.id}/disable`, { operatorId: 1, reason: '后台禁用邀请码', requestId: requestId('disable') });
@@ -213,4 +271,10 @@ function requestId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 onMounted(load);
+onBeforeUnmount(releaseQr);
 </script>
+
+<style scoped>
+.qr-preview { min-height: 320px; display: grid; place-items: center; }
+.qr-preview img { display: block; width: min(320px, 100%); height: auto; }
+</style>

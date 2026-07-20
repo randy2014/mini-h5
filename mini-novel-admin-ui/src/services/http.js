@@ -10,6 +10,9 @@ function createClient(baseURL) {
   });
   client.interceptors.response.use(
     (response) => {
+      if (response.config.responseType === 'blob') {
+        return response.data;
+      }
       const payload = response.data;
       if (payload?.code === 0) {
         return payload.data;
