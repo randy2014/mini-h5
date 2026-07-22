@@ -30,7 +30,7 @@
             <el-tag :type="row.status === 0 ? 'danger' : 'success'">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" width="185" />
+        <el-table-column prop="updatedAt" label="更新时间" width="185"><template #default="{row}">{{formatDateTime(row.updatedAt)}}</template></el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -116,6 +116,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi } from '../services/http';
+import { formatDateTime } from '../utils/date';
 
 const loading = ref(false);
 const importing = ref(false);

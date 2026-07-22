@@ -14,7 +14,7 @@
       <el-table-column prop="vipStatus" label="VIP状态" width="110">
         <template #default="{ row }"><el-tag :type="row.vipStatus ? 'warning' : 'info'">{{ vipText(row) }}</el-tag></template>
       </el-table-column>
-      <el-table-column prop="vipExpireTime" label="VIP到期" width="190" />
+      <el-table-column prop="vipExpireTime" label="VIP到期" width="190"><template #default="{row}">{{formatDateTime(row.vipExpireTime)}}</template></el-table-column>
       <el-table-column prop="vipSource" label="VIP来源" width="110" />
       <el-table-column label="操作" min-width="360">
         <template #default="{ row }">
@@ -46,8 +46,8 @@
     <el-drawer v-model="logVisible" title="VIP 调整记录" size="640px">
       <el-table :data="logs">
         <el-table-column prop="action" label="动作" width="110" />
-        <el-table-column prop="beforeExpireTime" label="调整前" width="180" />
-        <el-table-column prop="afterExpireTime" label="调整后" width="180" />
+        <el-table-column prop="beforeExpireTime" label="调整前" width="180"><template #default="{row}">{{formatDateTime(row.beforeExpireTime)}}</template></el-table-column>
+        <el-table-column prop="afterExpireTime" label="调整后" width="180"><template #default="{row}">{{formatDateTime(row.afterExpireTime)}}</template></el-table-column>
         <el-table-column prop="reason" label="原因" />
       </el-table>
     </el-drawer>
@@ -58,8 +58,8 @@
         <el-descriptions-item label="总额度">{{ inviteCode.totalQuota }}</el-descriptions-item>
         <el-descriptions-item label="剩余额度">{{ inviteCode.remainingQuota }}</el-descriptions-item>
         <el-descriptions-item label="已使用次数">{{ inviteCode.usedQuota }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ inviteCode.createdAt }}</el-descriptions-item>
-        <el-descriptions-item label="过期时间">{{ inviteCode.expiresAt || '长期有效' }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ formatDateTime(inviteCode.createdAt) }}</el-descriptions-item>
+        <el-descriptions-item label="过期时间">{{ inviteCode.expiresAt ? formatDateTime(inviteCode.expiresAt) : '长期有效' }}</el-descriptions-item>
         <el-descriptions-item label="操作">
           <el-button link type="primary" @click="copyCode(inviteCode.code)">复制邀请码</el-button>
           <el-tooltip :content="qrUnavailableReason(inviteCode)" :disabled="canGenerateQr(inviteCode)">
@@ -87,8 +87,8 @@
         <el-table-column prop="status" label="状态" width="100" />
         <el-table-column prop="usedQuota" label="已使用" width="80" />
         <el-table-column prop="totalQuota" label="最大次数" width="90" />
-        <el-table-column prop="createdAt" label="创建时间" width="170" />
-        <el-table-column prop="expiresAt" label="过期时间" width="170" />
+        <el-table-column prop="createdAt" label="创建时间" width="170"><template #default="{row}">{{formatDateTime(row.createdAt)}}</template></el-table-column>
+        <el-table-column prop="expiresAt" label="过期时间" width="170"><template #default="{row}">{{formatDateTime(row.expiresAt)}}</template></el-table-column>
         <el-table-column label="操作" min-width="180"><template #default="{row}">
           <el-button link type="primary" @click="copyCode(row.code)">复制</el-button>
           <el-tooltip :content="qrUnavailableReason(row)" :disabled="canGenerateQr(row)">
@@ -102,14 +102,14 @@
         <el-table-column prop="codeSnapshot" label="邀请码" width="120" />
         <el-table-column prop="inviteeUserId" label="被邀请用户" width="120" />
         <el-table-column prop="status" label="状态" width="110" />
-        <el-table-column prop="activatedAt" label="激活时间" />
+        <el-table-column prop="activatedAt" label="激活时间"><template #default="{row}">{{formatDateTime(row.activatedAt)}}</template></el-table-column>
       </el-table>
       <h3>审计摘要</h3>
       <el-table :data="operationLogs">
         <el-table-column prop="action" label="动作" width="140" />
         <el-table-column prop="operatorId" label="操作人" width="100" />
         <el-table-column prop="reason" label="原因" />
-        <el-table-column prop="createdAt" label="时间" width="180" />
+        <el-table-column prop="createdAt" label="时间" width="180"><template #default="{row}">{{formatDateTime(row.createdAt)}}</template></el-table-column>
       </el-table>
     </el-drawer>
     <el-dialog v-model="qrVisible" title="邀请码二维码" width="400px" @closed="releaseQr">
@@ -129,6 +129,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Download, Grid } from '@element-plus/icons-vue';
 import { adminApi } from '../services/http';
+import { formatDateTime, toEpochMillis } from '../utils/date';
 
 const rows = ref([]);
 const logs = ref([]);
@@ -206,12 +207,12 @@ async function copyCode(code) {
 function canGenerateQr(invitation) {
   return invitation?.status === 'ENABLED'
     && Number(invitation.remainingQuota) > 0
-    && (!invitation.expiresAt || new Date(invitation.expiresAt).getTime() > Date.now());
+    && (!invitation.expiresAt || toEpochMillis(invitation.expiresAt) > Date.now());
 }
 function qrUnavailableReason(invitation) {
   if (!invitation || invitation.status !== 'ENABLED') return '邀请码未启用';
   if (Number(invitation.remainingQuota) <= 0) return '邀请码额度已用尽';
-  if (invitation.expiresAt && new Date(invitation.expiresAt).getTime() <= Date.now()) return '邀请码已过期';
+  if (invitation.expiresAt && toEpochMillis(invitation.expiresAt) <= Date.now()) return '邀请码已过期';
   return '';
 }
 async function previewQr(invitation) {

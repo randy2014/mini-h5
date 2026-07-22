@@ -140,7 +140,7 @@
                 <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="updatedAt" label="更新时间" width="180" />
+            <el-table-column prop="updatedAt" label="更新时间" width="180"><template #default="{row}">{{formatDateTime(row.updatedAt)}}</template></el-table-column>
             <el-table-column label="操作" width="100">
               <template #default="{ row }">
                 <el-button link type="primary" @click="editCredential(row)">编辑</el-button>
@@ -279,7 +279,7 @@
                 <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="lastRunAt" label="最近执行" width="180" />
+            <el-table-column prop="lastRunAt" label="最近执行" width="180"><template #default="{row}">{{formatDateTime(row.lastRunAt)}}</template></el-table-column>
             <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="editSchedule(row)">编辑</el-button>
@@ -316,7 +316,7 @@
             <el-table-column prop="successCount" label="成功" width="80" />
             <el-table-column prop="failCount" label="失败" width="80" />
             <el-table-column prop="message" label="信息" min-width="260" />
-            <el-table-column prop="createdAt" label="创建时间" width="180" />
+            <el-table-column prop="createdAt" label="创建时间" width="180"><template #default="{row}">{{formatDateTime(row.createdAt)}}</template></el-table-column>
             <el-table-column label="操作" width="190" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openTaskDetail(row)">详情</el-button>
@@ -350,7 +350,7 @@
             <el-table-column prop="pendingReviewCount" label="待审核" width="90" />
             <el-table-column prop="failedCount" label="失败" width="80" />
             <el-table-column prop="message" label="信息" min-width="260" />
-            <el-table-column prop="createdAt" label="创建时间" width="180" />
+            <el-table-column prop="createdAt" label="创建时间" width="180"><template #default="{row}">{{formatDateTime(row.createdAt)}}</template></el-table-column>
           </el-table>
         </el-card>
 
@@ -373,7 +373,7 @@
             </el-table-column>
             <el-table-column prop="message" label="原因" min-width="240" />
             <el-table-column prop="sourceUrl" label="来源地址" min-width="260" show-overflow-tooltip />
-            <el-table-column prop="updatedAt" label="更新时间" width="180" />
+            <el-table-column prop="updatedAt" label="更新时间" width="180"><template #default="{row}">{{formatDateTime(row.updatedAt)}}</template></el-table-column>
             <el-table-column label="操作" width="180" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="retryMergeItem(row)">重新清洗</el-button>
@@ -419,6 +419,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { crawlerApi } from '../services/http';
+import { formatDateTime } from '../utils/date';
 
 const activeTab = ref('sources');
 const sources = ref([]);

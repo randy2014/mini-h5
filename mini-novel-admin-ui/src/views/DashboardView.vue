@@ -15,7 +15,7 @@
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }"><el-tag :type="row.status === 0 ? 'danger' : 'success'">{{ statusText(row.status) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" width="190" />
+        <el-table-column prop="updatedAt" label="更新时间" width="190"><template #default="{row}">{{formatDateTime(row.updatedAt)}}</template></el-table-column>
       </el-table>
     </el-card>
   </section>
@@ -24,6 +24,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { adminApi } from '../services/http';
+import { formatDateTime } from '../utils/date';
 
 const loading = ref(false);
 const dashboard = ref({});

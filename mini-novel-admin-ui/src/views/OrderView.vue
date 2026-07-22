@@ -10,7 +10,7 @@
       <el-table-column prop="payStatus" label="状态" width="110">
         <template #default="{ row }"><el-tag :type="row.payStatus === 1 ? 'success' : 'info'">{{ row.payStatus === 1 ? '已支付' : '待支付' }}</el-tag></template>
       </el-table-column>
-      <el-table-column prop="createdAt" label="创建时间" width="180" />
+      <el-table-column prop="createdAt" label="创建时间" width="180"><template #default="{row}">{{formatDateTime(row.createdAt)}}</template></el-table-column>
       <el-table-column label="操作" width="140">
         <template #default="{ row }"><el-button link type="primary" :disabled="row.payStatus === 1" @click="markPaid(row)">模拟支付</el-button></template>
       </el-table-column>
@@ -22,6 +22,7 @@
 import { onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { adminApi } from '../services/http';
+import { formatDateTime } from '../utils/date';
 
 const rows = ref([]);
 const loading = ref(false);
