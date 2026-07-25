@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 class VipCategoryIsolationMigrationTest {
     private static final Path MIGRATION = Path.of("sql/migrations/20260719_vip_category_isolation.sql");
     private static final Path MODULE_MIGRATION = Path.of("../sql/migrations/20260719_vip_category_isolation.sql");
+    private static final Path CONVERGE_MIGRATION = Path.of("sql/migrations/20260726_vip_category_converge.sql");
+    private static final Path MODULE_CONVERGE_MIGRATION = Path.of("../sql/migrations/20260726_vip_category_converge.sql");
 
     @Test
     void h528TagsCleanupIsOptionalWhenColumnIsMissing() throws Exception {
@@ -45,8 +47,27 @@ class VipCategoryIsolationMigrationTest {
                 || sql.contains("ON DUPLICATE KEY UPDATE\n  vip_category_id=VALUES(vip_category_id)"));
     }
 
+    @Test
+    void convergenceMigrationIsDbDrivenAndCleansExtraCategoriesSafely() throws Exception {
+        String sql = convergeMigrationSql();
+
+        assertTrue(sql.contains("COLUMN_NAME = 'is_default'"));
+        assertTrue(sql.contains("vip_source_category_mapping"));
+        assertTrue(sql.contains("novel_vip_category_mapping"));
+        assertTrue(sql.contains("ON DUPLICATE KEY UPDATE"));
+        assertTrue(sql.contains("DELETE vc"));
+        assertTrue(sql.contains("LEFT JOIN novel_vip_category_mapping"));
+        assertTrue(sql.contains("LEFT JOIN vip_source_category_mapping"));
+        assertTrue(sql.contains("VIP_AUTH_REVIEW"));
+    }
+
     private String migrationSql() throws Exception {
         Path path = Files.exists(MIGRATION) ? MIGRATION : MODULE_MIGRATION;
+        return Files.readString(path);
+    }
+
+    private String convergeMigrationSql() throws Exception {
+        Path path = Files.exists(CONVERGE_MIGRATION) ? CONVERGE_MIGRATION : MODULE_CONVERGE_MIGRATION;
         return Files.readString(path);
     }
 }

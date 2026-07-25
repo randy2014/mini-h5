@@ -354,18 +354,10 @@ public class ContentReviewController {
 
     private void syncVipCategory(Map<String, Object> chapter, Long novelId) {
         String sourceCategory = Objects.toString(chapter.get("categoryName"), "");
-        String categoryName = normalizeVipCategoryName(sourceCategory);
-        String normalizedName = normalizeCategoryKey(categoryName);
+        String normalizedName = normalizeCategoryKey(sourceCategory);
         Long categoryId = mappedVipCategoryId(Objects.toString(chapter.get("sourceCode"), ""), normalizedName);
         if (categoryId == null) {
-            jdbc.update("""
-                INSERT INTO mini_novel.vip_category(name,normalized_name,sort,enabled,created_at,updated_at)
-                VALUES(?,?,100,1,NOW(),NOW())
-                ON DUPLICATE KEY UPDATE name=VALUES(name),enabled=1,updated_at=NOW()
-                """, categoryName, normalizedName);
-            categoryId = jdbc.queryForObject("""
-                SELECT id FROM mini_novel.vip_category WHERE normalized_name=? LIMIT 1
-                """, Long.class, normalizedName);
+            categoryId = defaultVipCategoryId();
         }
         jdbc.update("""
             INSERT INTO mini_novel.novel_vip_category_mapping
@@ -379,11 +371,36 @@ public class ContentReviewController {
 
     private Long mappedVipCategoryId(String sourceCode, String normalizedName) {
         List<Long> ids = jdbc.query("""
-            SELECT vip_category_id
-            FROM mini_novel.vip_source_category_mapping
-            WHERE source_code=? AND normalized_name=? AND enabled=1 LIMIT 1
+            SELECT vscm.vip_category_id
+            FROM mini_novel.vip_source_category_mapping vscm
+            JOIN mini_novel.vip_category vc ON vc.id=vscm.vip_category_id AND vc.enabled=1
+            WHERE vscm.source_code=? AND vscm.normalized_name=? AND vscm.enabled=1 LIMIT 1
             """, (rs, row) -> rs.getLong(1), sourceCode, normalizedName);
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private Long defaultVipCategoryId() {
+        List<Long> defaults = jdbc.query("""
+            SELECT id
+            FROM mini_novel.vip_category
+            WHERE enabled=1 AND is_default=1
+            ORDER BY sort,id
+            LIMIT 1
+            """, (rs, row) -> rs.getLong(1));
+        if (!defaults.isEmpty()) {
+            return defaults.get(0);
+        }
+        List<Long> firstEnabled = jdbc.query("""
+            SELECT id
+            FROM mini_novel.vip_category
+            WHERE enabled=1
+            ORDER BY sort,id
+            LIMIT 1
+            """, (rs, row) -> rs.getLong(1));
+        if (!firstEnabled.isEmpty()) {
+            return firstEnabled.get(0);
+        }
+        throw new IllegalStateException("No enabled VIP category configured.");
     }
 
     private void syncChapterMapping(Map<String, Object> chapter, Long novelId) {
@@ -474,20 +491,12 @@ public class ContentReviewController {
         if (!StringUtils.hasText(value)) return "";
         return value.toLowerCase().replaceAll("[\\s\\p{Punct}]+", "").trim();
     }
-    private String normalizeVipCategoryName(String value) {
-        if (!StringUtils.hasText(value)) return "\u5176\u4ed6";
-        String cleaned = value.replaceAll("[\\[\\]\"]", "")
-                .replaceAll("\\s+", " ")
-                .trim();
-        if (!StringUtils.hasText(cleaned) || "AUTHORIZED_VIP".equalsIgnoreCase(cleaned) || "UNKNOWN".equalsIgnoreCase(cleaned)) {
-            return "\u5176\u4ed6";
-        }
-        return limit(cleaned, 64);
-    }
     private String normalizeCategoryKey(String value) {
-        String normalized = normalizeVipCategoryName(value).toLowerCase(Locale.ROOT)
+        String normalized = Objects.toString(value, "").replaceAll("[\\[\\]\"]", "")
+                .trim()
+                .toLowerCase(Locale.ROOT)
                 .replaceAll("[\\s\\p{Punct}]+", "");
-        return StringUtils.hasText(normalized) ? limit(normalized, 64) : "other";
+        return StringUtils.hasText(normalized) ? limit(normalized, 64) : "";
     }
     private String limit(String value, int maxLength) {
         if (value == null || value.length() <= maxLength) return value;

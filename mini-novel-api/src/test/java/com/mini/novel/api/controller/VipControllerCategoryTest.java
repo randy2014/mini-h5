@@ -54,7 +54,7 @@ class VipControllerCategoryTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void keepsFilteredPaginationAndNormalizesInvalidCategoryToOther() {
+    void keepsFilteredPaginationAndLeavesMissingCategoryBlank() {
         VipCategory city = category(7L, "city", 10);
         when(vipCategoryMapper.selectList(any())).thenReturn(List.of(city));
         when(novelMapper.selectPage(any(Page.class), any())).thenAnswer(invocation -> {
@@ -67,7 +67,7 @@ class VipControllerCategoryTest {
             return page;
         });
 
-        Result<VipBookPageVo> response = controller.books(2, 20, VipController.CATEGORY_OTHER);
+        Result<VipBookPageVo> response = controller.books(2, 20, VipController.CATEGORY_ALL);
         VipBookPageVo data = response.data();
 
         assertEquals(21, data.getTotal());
@@ -75,23 +75,21 @@ class VipControllerCategoryTest {
         assertEquals(2, data.getPage());
         assertFalse(data.isHasMore());
         assertNull(data.getRecords().get(0).getCategoryId());
-        assertEquals(VipController.CATEGORY_OTHER_NAME, data.getRecords().get(0).getCategoryName());
+        assertNull(data.getRecords().get(0).getCategoryName());
     }
 
     @Test
-    void returnsAllFirstRealCategoriesInSortOrderAndOtherLast() {
+    void returnsAllDbCategoriesInSortOrderWithoutCodeFallbackCategory() {
         VipCategory city = category(7L, "city", 10);
         VipCategory empty = category(8L, " ", 20);
         when(vipCategoryMapper.selectList(any())).thenReturn(List.of(city, empty));
-        when(novelMapper.selectCount(any())).thenReturn(4L, 2L, 2L);
+        when(novelMapper.selectCount(any())).thenReturn(4L, 2L);
 
         List<VipBookCategoryVo> categories = controller.categories().data();
 
-        assertEquals(List.of("all", "7", "other"), categories.stream().map(VipBookCategoryVo::getKey).toList());
-        assertEquals(List.of(4L, 2L, 2L), categories.stream().map(VipBookCategoryVo::getCount).toList());
-        assertEquals(categories.get(0).getCount(), categories.stream().skip(1).mapToLong(VipBookCategoryVo::getCount).sum());
+        assertEquals(List.of("all", "7"), categories.stream().map(VipBookCategoryVo::getKey).toList());
+        assertEquals(List.of(4L, 2L), categories.stream().map(VipBookCategoryVo::getCount).toList());
         assertTrue(categories.get(0).getCategoryName().equals(VipController.CATEGORY_ALL_NAME));
-        assertTrue(categories.get(2).getCategoryName().equals(VipController.CATEGORY_OTHER_NAME));
     }
 
     @Test

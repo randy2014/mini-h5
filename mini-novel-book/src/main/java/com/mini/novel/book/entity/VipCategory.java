@@ -13,6 +13,7 @@ public class VipCategory {
     private String normalizedName;
     private Integer sort;
     private Boolean enabled;
+    private Boolean isDefault;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -26,6 +27,8 @@ public class VipCategory {
     public void setSort(Integer sort) { this.sort = sort; }
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+    public Boolean getIsDefault() { return isDefault; }
+    public void setIsDefault(Boolean isDefault) { this.isDefault = isDefault; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

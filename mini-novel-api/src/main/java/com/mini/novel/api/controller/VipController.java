@@ -38,9 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/vip")
 public class VipController {
     static final String CATEGORY_ALL = "all";
-    static final String CATEGORY_OTHER = "other";
     static final String CATEGORY_ALL_NAME = "\u5168\u90e8";
-    static final String CATEGORY_OTHER_NAME = "\u5176\u4ed6";
 
     private final VipPlanMapper vipPlanMapper;
     private final CurrentUserResolver currentUserResolver;
@@ -93,15 +91,9 @@ public class VipController {
         result.add(new VipBookCategoryVo(CATEGORY_ALL, null, CATEGORY_ALL_NAME, total));
         categories.values().forEach(category -> {
             long count = novelMapper.selectCount(vipBooksQuery(String.valueOf(category.getId()), categories.keySet()));
-            if (count > 0) {
-                result.add(new VipBookCategoryVo(String.valueOf(category.getId()), category.getId(),
-                        category.getName().trim(), count));
-            }
+            result.add(new VipBookCategoryVo(String.valueOf(category.getId()), category.getId(),
+                    category.getName().trim(), count));
         });
-        long otherCount = novelMapper.selectCount(vipBooksQuery(CATEGORY_OTHER, categories.keySet()));
-        if (otherCount > 0) {
-            result.add(new VipBookCategoryVo(CATEGORY_OTHER, null, CATEGORY_OTHER_NAME, otherCount));
-        }
         return Result.ok(result);
     }
 
@@ -131,16 +123,6 @@ public class VipController {
         String key = StringUtils.hasText(category) ? category.trim().toLowerCase(Locale.ROOT) : CATEGORY_ALL;
         if (CATEGORY_ALL.equals(key) || CATEGORY_ALL_NAME.equals(key)) {
             return query;
-        }
-        if (CATEGORY_OTHER.equals(key) || CATEGORY_OTHER_NAME.equals(key)) {
-            return query.notExists("""
-                    SELECT 1
-                    FROM novel_vip_category_mapping vip_category_mapping
-                    JOIN vip_category vip_category
-                      ON vip_category.id = vip_category_mapping.vip_category_id
-                     AND vip_category.enabled = 1
-                    WHERE vip_category_mapping.novel_id = novel.id
-                    """);
         }
         try {
             long categoryId = Long.parseLong(key);
@@ -183,7 +165,7 @@ public class VipController {
         VipCategory category = mapping == null ? null : categories.get(mapping.getVipCategoryId());
         if (category == null) {
             novel.setCategoryId(null);
-            novel.setCategoryName(CATEGORY_OTHER_NAME);
+            novel.setCategoryName(null);
             return;
         }
         novel.setCategoryId(null);

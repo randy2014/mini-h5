@@ -376,6 +376,24 @@ class XbookcnCrawlerSiteParserTest {
         assertThat(result.reviewRequired()).isTrue();
     }
 
+    @Test
+    void leavesCategoryBlankWhenSourceHasNoCategory() throws Exception {
+        CrawlerSourceConfig source = source("""
+                {"poc":{"metadataOnly":true}}
+                """);
+        ParsedBookSeed seed = new ParsedBookSeed("https://book.xbookcn.net/book/123", "", "", "", 0L, "", "");
+        Document detail = Jsoup.parse("""
+                <html><body>
+                  <h1>Book Title</h1>
+                  <div class="intro">Intro</div>
+                </body></html>
+                """, "https://book.xbookcn.net/book/123");
+
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, url -> detail);
+
+        assertThat(snapshot.categoryName()).isBlank();
+    }
+
     private CrawlerSourceConfig source(String rules) {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "xbookcn_authorized";

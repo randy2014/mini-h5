@@ -78,7 +78,7 @@ public class XbookcnCrawlerSiteParser implements CrawlerSiteParser {
         String cover = firstNonBlank(firstRawAttr(detail, "meta[property=og:image]", "content"),
                 firstAttr(detail, ".cover img, img.cover, .book-cover img", "src"));
         String category = firstNonBlank(firstText(detail, "meta[property=og:novel:category]"),
-                firstText(detail, ".tag a", ".tags a", ".category", ".book-category"), "VIP_AUTH_REVIEW");
+                firstText(detail, ".tag a", ".tags a", ".category", ".book-category"));
         String tagsJson = tagsJson(detail);
         String status = normalizeStatus(firstNonBlank(firstText(detail, "meta[property=og:novel:status]"),
                 firstText(detail, ".status", ".book-status", ".book-meta", ".book-info")));
