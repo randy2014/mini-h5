@@ -368,7 +368,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         Set<String> seenUrls = new LinkedHashSet<>();
         Set<String> seenPages = new LinkedHashSet<>();
         String currentUrl = isNovel69hAuthorizedSource(source) ? firstNonBlank(novel69hStartPage(task), rank.rankUrl) : rank.rankUrl;
-        int maxPages = isH528AuthorizedSource(source) ? 50 : isNovel69hAuthorizedSource(source) ? 10 : 1;
+        CrawlerRuleConfig rules = CrawlerRuleConfig.from(source);
+        int maxPages = Math.max(1, Math.min(rules.intValue(1, "rankRules.maxPages", "rank.maxPages"), 100));
         while (StringUtils.hasText(currentUrl) && seenPages.size() < maxPages && seenPages.add(currentUrl)
                 && seeds.size() < maxBooks) {
             Document rankPage = fetch(currentUrl, source);

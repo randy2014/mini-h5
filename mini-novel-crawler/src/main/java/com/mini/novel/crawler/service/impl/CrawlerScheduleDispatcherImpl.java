@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -31,7 +32,6 @@ import org.springframework.util.StringUtils;
 @Service
 public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher {
     private static final DateTimeFormatter MINUTE_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
-    private static final String PRIMARY_SOURCE_CODE = "23qb_public";
 
     private final CrawlScheduleMapper scheduleMapper;
     private final CrawlTaskRecordMapper taskRecordMapper;
@@ -40,6 +40,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     private final CrawlerSourceConfigMapper sourceMapper;
     private final CrawlerExecutionService executionService;
     private final CrawlerMergeService mergeService;
+    private final JdbcTemplate jdbcTemplate;
 
     public CrawlerScheduleDispatcherImpl(CrawlScheduleMapper scheduleMapper,
                                          CrawlTaskRecordMapper taskRecordMapper,
@@ -47,7 +48,8 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                                          CrawlRankSourceMapper rankSourceMapper,
                                          CrawlerSourceConfigMapper sourceMapper,
                                          CrawlerExecutionService executionService,
-                                         CrawlerMergeService mergeService) {
+                                         CrawlerMergeService mergeService,
+                                         JdbcTemplate jdbcTemplate) {
         this.scheduleMapper = scheduleMapper;
         this.taskRecordMapper = taskRecordMapper;
         this.mergeTaskMapper = mergeTaskMapper;
@@ -55,6 +57,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         this.sourceMapper = sourceMapper;
         this.executionService = executionService;
         this.mergeService = mergeService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Scheduled(fixedDelayString = "${crawler.schedule.fixed-delay-ms:60000}", initialDelayString = "${crawler.schedule.initial-delay-ms:20000}")
@@ -103,25 +106,35 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .eq("enabled", true)
                 .last("LIMIT 200"));
         for (CrawlSchedule schedule : schedules) {
-            if (!isDue(schedule) || !isPrimarySource(schedule.sourceId)) {
+            DueWindow dueWindow = dueWindow(schedule);
+            if (dueWindow == null || !isRunnableSchedule(schedule)) {
                 continue;
             }
 
-            int createdCount = 0;
-            for (CrawlRankSource rank : loadEnabledRanks(schedule.sourceId)) {
-                if (hasActiveRankTask(schedule.sourceId, rank.id, null)) {
+            String lockName = scheduleLockName(schedule, dueWindow.windowStart());
+            if (!tryAcquireScheduleLock(lockName)) {
+                continue;
+            }
+            try {
+                int createdCount = 0;
+                for (CrawlRankSource rank : loadEnabledRanks(schedule.sourceId)) {
+                    if (hasActiveRankTask(schedule.sourceId, rank.id, null)) {
+                        continue;
+                    }
+                    createTask(schedule, rank, "SCHEDULE");
+                    createdCount++;
+                }
+                if (createdCount == 0) {
                     continue;
                 }
-                createTask(schedule, rank, "SCHEDULE");
-                createdCount++;
-            }
-            if (createdCount == 0) {
-                continue;
-            }
 
-            schedule.lastRunAt = LocalDateTime.now();
-            schedule.updatedAt = schedule.lastRunAt;
-            scheduleMapper.updateById(schedule);
+                schedule.lastRunAt = dueWindow.windowStart();
+                schedule.nextRunAt = nextRunAt(schedule, dueWindow.windowStart().plusMinutes(1), dueWindow.zoneId());
+                schedule.updatedAt = LocalDateTime.now();
+                scheduleMapper.updateById(schedule);
+            } finally {
+                releaseScheduleLock(lockName);
+            }
         }
     }
 
@@ -148,41 +161,68 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         if (task == null) {
             return false;
         }
-        return isPrimarySource(task.sourceId) || "AUTHORIZED_BOOK_CONTENT".equals(task.taskType);
+        if ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType)) {
+            return true;
+        }
+        if (task.sourceId == null || task.rankSourceId == null) {
+            return false;
+        }
+        CrawlerSourceConfig source = sourceMapper.selectById(task.sourceId);
+        if (!isEnabledSource(source)) {
+            return false;
+        }
+        CrawlRankSource rank = rankSourceMapper.selectById(task.rankSourceId);
+        return rank != null
+                && task.sourceId.equals(rank.sourceId)
+                && Boolean.TRUE.equals(rank.enabled);
     }
 
-    private boolean isDue(CrawlSchedule schedule) {
+    private DueWindow dueWindow(CrawlSchedule schedule) {
         if (!StringUtils.hasText(schedule.scheduleTimes)) {
-            return false;
+            return null;
         }
         ZoneId zoneId = ZoneId.of(StringUtils.hasText(schedule.timezone) ? schedule.timezone : "Asia/Shanghai");
         LocalDateTime now = LocalDateTime.now(zoneId).truncatedTo(ChronoUnit.MINUTES);
+        if (schedule.nextRunAt != null && schedule.nextRunAt.truncatedTo(ChronoUnit.MINUTES).isAfter(now)) {
+            return null;
+        }
         String current = now.format(MINUTE_FORMAT);
         boolean timeMatched = Arrays.stream(schedule.scheduleTimes.split(","))
                 .map(String::trim)
                 .anyMatch(current::equals);
         if (!timeMatched) {
-            return false;
+            return null;
         }
         if (schedule.lastRunAt != null && schedule.lastRunAt.truncatedTo(ChronoUnit.MINUTES).equals(now)) {
-            return false;
+            return null;
         }
         Long existing = taskRecordMapper.selectCount(new QueryWrapper<CrawlTaskRecord>()
                 .eq("schedule_id", schedule.id)
                 .eq("trigger_type", "SCHEDULE")
                 .ge("created_at", now)
                 .lt("created_at", now.plusMinutes(1)));
-        return existing == null || existing == 0;
+        return existing == null || existing == 0 ? new DueWindow(now, zoneId) : null;
     }
 
-    private boolean isPrimarySource(Long sourceId) {
-        if (sourceId == null) {
+    private boolean isRunnableSchedule(CrawlSchedule schedule) {
+        if (schedule == null || schedule.sourceId == null) {
             return false;
         }
-        CrawlerSourceConfig source = sourceMapper.selectById(sourceId);
-        return source != null
-                && Boolean.TRUE.equals(source.enabled)
-                && PRIMARY_SOURCE_CODE.equals(source.sourceCode);
+        CrawlerSourceConfig source = sourceMapper.selectById(schedule.sourceId);
+        if (!isEnabledSource(source)) {
+            return false;
+        }
+        List<CrawlRankSource> ranks = loadEnabledRanks(schedule.sourceId);
+        return !ranks.isEmpty();
+    }
+
+    private boolean isEnabledSource(CrawlerSourceConfig source) {
+        if (source == null || !Boolean.TRUE.equals(source.enabled)) {
+            return false;
+        }
+        return "PUBLIC".equalsIgnoreCase(source.sourceType)
+                || "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType)
+                || !StringUtils.hasText(source.sourceType);
     }
 
     private List<CrawlRankSource> loadEnabledRanks(Long sourceId) {
@@ -233,7 +273,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         task.sourceId = schedule.sourceId;
         task.rankSourceId = rank.id;
         task.credentialId = schedule.credentialId;
-        task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
+        task.taskType = taskType(schedule);
         task.triggerType = triggerType;
         task.status = "PENDING";
         task.targetUrl = rank.rankUrl;
@@ -261,6 +301,46 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         return task;
     }
 
+    private String taskType(CrawlSchedule schedule) {
+        CrawlerSourceConfig source = schedule == null || schedule.sourceId == null ? null : sourceMapper.selectById(schedule.sourceId);
+        if (source != null && "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType)) {
+            return "AUTHORIZED_VIP";
+        }
+        return schedule != null && Boolean.TRUE.equals(schedule.crawlVip) ? "VIP_AND_PUBLIC" : "PUBLIC";
+    }
+
+    private String scheduleLockName(CrawlSchedule schedule, LocalDateTime windowStart) {
+        return "crawler_schedule:" + schedule.id + ":" + windowStart.truncatedTo(ChronoUnit.MINUTES);
+    }
+
+    private boolean tryAcquireScheduleLock(String lockName) {
+        Integer locked = jdbcTemplate.queryForObject("SELECT GET_LOCK(?, 0)", Integer.class, lockName);
+        return locked != null && locked == 1;
+    }
+
+    private void releaseScheduleLock(String lockName) {
+        jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Integer.class, lockName);
+    }
+
+    private LocalDateTime nextRunAt(CrawlSchedule schedule, LocalDateTime after, ZoneId zoneId) {
+        LocalDateTime cursor = after.truncatedTo(ChronoUnit.MINUTES);
+        for (int dayOffset = 0; dayOffset <= 1; dayOffset++) {
+            LocalDateTime day = cursor.plusDays(dayOffset).toLocalDate().atStartOfDay();
+            LocalDateTime next = Arrays.stream(schedule.scheduleTimes.split(","))
+                    .map(String::trim)
+                    .filter(StringUtils::hasText)
+                    .map(time -> LocalDateTime.parse(day.toLocalDate() + "T" + time + ":00"))
+                    .filter(candidate -> !candidate.isBefore(cursor))
+                    .sorted()
+                    .findFirst()
+                    .orElse(null);
+            if (next != null) {
+                return next;
+            }
+        }
+        return cursor.plusDays(1);
+    }
+
     private String rankLabel(CrawlRankSource rank) {
         if (rank == null) {
             return "unknown rank";
@@ -274,5 +354,8 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         String value = StringUtils.hasText(original) ? original : "";
         String appended = value + (value.isEmpty() ? "" : " | ") + suffix;
         return appended.length() <= 1000 ? appended : appended.substring(appended.length() - 1000);
+    }
+
+    private record DueWindow(LocalDateTime windowStart, ZoneId zoneId) {
     }
 }
