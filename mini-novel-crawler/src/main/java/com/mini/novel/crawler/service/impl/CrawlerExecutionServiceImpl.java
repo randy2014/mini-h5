@@ -70,6 +70,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
     private static final String MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+    private static final String KKXSZ_USER_AGENT = "curl/8.18.0";
     private static final int DEFAULT_MAX_BOOKS = 20;
     private static final int DEFAULT_MAX_CHAPTER_PAGES = 8;
     private static final int MAX_CHAPTER_PAGES_CAP = 30;
@@ -747,6 +748,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private boolean isKkxszPublicSource(CrawlerSourceConfig source) {
+        return isKkxszPublicSourceCode(source);
+    }
+
+    private static boolean isKkxszPublicSourceCode(CrawlerSourceConfig source) {
         return source != null && "kkxsz_public".equalsIgnoreCase(source.sourceCode);
     }
 
@@ -921,16 +926,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         IOException lastException = null;
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
-                Connection connection = Jsoup.connect(url)
-                        .userAgent(url.contains("m.qidian.com") ? MOBILE_USER_AGENT : USER_AGENT)
-                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-                        .header("Accept-Language", "zh-CN,zh;q=0.9")
-                        .header("Referer", origin(url))
-                        .header("Sec-Fetch-Dest", "document")
-                        .header("Sec-Fetch-Mode", "navigate")
-                        .header("Sec-Fetch-Site", "same-origin")
-                        .header("Upgrade-Insecure-Requests", "1")
-                        .timeout(FETCH_TIMEOUT_MILLIS);
+                Connection connection = configureFetchConnection(url, source);
                 applyCredentialHeaders(connection, source);
                 return connection.get();
             } catch (IOException ex) {
@@ -939,6 +935,26 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
         }
         throw lastException;
+    }
+
+    static Connection configureFetchConnection(String url, CrawlerSourceConfig source) {
+        Connection connection = Jsoup.connect(url)
+                .followRedirects(true)
+                .timeout(FETCH_TIMEOUT_MILLIS);
+        if (isKkxszPublicSourceCode(source)) {
+            return connection
+                    .userAgent(KKXSZ_USER_AGENT)
+                    .header("Accept", "*/*");
+        }
+        return connection
+                .userAgent(url.contains("m.qidian.com") ? MOBILE_USER_AGENT : USER_AGENT)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                .header("Accept-Language", "zh-CN,zh;q=0.9")
+                .header("Referer", origin(url))
+                .header("Sec-Fetch-Dest", "document")
+                .header("Sec-Fetch-Mode", "navigate")
+                .header("Sec-Fetch-Site", "same-origin")
+                .header("Upgrade-Insecure-Requests", "1");
     }
 
     private void applyCredentialHeaders(Connection connection, CrawlerSourceConfig source) {
@@ -971,7 +987,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
     }
 
-    private String origin(String url) {
+    private static String origin(String url) {
         try { URI uri=URI.create(url);return uri.getScheme()+"://"+uri.getHost()+"/"; }
         catch (Exception ignored) { return url; }
     }
