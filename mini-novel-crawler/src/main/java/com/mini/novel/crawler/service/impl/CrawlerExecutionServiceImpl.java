@@ -323,7 +323,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 && !canCrawlAuthorizedChapters(source, sourceBookIdFromUrl(seed.url()))) {
             return BookOutcome.failed();
         }
-        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed, this::fetch);
+        ParsedBookSnapshot snapshot = parser.fetchBook(source, seed,
+                isKkxszPublicSource(source) ? url -> fetch(url, source) : this::fetch);
         if ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType) && StringUtils.hasText(seed.intro())) {
             snapshot = withSourceBookId(snapshot, seed.intro());
         }
