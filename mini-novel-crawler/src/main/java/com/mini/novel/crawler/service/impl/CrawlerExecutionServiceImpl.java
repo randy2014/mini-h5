@@ -746,6 +746,10 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return source != null && "novel69h_authorized".equalsIgnoreCase(source.sourceCode);
     }
 
+    private boolean isKkxszPublicSource(CrawlerSourceConfig source) {
+        return source != null && "kkxsz_public".equalsIgnoreCase(source.sourceCode);
+    }
+
     private boolean canCrawlAuthorizedChapters(CrawlerSourceConfig source, ParsedBookSnapshot snapshot) {
         if (!isXbookcnAuthorizedSource(source) || snapshot == null || !StringUtils.hasText(snapshot.sourceBookId())) {
             return false;
@@ -1264,8 +1268,13 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 readyCount++;
             }
         }
-        book.contentStatus = isIsolatedReviewSource(source) ? "PENDING_REVIEW"
-                : readyCount > 0 ? "CONTENT_READY" : "CATALOG_READY";
+        if (isIsolatedReviewSource(source)) {
+            book.contentStatus = "PENDING_REVIEW";
+        } else if (isKkxszPublicSource(source)) {
+            book.contentStatus = completed && readyCount == chapters.size() ? "CONTENT_READY" : "CATALOG_READY";
+        } else {
+            book.contentStatus = readyCount > 0 ? "CONTENT_READY" : "CATALOG_READY";
+        }
         bookRawMapper.updateById(book);
         return completed;
     }

@@ -116,10 +116,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         if (task == null || book == null) {
             return;
         }
-        List<CrawlChapterRaw> chapters = chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
-                .eq("book_raw_id", book.id)
-                .orderByAsc("chapter_no")
-                .last("LIMIT 500"));
+        List<CrawlChapterRaw> chapters = loadMergeChapters(book);
         if (chapters.isEmpty()) {
             item.matchStatus = "PENDING_REVIEW";
             item.message = "未发现章节目录，等待重新采集或手动补充。";
@@ -216,10 +213,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             }
             List<CrawlBookRaw> books = bookRawMapper.selectList(bookWrapper);
             for (CrawlBookRaw book : books) {
-                List<CrawlChapterRaw> chapters = chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
-                        .eq("book_raw_id", book.id)
-                        .orderByAsc("chapter_no")
-                        .last("LIMIT 500"));
+                List<CrawlChapterRaw> chapters = loadMergeChapters(book);
                 if (chapters.isEmpty()) {
                     continue;
                 }
@@ -258,6 +252,15 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     }
 
     private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters) { return mergeBook(task, book, chapters, false); }
+
+    private List<CrawlChapterRaw> loadMergeChapters(CrawlBookRaw book) {
+        int limit = book != null && "kkxsz_public".equalsIgnoreCase(book.sourceCode) ? 5000 : 500;
+        return chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
+                .eq("book_raw_id", book.id)
+                .orderByAsc("chapter_no")
+                .last("LIMIT " + limit));
+    }
+
     private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters, boolean authorizedApproval) {
         LocalDateTime now = LocalDateTime.now();
         if (isReviewOnlySource(book) && !authorizedApproval) {
