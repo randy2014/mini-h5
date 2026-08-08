@@ -51,6 +51,16 @@
         <span>仅限 18 岁以上用户，请理性阅读。</span>
       </div>
 
+      <div class="vip-read-filter">
+        <div>
+          <strong>已阅读过滤</strong>
+          <small>{{ locallyReadCount ? `本地已隐藏 ${locallyReadCount} 本` : '仅保存在本机' }}</small>
+        </div>
+        <van-button size="small" plain icon="delete-o" :disabled="!locallyReadCount" @click="clearLocalReadBooks">
+          一键清理
+        </van-button>
+      </div>
+
       <div class="vip-category-row" role="tablist" aria-label="VIP 书籍分类">
         <button
           v-for="category in categories"
@@ -119,9 +129,11 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { showConfirmDialog, showToast } from 'vant';
 import BookCard from '../components/BookCard.vue';
 import { fetchVipBooks, fetchVipCategories, fetchVipStatus } from '../services/vip';
 import { canRequestVipContent, shouldCheckVipStatus } from '../services/vipAccess';
+import { clearVipReadBooks, vipReadIds } from '../services/vipReadStatus';
 
 const key = 'mini_novel_vip_adult_confirmed';
 const adult = ref(false);
@@ -137,6 +149,8 @@ const requestInFlight = ref(false);
 const categories = ref([{ key: 'all', categoryId: null, categoryName: '全部', count: 0 }]);
 const selectedCategory = ref('all');
 const categoryError = ref(false);
+const hiddenReadCount = ref(0);
+const readStateVersion = ref(0);
 const status = ref({ active: false, vipExpireTime: null });
 const isAuthenticated = Boolean(localStorage.getItem('mini_novel_auth_token'));
 const statusLoading = ref(shouldCheckVipStatus(isAuthenticated));
@@ -148,6 +162,11 @@ const loginTarget = { path: '/h5/login', query: { redirect: '/h5/vip' } };
 
 const currentCategoryName = computed(() => {
   return categories.value.find((category) => category.key === selectedCategory.value)?.categoryName || '全部';
+});
+
+const locallyReadCount = computed(() => {
+  readStateVersion.value;
+  return vipReadIds().size;
 });
 
 const expiryLabel = computed(() => {
@@ -199,22 +218,31 @@ async function loadNextPage() {
   const version = requestVersion;
   const category = selectedCategory.value;
   try {
-    const result = await fetchVipBooks(page.value, pageSize, category);
-    if (version !== requestVersion || category !== selectedCategory.value) return;
-    const incoming = result.records || [];
-    const knownIds = new Set(books.value.map((book) => book.novelId || book.id));
-    incoming.forEach((book) => {
-      const novelId = book.novelId || book.id;
-      if (!knownIds.has(novelId)) {
-        knownIds.add(novelId);
-        books.value.push(book);
-      }
-    });
-    total.value = Number(result.total || 0);
-    pages.value = Number(result.pages || 0);
-    const currentPage = Number(result.page || page.value);
-    finished.value = !result.hasMore || currentPage >= pages.value;
-    if (!finished.value) page.value = currentPage + 1;
+    let addedVisible = false;
+    let reachedEnd = false;
+    while (!addedVisible && !reachedEnd) {
+      const result = await fetchVipBooks(page.value, pageSize, category);
+      if (version !== requestVersion || category !== selectedCategory.value) return;
+      const readIds = vipReadIds();
+      const incoming = result.records || [];
+      const visible = incoming.filter((book) => !readIds.has(String(bookIdOf(book))));
+      hiddenReadCount.value += incoming.length - visible.length;
+      const knownIds = new Set(books.value.map((book) => bookIdOf(book)));
+      visible.forEach((book) => {
+        const novelId = bookIdOf(book);
+        if (novelId && !knownIds.has(novelId)) {
+          knownIds.add(novelId);
+          books.value.push(book);
+          addedVisible = true;
+        }
+      });
+      total.value = Number(result.total || 0);
+      pages.value = Number(result.pages || 0);
+      const currentPage = Number(result.page || page.value);
+      reachedEnd = !result.hasMore || currentPage >= pages.value;
+      if (!reachedEnd) page.value = currentPage + 1;
+    }
+    finished.value = reachedEnd;
   } catch {
     if (version === requestVersion) listError.value = true;
   } finally {
@@ -230,6 +258,7 @@ function resetBooks() {
   page.value = 1;
   total.value = 0;
   pages.value = 0;
+  hiddenReadCount.value = 0;
   finished.value = false;
   listError.value = false;
 }
@@ -261,6 +290,32 @@ function confirm() {
   loadCategories();
 }
 
+function bookIdOf(book) {
+  return Number(book?.novelId || book?.id || 0);
+}
+
+async function clearLocalReadBooks() {
+  if (!locallyReadCount.value) return;
+  try {
+    await showConfirmDialog({
+      title: '清理已阅读',
+      message: '清理后，本机隐藏的 VIP 文章会重新显示在列表中。',
+      confirmButtonText: '清理',
+      cancelButtonText: '取消'
+    });
+  } catch {
+    return;
+  }
+  clearVipReadBooks();
+  readStateVersion.value += 1;
+  requestVersion += 1;
+  requestInFlight.value = false;
+  resetBooks();
+  loading.value = true;
+  showToast('已清理本地已阅读记录');
+  loadNextPage();
+}
+
 onMounted(async () => {
   if (!shouldCheckVipStatus(isAuthenticated)) return;
   await loadStatus();
@@ -290,6 +345,10 @@ onMounted(async () => {
 .vip-status-strip strong { font-size:14px; }
 .vip-status-strip small { margin-top:3px; color:var(--muted); font-size:12px; }
 .vip-age-note { display:flex; gap:7px; align-items:center; margin-top:10px; color:var(--muted); font-size:12px; }
+.vip-read-filter { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; padding:12px 14px; border:1px solid rgba(31,37,40,.08); border-radius:var(--radius); background:var(--panel); }
+.vip-read-filter strong,.vip-read-filter small { display:block; }
+.vip-read-filter strong { font-size:14px; }
+.vip-read-filter small { margin-top:3px; color:var(--muted); font-size:12px; }
 .vip-category-row { display:flex; gap:8px; margin:15px -2px 0; padding:2px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
 .vip-category-row::-webkit-scrollbar { display:none; }
 .vip-category-row button { display:inline-flex; flex:0 0 auto; gap:6px; align-items:center; min-height:34px; padding:7px 12px; border:1px solid rgba(31,37,40,.1); border-radius:999px; background:var(--panel); color:var(--muted); font-size:13px; white-space:nowrap; }

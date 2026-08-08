@@ -75,6 +75,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } from '../services/book';
+import { markVipBookRead } from '../services/vipReadStatus';
 import { formatTextLineBreaks } from '../utils/text';
 
 const CATALOG_PAGE_SIZE = 50;
@@ -129,6 +130,7 @@ async function loadChapter() {
   try {
     chapter.value = await fetchChapter(route.params.id);
     saveProgress(chapter.value);
+    saveVipReadStatus(chapter.value);
     loadTotalChapters();
     await nextTick();
     restoreScrollPosition();
@@ -296,6 +298,17 @@ function saveProgress(current) {
     totalChapters: totalChapters.value || 0,
     updatedAt: Date.now()
   }));
+}
+
+function saveVipReadStatus(current) {
+  if (!current?.vip || !current?.novelId) {
+    return;
+  }
+  markVipBookRead(current.novelId, {
+    chapterId: current.id,
+    chapterNo: current.chapterNo,
+    title: current.title
+  });
 }
 
 function saveScrollPosition() {
