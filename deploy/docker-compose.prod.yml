@@ -50,7 +50,7 @@ services:
       SPRING_DATA_REDIS_HOST: mini-novel-redis
       SPRING_DATA_REDIS_PORT: 6379
     ports:
-      - "127.0.0.1:${APP_PORT:-8080}:8080"
+      - "0.0.0.0:${APP_PORT:-8080}:8080"
     volumes:
       - mini-novel-cover-cache:/var/cache/covers
 
@@ -63,7 +63,7 @@ services:
     depends_on:
       - mini-novel-app
     ports:
-      - "127.0.0.1:${H5_PORT:-5173}:80"
+      - "0.0.0.0:${H5_PORT:-5173}:80"
 
   mini-novel-crawler-service:
     build:
@@ -92,7 +92,7 @@ services:
       - mini-novel-app
       - mini-novel-crawler-service
     ports:
-      - "127.0.0.1:${ADMIN_PORT:-5180}:80"
+      - "0.0.0.0:${ADMIN_PORT:-5180}:80"
 
 volumes:
   mini-novel-mysql-data:
