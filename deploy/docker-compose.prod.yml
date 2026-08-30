@@ -79,8 +79,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mini-novel-mysql:3306/${MYSQL_DATABASE:-mini_novel}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME:-root}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      # 生产默认关闭自动抓取调度，防止持续爬取写满磁盘；需要采集时改 true 后重新部署
-      CRAWLER_SCHEDULE_ENABLED: "false"
+      # 自动调度总开关：开启后按 crawl_schedule 配置定时执行（当前仅 id=13 每天 04:00 抓取 23qb 源）
+      # 若磁盘告急可临时改为 false 暂停自动抓取
+      CRAWLER_SCHEDULE_ENABLED: "true"
     expose:
       - "8090"
 
