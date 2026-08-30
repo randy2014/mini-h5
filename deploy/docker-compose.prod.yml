@@ -79,6 +79,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mini-novel-mysql:3306/${MYSQL_DATABASE:-mini_novel}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME:-root}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # 生产默认关闭自动抓取调度，防止持续爬取写满磁盘；需要采集时改 true 后重新部署
+      CRAWLER_SCHEDULE_ENABLED: "false"
     expose:
       - "8090"
 

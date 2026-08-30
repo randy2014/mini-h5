@@ -1,6 +1,11 @@
 server:
   port: 8090
 
+crawler:
+  schedule:
+    # 自动调度总开关：false 时禁用定时抓取（生产环境通过 CRAWLER_SCHEDULE_ENABLED 控制）
+    enabled: ${CRAWLER_SCHEDULE_ENABLED:true}
+
 spring:
   application:
     name: mini-novel-crawler-service
