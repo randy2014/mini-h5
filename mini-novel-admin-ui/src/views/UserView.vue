@@ -16,11 +16,12 @@
       </el-table-column>
       <el-table-column prop="vipExpireTime" label="VIP到期" width="190"><template #default="{row}">{{formatDateTime(row.vipExpireTime)}}</template></el-table-column>
       <el-table-column prop="vipSource" label="VIP来源" width="110" />
-      <el-table-column label="操作" min-width="360">
+      <el-table-column label="操作" min-width="440">
         <template #default="{ row }">
           <el-button link type="primary" @click="openVip(row)">调整VIP</el-button>
           <el-button link type="primary" @click="openInvite(row)">邀请码</el-button>
           <el-button link :type="row.status === 1 ? 'danger' : 'success'" @click="toggleStatus(row)">{{ row.status === 1 ? '禁用' : '启用' }}</el-button>
+          <el-button link type="warning" @click="resetPassword(row)">重置密码</el-button>
           <el-button link type="primary" @click="openLogs(row)">VIP记录</el-button>
         </template>
       </el-table-column>
@@ -162,6 +163,15 @@ async function toggleStatus(row) {
   await adminApi.put(`/users/${row.id}/status`, { status: row.status === 1 ? 0 : 1 });
   ElMessage.success('账号状态已更新');
   load();
+}
+async function resetPassword(row) {
+  await ElMessageBox.confirm(
+    `确认将用户「${row.nickname}」（${row.mobile || row.id}）的登录密码重置为 8 个 0（00000000）？`,
+    '重置密码',
+    { type: 'warning', confirmButtonText: '确认重置', cancelButtonText: '取消' }
+  );
+  await adminApi.put(`/users/${row.id}/reset-password`);
+  ElMessage.success('密码已重置为 00000000');
 }
 function openVip(row) {
   currentUser.value = row;

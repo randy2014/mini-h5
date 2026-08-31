@@ -29,11 +29,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/admin/users")
 public class AdminUserController {
+    private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder(12);
+    /** 后台重置密码的默认密码：8 个 0 */
+    private static final String DEFAULT_RESET_PASSWORD = "00000000";
     private final AppUserMapper appUserMapper;
     private final VipAdjustLogMapper vipAdjustLogMapper;
     private final VipInvitationService vipInvitationService;
@@ -77,6 +81,20 @@ public class AdminUserController {
         user.setStatus(request.status());
         user.setUpdatedAt(LocalDateTime.now());
         appUserMapper.updateById(user);
+        return Result.ok(appUserMapper.selectById(id));
+    }
+
+    @PutMapping("/{id}/reset-password")
+    public Result<AppUser> resetPassword(@PathVariable("id") Long id) {
+        AppUser exist = appUserMapper.selectById(id);
+        if (exist == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found.");
+        }
+        AppUser update = new AppUser();
+        update.setId(id);
+        update.setPasswordHash(PASSWORD_ENCODER.encode(DEFAULT_RESET_PASSWORD));
+        update.setUpdatedAt(LocalDateTime.now());
+        appUserMapper.updateById(update);
         return Result.ok(appUserMapper.selectById(id));
     }
 
