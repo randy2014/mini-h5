@@ -8,16 +8,15 @@ JOIN mini_novel_crawler.crawl_source src ON src.id = s.source_id
 SET s.auto_merge = 1, s.updated_at = NOW()
 WHERE s.enabled = 1 AND src.source_type = 'PUBLIC';
 
--- 2) 公开源"已发布书"的待审章节自动转回 CONTENT_READY——幂等纠正
---    场景：早期迁移把已入库的 CONTENT_READY 章节翻成 PENDING_REVIEW，
---    若该书已存在 CONTENT_READY 发布映射，说明内容已入库，无需再审核。
---    授权源（PUBLIC 之外）不受影响，保持人工审核。
+-- 2) "已发布"的待审章节自动转回 CONTENT_READY——幂等纠正
+--    判断依据：novel_source_mapping + chapter_source_mapping 中已存在该章节的发布映射
+--    （说明该章节内容已入库，无论公开源自动合并还是授权源审核通过，都无需再审核）。
+--    未发布的新章节（无映射行）保持 PENDING_REVIEW，继续走审核。
 UPDATE mini_novel_crawler.crawl_chapter_raw c
 JOIN mini_novel_crawler.crawl_book_raw b ON b.id = c.book_raw_id
-JOIN mini_novel_crawler.crawl_source src ON src.source_code = b.source_code
 JOIN mini_novel.novel_source_mapping m
   ON m.source_code = b.source_code AND m.source_book_id = b.source_book_id
+JOIN mini_novel.chapter_source_mapping csm
+  ON csm.novel_mapping_id = m.id AND csm.source_chapter_id = c.source_chapter_id
 SET c.content_status = 'CONTENT_READY', c.updated_at = NOW()
-WHERE src.source_type = 'PUBLIC'
-  AND c.content_status = 'PENDING_REVIEW'
-  AND m.content_status = 'CONTENT_READY';
+WHERE c.content_status = 'PENDING_REVIEW';
