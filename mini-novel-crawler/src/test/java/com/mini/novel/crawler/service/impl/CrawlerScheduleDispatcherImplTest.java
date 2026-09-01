@@ -12,6 +12,7 @@ import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
+import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -36,11 +37,12 @@ class CrawlerScheduleDispatcherImplTest {
     private final CrawlRankSourceMapper rankSourceMapper = mock(CrawlRankSourceMapper.class);
     private final CrawlerSourceConfigMapper sourceMapper = mock(CrawlerSourceConfigMapper.class);
     private final CrawlerExecutionService executionService = mock(CrawlerExecutionService.class);
+    private final CrawlerMergeService mergeService = mock(CrawlerMergeService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
 
     private final CrawlerScheduleDispatcherImpl dispatcher = new CrawlerScheduleDispatcherImpl(
             scheduleMapper, taskRecordMapper, mergeTaskMapper, rankSourceMapper,
-            sourceMapper, executionService, jdbcTemplate);
+            sourceMapper, executionService, mergeService, jdbcTemplate);
 
     @Test
     void dispatchesDueSchedulesForMultipleEnabledSources() {

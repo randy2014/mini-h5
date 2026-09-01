@@ -404,6 +404,20 @@ public class CrawlerConfigController {
             task.updatedAt = now;
             taskRecordMapper.insert(task);
             createdTasks.add(task);
+
+            if (schedule.autoMerge == null || schedule.autoMerge) {
+                CrawlMergeTask mergeTask = new CrawlMergeTask();
+                mergeTask.crawlTaskId = task.id;
+                mergeTask.status = "PENDING";
+                mergeTask.totalCount = 0;
+                mergeTask.mergedCount = 0;
+                mergeTask.pendingReviewCount = 0;
+                mergeTask.failedCount = 0;
+                mergeTask.message = "Merge will run when this rank task has ready books.";
+                mergeTask.createdAt = now;
+                mergeTask.updatedAt = now;
+                mergeTaskMapper.insert(mergeTask);
+            }
         }
         if (!createdTasks.isEmpty()) {
             schedule.lastRunAt = now;

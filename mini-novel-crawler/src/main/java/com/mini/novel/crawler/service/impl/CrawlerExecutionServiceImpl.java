@@ -711,6 +711,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private boolean upsertChaptersAndContent(CrawlerSourceConfig source, CrawlBookRaw book, ParsedBookSnapshot snapshot) {
+        boolean reviewSource = isReviewRequiredSource(source);
         List<ParsedChapterSnapshot> chapters = snapshot.chapters();
         if (chapters == null || chapters.isEmpty()) {
             upsertChapterAndContent(source, book, snapshot, null);
@@ -727,9 +728,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     .eq("source_chapter_id", sourceChapterId)
                     .last("LIMIT 1"));
             if (isTerminalChapter(existing)) {
-                if ("PENDING_REVIEW".equals(existing.contentStatus) || "CONTENT_READY".equals(existing.contentStatus)) {
-                    readyCount++;
-                }
+                readyCount++;
                 continue;
             }
             ParsedBookSnapshot chapterSnapshot = new ParsedBookSnapshot(
@@ -747,11 +746,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                     .eq("book_raw_id", book.id)
                     .eq("source_chapter_id", sourceChapterId)
                     .last("LIMIT 1"));
-            if (raw != null && "PENDING_REVIEW".equals(raw.contentStatus)) {
+            if (raw != null && isContentReadyForSource(raw.contentStatus, reviewSource)) {
                 readyCount++;
             }
         }
-        book.contentStatus = readyCount > 0 ? "PENDING_REVIEW" : "CATALOG_READY";
+        book.contentStatus = readyCount > 0 ? (reviewSource ? "PENDING_REVIEW" : "CONTENT_READY") : "CATALOG_READY";
         bookRawMapper.updateById(book);
         return completed;
     }
@@ -793,6 +792,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             matchedBySourceUrl = chapter != null;
         }
         if (hasExistingContent(chapter)) {
+            // 公开源免审核：历史遗留的 PENDING_REVIEW 章节有正文时直接晋升为 CONTENT_READY
+            if (!isReviewRequiredSource(source) && "PENDING_REVIEW".equals(chapter.contentStatus)) {
+                chapter.contentStatus = "CONTENT_READY";
+                chapter.updatedAt = LocalDateTime.now();
+                chapterRawMapper.updateById(chapter);
+            }
             return;
         }
         if (chapter == null) {
@@ -834,10 +839,11 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (!StringUtils.hasText(content)) {
             content = fetchPublicChapterContent(snapshot.chapterUrl(), source);
         }
+        boolean reviewSource = isReviewRequiredSource(source);
         if (StringUtils.hasText(content)) {
             chapter.contentHash = sha256(content);
-            chapter.contentStatus = "PENDING_REVIEW";
-            book.contentStatus = "PENDING_REVIEW";
+            chapter.contentStatus = reviewSource ? "PENDING_REVIEW" : "CONTENT_READY";
+            book.contentStatus = chapter.contentStatus;
             bookRawMapper.updateById(book);
         }
         if (chapter.id == null) {
@@ -845,9 +851,21 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         } else {
             chapterRawMapper.updateById(chapter);
         }
-        if (StringUtils.hasText(content) && "PENDING_REVIEW".equals(chapter.contentStatus)) {
+        if (StringUtils.hasText(content) && isContentReadyForSource(chapter.contentStatus, reviewSource)) {
             upsertContent(chapter, content);
         }
+    }
+
+    /** 授权 VIP 源内容需人工审核；公开源内容直接发布入库。 */
+    private boolean isReviewRequiredSource(CrawlerSourceConfig source) {
+        return source != null && "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType);
+    }
+
+    private boolean isContentReadyForSource(String contentStatus, boolean reviewSource) {
+        if (reviewSource) {
+            return "PENDING_REVIEW".equals(contentStatus);
+        }
+        return "CONTENT_READY".equals(contentStatus);
     }
 
     private boolean hasExistingContent(CrawlChapterRaw chapter) {

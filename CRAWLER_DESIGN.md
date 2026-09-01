@@ -46,18 +46,20 @@ rank/category page
   -> book detail
   -> catalog/chapter list
   -> chapter page(s)
-  -> raw staging tables (all chapters become PENDING_REVIEW)
-  -> content review queue (admin approves/rejects each chapter or book)
-  -> approved chapters are published into business tables
+  -> raw staging tables
+  -> PUBLIC sources (23qb): chapters become CONTENT_READY, auto-merged into business tables
+  -> AUTHORIZED_VIP sources (h528/69hnovel): chapters become PENDING_REVIEW, content review queue
+  -> approved VIP chapters are published into business tables
   -> H5 reader
 ```
 
 Since the 2026-09-01 refactor:
 
 - The authorized-book list feature and all content filter rules (risk keyword blocking, reject patterns, minimum-length checks) were removed.
-- Every crawled chapter with body content is queued as `PENDING_REVIEW` in `crawl_chapter_raw`; the body is stored in `crawl_content_raw`.
-- The content review flow (`/crawler/content-review`) is the single gate into the novel library. An administrator approves or rejects chapters (individually, per book, or in batches up to 100). Approved chapters are published into `mini_novel.novel` / `mini_novel.chapter` together with source mappings.
-- Auto-merge after crawl is disabled; the clean-merge service is dormant and only processes legacy `CONTENT_READY` books, never `PENDING_REVIEW` ones.
+- Public source (`23qb_public`) content is published directly: crawled chapters become `CONTENT_READY` and the clean-merge service writes them into the business tables automatically (auto_merge on the schedule). No review needed.
+- Authorized VIP sources (`h528_authorized`, `novel69h_authorized`) go through the content review flow: every crawled chapter with body content is queued as `PENDING_REVIEW` in `crawl_chapter_raw`; the body is stored in `crawl_content_raw`.
+- The content review flow (`/crawler/content-review`) is the gate for VIP-source content. An administrator approves or rejects chapters (individually, per book, or in batches up to 100). Approved chapters are published into `mini_novel.novel` / `mini_novel.chapter` together with source mappings.
+- The clean-merge service only processes `CONTENT_READY` books; it never touches `PENDING_REVIEW` ones (VIP-source content can only enter the library through review approval).
 
 ## Staging Tables
 
