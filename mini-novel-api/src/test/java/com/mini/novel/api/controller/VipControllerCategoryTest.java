@@ -93,12 +93,12 @@ class VipControllerCategoryTest {
     }
 
     @Test
-    void vipBooksQueryUsesAuthorizedVipMappingAndApprovalAuditInsteadOfHardcodedSourceDomain() {
+    void vipBooksQueryUsesAuthorizedVipSourceMappingInsteadOfHardcodedSourceDomain() {
         String sql = controller.vipBooksQuery("all", java.util.Set.of()).getSqlSegment();
 
         assertTrue(sql.contains("AUTHORIZED_VIP"));
         assertTrue(sql.contains("novel_source_mapping"));
-        assertTrue(sql.contains("crawler_authorized_book_audit"));
+        assertFalse(sql.contains("crawler_authorized_book"));
         assertFalse(sql.contains("book.xbookcn.net"));
     }
 

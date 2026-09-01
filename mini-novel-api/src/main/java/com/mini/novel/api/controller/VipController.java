@@ -107,17 +107,8 @@ public class VipController {
                         JOIN mini_novel_crawler.crawl_source vip_source
                           ON vip_source.source_code = vip_mapping.source_code
                          AND vip_source.source_type = 'AUTHORIZED_VIP'
-                        JOIN mini_novel_crawler.crawler_authorized_book vip_authorized
-                          ON vip_authorized.source_code = vip_mapping.source_code
-                         AND vip_authorized.source_book_id = vip_mapping.source_book_id
                         WHERE vip_mapping.novel_id = novel.id
                           AND vip_mapping.content_status = 'CONTENT_READY'
-                          AND EXISTS (
-                              SELECT 1
-                              FROM mini_novel_crawler.crawler_authorized_book_audit vip_audit
-                              WHERE vip_audit.authorized_book_id = vip_authorized.id
-                                AND vip_audit.action LIKE '%APPROVE%'
-                          )
                         """)
                 .exists("SELECT 1 FROM chapter vip_chapter WHERE vip_chapter.novel_id = novel.id");
         String key = StringUtils.hasText(category) ? category.trim().toLowerCase(Locale.ROOT) : CATEGORY_ALL;

@@ -8,10 +8,12 @@
     <el-card>
       <div class="bar">
         <el-select v-model="sourceCode" style="width:260px" @change="switchSource">
+          <el-option label="全部来源" value="" />
+          <el-option label="23QB 公开源" value="23qb_public" />
           <el-option label="H528 授权源" value="h528_authorized" />
           <el-option label="69H Novel 授权源" value="novel69h_authorized" />
         </el-select>
-        <el-alert title="仅展示 AUTHORIZED_VIP 隔离内容；免费来源不会进入此审核入口。" type="warning" :closable="false" />
+        <el-alert title="统一审核流：所有源爬取到的章节正文都会进入此队列，审核通过后进入小说库。" type="info" :closable="false" />
       </div>
       <div class="actions">
         <el-button type="success" :disabled="!selectedBooks.length || batchLoading" :loading="batchLoading" @click="batchBookRows('APPROVE')">批量批准当前页（{{ selectedBooks.length }} 本）</el-button>
@@ -25,7 +27,7 @@
         <el-table-column prop="chapterCount" label="目录章节" width="90" />
         <el-table-column prop="reviewableCount" label="可审核正文" width="105" />
         <el-table-column prop="recrawlCount" label="待重采" width="85" />
-        <el-table-column prop="blockedCount" label="硬拦截" width="85" />
+        <el-table-column prop="rejectedCount" label="已拒绝" width="85" />
         <el-table-column label="风险标签" min-width="180">
           <template #default="{ row }"><el-tag v-for="tag in row.riskLabels" :key="tag" type="warning" class="tag">{{ tag }}</el-tag></template>
         </el-table-column>
@@ -35,7 +37,7 @@
     </el-card>
 
     <el-drawer v-model="drawer" size="80%" :title="current ? `${current.title} - 章节审核` : '章节审核'">
-      <el-alert v-if="current" :title="`目录 ${current.chapterCount} 章，可审核 ${current.reviewableCount} 章，待重采 ${current.recrawlCount} 章，硬拦截 ${current.blockedCount} 章`" type="info" :closable="false" />
+      <el-alert v-if="current" :title="`目录 ${current.chapterCount} 章，可审核 ${current.reviewableCount} 章，待重采 ${current.recrawlCount} 章，已拒绝 ${current.rejectedCount} 章`" type="info" :closable="false" />
       <div class="actions">
         <el-button type="success" :disabled="!selected.length || batchLoading" :loading="batchLoading" @click="batchDecision('APPROVE')">批量批准（{{ selected.length }}）</el-button>
         <el-button type="danger" :disabled="!selected.length || batchLoading" :loading="batchLoading" @click="batchDecision('REJECT')">批量拒绝（{{ selected.length }}）</el-button>
@@ -55,7 +57,6 @@
             <el-button link type="danger" :disabled="batchLoading" @click="decideChapter(row, 'REJECT')">拒绝</el-button>
           </template>
           <span v-else-if="row.reviewState === 'MISSING'" class="hint">待重新采集</span>
-          <span v-else-if="row.reviewState === 'EXPLICIT_MINOR_BLOCKED'" class="blocked">禁止审核通过</span>
         </template></el-table-column>
       </el-table>
       <el-pagination v-model:current-page="chapterPage" :page-size="chapterPageSize" :total="chapters.length" layout="total,prev,pager,next" @current-change="clearSelection" />
@@ -72,7 +73,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { crawlerApi } from '../services/http'
 
-const sourceCode = ref('h528_authorized')
+const sourceCode = ref('')
 const summary = ref({})
 const books = ref([])
 const selectedBooks = ref([])
@@ -96,7 +97,7 @@ const cards = computed(() => [
   { label: '待审状态总数', value: summary.value.pendingTotal || 0 },
   { label: '可审核正文数', value: summary.value.reviewableTotal || 0 },
   { label: '待重新采集数', value: summary.value.recrawlTotal || 0 },
-  { label: '硬拦截数', value: summary.value.blockedTotal || 0 }
+  { label: '已拒绝数', value: summary.value.rejectedTotal || 0 }
 ])
 const pagedChapters = computed(() => chapters.value.slice((chapterPage.value - 1) * chapterPageSize, chapterPage.value * chapterPageSize))
 const pageReviewable = computed(() => pagedChapters.value.filter(isReviewable))
@@ -177,8 +178,8 @@ async function refresh() {
   const row = books.value.find(item => item.bookRawId === current.value?.bookRawId)
   if (row) { current.value = row; await loadChapters() } else { drawer.value = false; current.value = null }
 }
-function stateText(value) { return { CONTENT_READY: '正文已通过', PENDING_REVIEW: '待人工审核', EXPLICIT_MINOR_BLOCKED: '明确未成年人硬拦截', MISSING: '待重新采集', REVIEW_REJECTED: '已拒绝' }[value] || value }
-function stateType(value) { return { CONTENT_READY: 'success', PENDING_REVIEW: 'warning', EXPLICIT_MINOR_BLOCKED: 'danger', MISSING: 'info', REVIEW_REJECTED: 'danger' }[value] || 'info' }
+function stateText(value) { return { CONTENT_READY: '正文已通过', PENDING_REVIEW: '待人工审核', MISSING: '待重新采集', REVIEW_REJECTED: '已拒绝' }[value] || value }
+function stateType(value) { return { CONTENT_READY: 'success', PENDING_REVIEW: 'warning', MISSING: 'info', REVIEW_REJECTED: 'danger' }[value] || 'info' }
 onMounted(load)
 </script>
 

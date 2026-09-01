@@ -46,12 +46,18 @@ rank/category page
   -> book detail
   -> catalog/chapter list
   -> chapter page(s)
-  -> raw staging tables
-  -> quality checks and cleaning
-  -> source mapping / duplicate recognition
-  -> business tables
+  -> raw staging tables (all chapters become PENDING_REVIEW)
+  -> content review queue (admin approves/rejects each chapter or book)
+  -> approved chapters are published into business tables
   -> H5 reader
 ```
+
+Since the 2026-09-01 refactor:
+
+- The authorized-book list feature and all content filter rules (risk keyword blocking, reject patterns, minimum-length checks) were removed.
+- Every crawled chapter with body content is queued as `PENDING_REVIEW` in `crawl_chapter_raw`; the body is stored in `crawl_content_raw`.
+- The content review flow (`/crawler/content-review`) is the single gate into the novel library. An administrator approves or rejects chapters (individually, per book, or in batches up to 100). Approved chapters are published into `mini_novel.novel` / `mini_novel.chapter` together with source mappings.
+- Auto-merge after crawl is disabled; the clean-merge service is dormant and only processes legacy `CONTENT_READY` books, never `PENDING_REVIEW` ones.
 
 ## Staging Tables
 

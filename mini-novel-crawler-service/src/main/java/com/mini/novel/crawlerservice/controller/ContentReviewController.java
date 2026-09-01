@@ -2,8 +2,6 @@ package com.mini.novel.crawlerservice.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mini.novel.common.result.Result;
-import com.mini.novel.crawler.entity.CrawlerAuthorizedBookAudit;
-import com.mini.novel.crawler.mapper.CrawlerAuthorizedBookAuditMapper;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -30,23 +28,24 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Unified content review flow: every crawled chapter lands here as PENDING_REVIEW
+ * (with its body in crawl_content_raw). An administrator approves or rejects it;
+ * approved chapters are published into the business novel/chapter tables.
+ */
 @RestController
 @RequestMapping("/crawler/content-review")
 public class ContentReviewController {
-    private static final String DEFAULT_SOURCE = "xbookcn_authorized";
     private static final int MAX_BATCH_SIZE = 100;
-    private static final Set<String> BATCH_REVIEW_SOURCES = Set.of("h528_authorized", "novel69h_authorized");
     private final JdbcTemplate jdbc;
-    private final CrawlerAuthorizedBookAuditMapper audits;
     private final ObjectMapper json;
     private final String adminToken;
     private final TransactionTemplate transactionTemplate;
 
-    public ContentReviewController(JdbcTemplate jdbc, CrawlerAuthorizedBookAuditMapper audits, ObjectMapper json,
+    public ContentReviewController(JdbcTemplate jdbc, ObjectMapper json,
                                    @Value("${admin.review-token:dev-admin-token}") String adminToken,
                                    PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
-        this.audits = audits;
         this.json = json;
         this.adminToken = adminToken;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -56,19 +55,26 @@ public class ContentReviewController {
     public Result<Map<String, Object>> summary(@RequestHeader(value = "X-Admin-Token", required = false) String token,
                                                @RequestParam(required = false) String sourceCode) {
         requireAdmin(token);
-        String source = authorizedVipSource(sourceCode);
+        String source = validateSource(sourceCode);
         String sql = """
             SELECT
               SUM(c.content_status='PENDING_REVIEW') pendingTotal,
               SUM(c.content_status='PENDING_REVIEW' AND r.id IS NOT NULL) reviewableTotal,
               SUM(c.content_status='PENDING_REVIEW' AND r.id IS NULL) recrawlTotal,
-              SUM(c.content_status='RISK_BLOCKED') blockedTotal
+              SUM(c.content_status='REVIEW_REJECTED') rejectedTotal
             FROM mini_novel_crawler.crawl_chapter_raw c
             JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
-            WHERE b.source_code=?
+            %s
             """;
-        return Result.ok(nonNullCounts(jdbc.queryForMap(sql, source)));
+        Map<String, Object> params = new LinkedHashMap<>();
+        String where = "";
+        if (StringUtils.hasText(source)) {
+            where = "WHERE b.source_code=?";
+            params.put("p", source);
+        }
+        Map<String, Object> counts = jdbc.queryForMap(sql.formatted(where), params.values().toArray());
+        return Result.ok(nonNullCounts(counts));
     }
 
     @GetMapping("/books")
@@ -77,16 +83,21 @@ public class ContentReviewController {
                                              @RequestParam(defaultValue = "1") int page,
                                              @RequestParam(defaultValue = "20") int size) {
         requireAdmin(token);
-        String source = authorizedVipSource(sourceCode);
+        String source = validateSource(sourceCode);
         int safeSize = Math.max(1, Math.min(100, size));
         int safePage = Math.max(1, page);
-        String where = " b.source_code=? AND c.content_status IN ('PENDING_REVIEW','RISK_BLOCKED','ENTRY_READY','REVIEW_REJECTED') ";
-        Long total = jdbc.queryForObject("SELECT COUNT(DISTINCT b.id) FROM mini_novel_crawler.crawl_book_raw b JOIN mini_novel_crawler.crawl_chapter_raw c ON c.book_raw_id=b.id WHERE" + where, Long.class, source);
+        String where = " c.content_status IN ('PENDING_REVIEW','ENTRY_READY','REVIEW_REJECTED') ";
+        if (StringUtils.hasText(source)) {
+            where += " AND b.source_code=? ";
+        }
+        String countSql = "SELECT COUNT(DISTINCT b.id) FROM mini_novel_crawler.crawl_book_raw b"
+                + " JOIN mini_novel_crawler.crawl_chapter_raw c ON c.book_raw_id=b.id WHERE" + where;
+        Object countParam = StringUtils.hasText(source) ? new Object[]{source} : new Object[0];
+        Long total = jdbc.queryForObject(countSql, Long.class, countParam);
         String sql = """
             SELECT b.id bookRawId,b.title,b.source_code sourceCode,COUNT(*) chapterCount,
               SUM(c.content_status='PENDING_REVIEW' AND r.id IS NOT NULL) reviewableCount,
               SUM(c.content_status='PENDING_REVIEW' AND r.id IS NULL) recrawlCount,
-              SUM(c.content_status='RISK_BLOCKED') blockedCount,
               SUM(c.content_status='ENTRY_READY') missingCount,
               SUM(c.content_status='CONTENT_READY') readyCount,
               SUM(c.content_status='REVIEW_REJECTED') rejectedCount,
@@ -94,12 +105,19 @@ public class ContentReviewController {
             FROM mini_novel_crawler.crawl_book_raw b
             JOIN mini_novel_crawler.crawl_chapter_raw c ON c.book_raw_id=b.id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
-            WHERE b.source_code=?
+            %s
             GROUP BY b.id,b.title,b.source_code
-            HAVING reviewableCount>0 OR recrawlCount>0 OR blockedCount>0 OR missingCount>0 OR rejectedCount>0
-            ORDER BY reviewableCount DESC,recrawlCount DESC,blockedCount DESC,b.id DESC LIMIT ? OFFSET ?
+            HAVING reviewableCount>0 OR recrawlCount>0 OR missingCount>0 OR rejectedCount>0
+            ORDER BY reviewableCount DESC,recrawlCount DESC,b.id DESC LIMIT ? OFFSET ?
             """;
-        List<Map<String, Object>> records = jdbc.queryForList(sql, source, safeSize, (safePage - 1) * safeSize);
+        List<Object> params = new ArrayList<>();
+        if (StringUtils.hasText(source)) {
+            params.add(source);
+        }
+        params.add(safeSize);
+        params.add((safePage - 1) * safeSize);
+        List<Map<String, Object>> records = jdbc.queryForList(sql.formatted(StringUtils.hasText(source) ? "WHERE b.source_code=?" : ""),
+                params.toArray());
         records.forEach(this::decorateBook);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("records", records); out.put("total", total == null ? 0 : total); out.put("page", safePage); out.put("size", safeSize);
@@ -111,7 +129,8 @@ public class ContentReviewController {
                                                        @RequestParam(required = false) String sourceCode,
                                                        @PathVariable Long bookRawId) {
         requireAdmin(token);
-        verifyBook(bookRawId, sourceCode);
+        String source = validateSource(sourceCode);
+        verifyBook(bookRawId, source);
         String sql = """
             SELECT c.id chapterRawId,c.chapter_no chapterNo,c.title,c.content_status contentStatus,
                    COALESCE(r.content_length,0) contentLength,r.id contentRawId
@@ -129,14 +148,18 @@ public class ContentReviewController {
                                                @RequestParam(required = false) String sourceCode,
                                                @PathVariable Long chapterRawId) {
         requireAdmin(token);
-        String source = authorizedVipSource(sourceCode);
-        List<Map<String, Object>> rows = jdbc.queryForList("""
+        String source = validateSource(sourceCode);
+        String sql = """
             SELECT c.id chapterRawId,c.title,r.content,r.content_length contentLength
             FROM mini_novel_crawler.crawl_chapter_raw c
             JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
-            WHERE c.id=? AND b.source_code=? AND c.content_status='PENDING_REVIEW' LIMIT 1
-            """, chapterRawId, source);
+            WHERE c.id=? AND c.content_status='PENDING_REVIEW' %s LIMIT 1
+            """;
+        Object[] params = StringUtils.hasText(source)
+                ? new Object[]{chapterRawId, source}
+                : new Object[]{chapterRawId};
+        List<Map<String, Object>> rows = jdbc.queryForList(sql.formatted(StringUtils.hasText(source) ? "AND b.source_code=?" : ""), params);
         if (rows.isEmpty()) throw new IllegalArgumentException("Chapter has no isolated pending-review content.");
         return Result.ok(rows.get(0));
     }
@@ -154,14 +177,11 @@ public class ContentReviewController {
     @PostMapping("/chapters/batch-decision")
     public Result<Map<String, Object>> decideChapters(@RequestHeader(value = "X-Admin-Token", required = false) String token,
                                                        @RequestHeader(value = "X-Operator-Id", defaultValue = "0") Long operatorId,
-                                                       @RequestParam String sourceCode,
+                                                       @RequestParam(required = false) String sourceCode,
                                                        @RequestBody BatchDecision request) {
         requireAdmin(token);
         validateBatchDecision(request, operatorId);
-        if (!isBatchReviewSource(sourceCode)) {
-            throw new IllegalArgumentException("Batch review is limited to h528_authorized and novel69h_authorized.");
-        }
-        authorizedVipSource(sourceCode);
+        validateSource(sourceCode);
         List<Long> ids = uniqueBatchIds(request.chapterRawIds);
         List<Map<String, Object>> results = new ArrayList<>();
         int success = 0;
@@ -189,12 +209,10 @@ public class ContentReviewController {
                                                       Long operatorId, String actionPrefix) {
         Map<String, Object> chapter = chapterForUpdate(chapterRawId, sourceCode);
         String before = Objects.toString(chapter.get("contentStatus"), "");
-        if ("RISK_BLOCKED".equals(before)) throw new IllegalArgumentException("Explicit-minor hard-blocked chapters cannot be approved or changed here.");
         if (!"PENDING_REVIEW".equals(before) || chapter.get("contentRawId") == null) throw new IllegalArgumentException("Only pending chapters with isolated content can be reviewed.");
         String after = "APPROVE".equals(request.decision) ? "CONTENT_READY" : "REVIEW_REJECTED";
         jdbc.update("UPDATE mini_novel_crawler.crawl_chapter_raw SET content_status=?,updated_at=NOW() WHERE id=?", after, chapterRawId);
         if ("APPROVE".equals(request.decision)) publishChapter(chapter, operatorId); else unpublishChapter(chapter);
-        audit(chapter, before, after, operatorId, actionPrefix + request.decision, request.remark);
         recomputeBook(((Number) chapter.get("bookRawId")).longValue());
         return Map.of("chapterRawId", chapterRawId, "success", true, "before", before, "after", after);
     }
@@ -213,9 +231,8 @@ public class ContentReviewController {
             WHERE c.book_raw_id=? AND c.content_status='PENDING_REVIEW' FOR UPDATE
             """, bookRawId);
         if (pending.isEmpty()) throw new IllegalArgumentException("This book has no reviewable pending chapters.");
-        long blocked = count(bookRawId, "RISK_BLOCKED");
         long missing = pending.stream().filter(row -> row.get("contentRawId") == null).count() + count(bookRawId, "ENTRY_READY");
-        if ("APPROVE".equals(request.decision) && (blocked > 0 || missing > 0)) throw new IllegalArgumentException("Book approval requires no hard-blocked or missing chapters.");
+        if ("APPROVE".equals(request.decision) && missing > 0) throw new IllegalArgumentException("Book approval requires no missing chapters.");
         List<Map<String, Object>> reviewable = pending.stream().filter(row -> row.get("contentRawId") != null).toList();
         if (reviewable.isEmpty()) throw new IllegalArgumentException("This book has no isolated content available for review.");
         String after = "APPROVE".equals(request.decision) ? "CONTENT_READY" : "REVIEW_REJECTED";
@@ -225,14 +242,12 @@ public class ContentReviewController {
             chapter.put("sourceCode", book.get("sourceCode")); chapter.put("sourceBookId", book.get("sourceBookId"));
             Map<String, Object> fullChapter = chapterForUpdate(chapterId, sourceCode);
             if ("APPROVE".equals(request.decision)) publishChapter(fullChapter, operatorId); else unpublishChapter(fullChapter);
-            audit(chapter, "PENDING_REVIEW", after, operatorId, "BOOK_CHAPTER_REVIEW_" + request.decision, request.remark);
         }
         String bookStatus = recomputeBook(bookRawId);
         return Result.ok(Map.of("bookRawId", bookRawId, "reviewedChapters", reviewable.size(), "contentStatus", bookStatus));
     }
 
     static String reviewState(String status, boolean hasContent) {
-        if ("RISK_BLOCKED".equals(status)) return "EXPLICIT_MINOR_BLOCKED";
         if ("PENDING_REVIEW".equals(status)) return hasContent ? "PENDING_REVIEW" : "MISSING";
         if ("CONTENT_READY".equals(status)) return "CONTENT_READY";
         if ("REVIEW_REJECTED".equals(status)) return "REVIEW_REJECTED";
@@ -262,37 +277,51 @@ public class ContentReviewController {
     static List<Long> uniqueBatchIds(List<Long> ids) {
         return ids == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(ids));
     }
-    static boolean isBatchReviewSource(String sourceCode) { return BATCH_REVIEW_SOURCES.contains(sourceCode); }
     private String safeFailureReason(RuntimeException error) {
         String message = error.getMessage();
         return StringUtils.hasText(message) ? message : "Review failed and this item was rolled back.";
     }
-    private String authorizedVipSource(String sourceCode) {
-        String source = StringUtils.hasText(sourceCode) ? sourceCode : DEFAULT_SOURCE;
-        List<String> rows = jdbc.query("SELECT source_code FROM mini_novel_crawler.crawl_source WHERE source_code=? AND source_type='AUTHORIZED_VIP' LIMIT 1",
-                (rs, row) -> rs.getString(1), source);
-        if (rows.isEmpty()) {
-            throw new IllegalArgumentException("Review source must be an AUTHORIZED_VIP source.");
+    private String validateSource(String sourceCode) {
+        if (!StringUtils.hasText(sourceCode)) {
+            return "";
         }
-        return source;
+        List<String> rows = jdbc.query("SELECT source_code FROM mini_novel_crawler.crawl_source WHERE source_code=? LIMIT 1",
+                (rs, row) -> rs.getString(1), sourceCode);
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("Review source does not exist.");
+        }
+        return sourceCode;
+    }
+    private boolean isVipSource(String sourceCode) {
+        if (!StringUtils.hasText(sourceCode)) {
+            return false;
+        }
+        List<String> rows = jdbc.query("SELECT source_type FROM mini_novel_crawler.crawl_source WHERE source_code=? LIMIT 1",
+                (rs, row) -> rs.getString(1), sourceCode);
+        return !rows.isEmpty() && "AUTHORIZED_VIP".equalsIgnoreCase(rows.get(0));
     }
 
     private Map<String, Object> verifyBook(Long id, String sourceCode) {
-        String source = authorizedVipSource(sourceCode);
-        List<Map<String, Object>> rows = jdbc.queryForList("SELECT id bookRawId,source_code sourceCode,source_book_id sourceBookId,title,content_status contentStatus FROM mini_novel_crawler.crawl_book_raw WHERE id=? AND source_code=? LIMIT 1", id, source);
+        String sql = "SELECT id bookRawId,source_code sourceCode,source_book_id sourceBookId,title,content_status contentStatus FROM mini_novel_crawler.crawl_book_raw WHERE id=? %s LIMIT 1";
+        List<Map<String, Object>> rows = StringUtils.hasText(sourceCode)
+                ? jdbc.queryForList(sql.formatted("AND source_code=?"), id, sourceCode)
+                : jdbc.queryForList(sql.formatted(""), id);
         if (rows.isEmpty()) throw new IllegalArgumentException("Review book does not exist."); return rows.get(0);
     }
     private Map<String, Object> chapterForUpdate(Long id, String sourceCode) {
-        String source = authorizedVipSource(sourceCode);
-        List<Map<String, Object>> rows = jdbc.queryForList("""
+        String sql = """
             SELECT c.id chapterRawId,c.book_raw_id bookRawId,c.content_status contentStatus,r.id contentRawId,
-                   c.chapter_no chapterNo,c.source_chapter_id sourceChapterId,c.title chapterTitle,c.source_url chapterSourceUrl,r.content,r.content_hash contentHash,
+                   c.chapter_no chapterNo,c.source_chapter_id sourceChapterId,c.title chapterTitle,c.source_url chapterSourceUrl,
+                   c.vip vip,r.content,r.content_hash contentHash,
                    b.source_code sourceCode,b.source_book_id sourceBookId,b.source_url bookSourceUrl,
                    b.title bookTitle,b.author,b.intro,b.cover_url coverUrl,b.category_name categoryName
             FROM mini_novel_crawler.crawl_chapter_raw c JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
-            WHERE c.id=? AND b.source_code=? FOR UPDATE
-            """, id, source);
+            WHERE c.id=? %s FOR UPDATE
+            """;
+        List<Map<String, Object>> rows = StringUtils.hasText(sourceCode)
+                ? jdbc.queryForList(sql.formatted("AND b.source_code=?"), id, sourceCode)
+                : jdbc.queryForList(sql.formatted(""), id);
         if (rows.isEmpty()) throw new IllegalArgumentException("Review chapter does not exist."); return rows.get(0);
     }
     private long count(Long bookId, String status) {
@@ -300,21 +329,13 @@ public class ContentReviewController {
         return value == null ? 0 : value;
     }
     private String recomputeBook(Long bookId) {
-        long blocked = count(bookId, "RISK_BLOCKED"), pending = count(bookId, "PENDING_REVIEW"), missing = count(bookId, "ENTRY_READY"), rejected = count(bookId, "REVIEW_REJECTED");
-        String status = blocked > 0 || pending > 0 || missing > 0 ? "PENDING_REVIEW" : rejected > 0 ? "REVIEW_REJECTED" : "PUBLISH_READY";
+        long pending = count(bookId, "PENDING_REVIEW"), missing = count(bookId, "ENTRY_READY"), rejected = count(bookId, "REVIEW_REJECTED");
+        String status = pending > 0 || missing > 0 ? "PENDING_REVIEW" : rejected > 0 ? "REVIEW_REJECTED" : "PUBLISH_READY";
         jdbc.update("UPDATE mini_novel_crawler.crawl_book_raw SET content_status=?,updated_at=NOW() WHERE id=?", status, bookId);
         return status;
     }
     private void publishChapter(Map<String, Object> chapter, Long operatorId) {
-        Map<String, Object> permission = jdbc.queryForMap("""
-            SELECT authorization_status authorizationStatus,review_status reviewStatus,risk_level riskLevel,
-                   allow_store allowStore,allow_display allowDisplay,allow_vip_display allowVipDisplay
-            FROM mini_novel_crawler.crawler_authorized_book WHERE source_code=? AND source_book_id=? LIMIT 1
-            """, chapter.get("sourceCode"), chapter.get("sourceBookId"));
-        if (!"AUTHORIZED".equals(permission.get("authorizationStatus")) || !"APPROVED".equals(permission.get("reviewStatus")) || "BLOCKED".equals(permission.get("riskLevel"))
-                || !truthy(permission.get("allowStore")) || !truthy(permission.get("allowDisplay")) || !truthy(permission.get("allowVipDisplay"))) {
-            throw new IllegalArgumentException("Authorized VIP store/display permissions are required before chapter approval.");
-        }
+        boolean vipSource = isVipSource(Objects.toString(chapter.get("sourceCode"), ""));
         String publicationUrl = chapter.get("bookSourceUrl") + "#rawBook=" + chapter.get("bookRawId");
         List<Long> ids = jdbc.query("SELECT id FROM mini_novel.novel WHERE source_url IN (?,?) ORDER BY source_url=? DESC LIMIT 1",
                 (rs, row) -> rs.getLong(1), publicationUrl, chapter.get("bookSourceUrl"), publicationUrl);
@@ -323,33 +344,63 @@ public class ContentReviewController {
             jdbc.update("""
                 INSERT INTO mini_novel.novel(title,author,cover_url,intro,status,vip_required,free_chapter_count,
                   word_count,source_url,operator_id,created_at,updated_at)
-                VALUES(?,?,?,?,1,1,0,0,?,?,NOW(),NOW())
+                VALUES(?,?,?,?,1,?,?,0,?,?,NOW(),NOW())
                 """, chapter.get("bookTitle"), Objects.toString(chapter.get("author"), ""), chapter.get("coverUrl"),
-                    chapter.get("intro"), publicationUrl, operatorId);
+                    chapter.get("intro"), vipSource ? 1 : 0, vipSource ? 0 : 999999, publicationUrl, operatorId);
             novelId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         } else {
             novelId = ids.get(0);
-            jdbc.update("UPDATE mini_novel.novel SET status=1,vip_required=1,free_chapter_count=0,offline_reason=NULL,offline_at=NULL,operator_id=?,updated_at=NOW() WHERE id=?", operatorId, novelId);
+            jdbc.update("UPDATE mini_novel.novel SET status=1,vip_required=?,free_chapter_count=?,offline_reason=NULL,offline_at=NULL,operator_id=?,updated_at=NOW() WHERE id=?",
+                    vipSource ? 1 : 0, vipSource ? 0 : 999999, operatorId, novelId);
         }
-        syncVipCategory(chapter, novelId);
+        if (vipSource) {
+            syncVipCategory(chapter, novelId);
+        } else {
+            syncPublicCategory(chapter, novelId);
+        }
         Long mappedChapterId = mappedChapterId(chapter, novelId);
+        int isVip = vipSource || truthy(chapter.get("vip")) ? 1 : 0;
         if (mappedChapterId != null) {
             jdbc.update("""
                 UPDATE mini_novel.chapter
-                SET chapter_no=?,title=?,content=?,is_vip=1,price_coin=0,source_url=?,updated_at=NOW()
+                SET chapter_no=?,title=?,content=?,is_vip=?,price_coin=0,source_url=?,updated_at=NOW()
                 WHERE id=? AND novel_id=?
                 """, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"),
-                    chapter.get("chapterSourceUrl"), mappedChapterId, novelId);
+                    isVip, chapter.get("chapterSourceUrl"), mappedChapterId, novelId);
         } else {
             assertChapterSlotIsStable(chapter, novelId);
             jdbc.update("""
                 INSERT INTO mini_novel.chapter(novel_id,chapter_no,title,content,is_vip,price_coin,source_url,created_at,updated_at)
-                VALUES(?,?,?,?,1,0,?,NOW(),NOW())
-                ON DUPLICATE KEY UPDATE title=VALUES(title),content=VALUES(content),is_vip=1,source_url=VALUES(source_url),updated_at=NOW()
-                """, novelId, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"), chapter.get("chapterSourceUrl"));
+                VALUES(?,?,?,?,?,0,?,NOW(),NOW())
+                ON DUPLICATE KEY UPDATE title=VALUES(title),content=VALUES(content),is_vip=VALUES(is_vip),source_url=VALUES(source_url),updated_at=NOW()
+                """, novelId, chapter.get("chapterNo"), chapter.get("chapterTitle"), chapter.get("content"), isVip, chapter.get("chapterSourceUrl"));
         }
         syncChapterMapping(chapter, novelId);
-        refreshNovel(novelId);
+        refreshNovel(novelId, vipSource);
+    }
+
+    private void syncPublicCategory(Map<String, Object> chapter, Long novelId) {
+        String categoryName = Objects.toString(chapter.get("categoryName"), "").trim();
+        if (!StringUtils.hasText(categoryName) || "Unknown".equalsIgnoreCase(categoryName)) {
+            categoryName = "";
+        }
+        if (!StringUtils.hasText(categoryName)) {
+            return;
+        }
+        Long categoryId = findOrCreateCategory(limit(categoryName, 64));
+        if (categoryId != null) {
+            jdbc.update("UPDATE mini_novel.novel SET category_id=?,updated_at=NOW() WHERE id=?", categoryId, novelId);
+        }
+    }
+
+    private Long findOrCreateCategory(String name) {
+        List<Long> ids = jdbc.query("SELECT id FROM mini_novel.category WHERE name=? LIMIT 1",
+                (rs, row) -> rs.getLong(1), name);
+        if (!ids.isEmpty()) {
+            return ids.get(0);
+        }
+        jdbc.update("INSERT INTO mini_novel.category(name,sort,created_at,updated_at) VALUES(?,100,NOW(),NOW())", name);
+        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
     private void syncVipCategory(Map<String, Object> chapter, Long novelId) {
@@ -415,12 +466,12 @@ public class ContentReviewController {
         jdbc.update("""
             INSERT INTO mini_novel.chapter_source_mapping
               (novel_mapping_id,chapter_id,source_chapter_id,source_url,source_title,chapter_no,is_vip,content_hash,content_status,created_at,updated_at)
-            VALUES (?,?,?,?,?,?,1,?,'CONTENT_READY',NOW(),NOW())
+            VALUES (?,?,?,?,?,?,?,?,'CONTENT_READY',NOW(),NOW())
             ON DUPLICATE KEY UPDATE
               chapter_id=VALUES(chapter_id),source_title=VALUES(source_title),source_url=VALUES(source_url),
-              chapter_no=VALUES(chapter_no),is_vip=1,content_hash=VALUES(content_hash),content_status='CONTENT_READY',updated_at=NOW()
+              chapter_no=VALUES(chapter_no),is_vip=VALUES(is_vip),content_hash=VALUES(content_hash),content_status='CONTENT_READY',updated_at=NOW()
             """, novelMappingId, chapterIds.get(0), chapter.get("sourceChapterId"), chapter.get("chapterSourceUrl"),
-                chapter.get("chapterTitle"), chapter.get("chapterNo"), chapter.get("contentHash"));
+                chapter.get("chapterTitle"), chapter.get("chapterNo"), truthy(chapter.get("vip")) ? 1 : 0, chapter.get("contentHash"));
     }
 
     private Long mappedChapterId(Map<String, Object> chapter, Long novelId) {
@@ -509,35 +560,27 @@ public class ContentReviewController {
         if (ids.isEmpty()) return;
         Long novelId = ids.get(0);
         jdbc.update("DELETE FROM mini_novel.chapter WHERE novel_id=? AND chapter_no=?", novelId, chapter.get("chapterNo"));
-        refreshNovel(novelId);
+        refreshNovel(novelId, isVipSource(Objects.toString(chapter.get("sourceCode"), "")));
     }
-    private void refreshNovel(Long novelId) {
+    private void refreshNovel(Long novelId, boolean vipSource) {
         Long approved = jdbc.queryForObject("SELECT COUNT(*) FROM mini_novel.chapter WHERE novel_id=?", Long.class, novelId);
         if (approved == null || approved == 0) {
             jdbc.update("UPDATE mini_novel.novel SET status=0,latest_chapter_id=NULL,latest_chapter_title=NULL,word_count=0,updated_at=NOW() WHERE id=?", novelId);
             return;
         }
         jdbc.update("""
-            UPDATE mini_novel.novel n SET n.status=1,n.vip_required=1,n.free_chapter_count=0,
+            UPDATE mini_novel.novel n SET n.status=1,n.vip_required=?,n.free_chapter_count=?,
               n.word_count=(SELECT COALESCE(SUM(CHAR_LENGTH(c.content)),0) FROM mini_novel.chapter c WHERE c.novel_id=n.id),
               n.latest_chapter_id=(SELECT c.id FROM mini_novel.chapter c WHERE c.novel_id=n.id ORDER BY c.chapter_no DESC LIMIT 1),
               n.latest_chapter_title=(SELECT c.title FROM mini_novel.chapter c WHERE c.novel_id=n.id ORDER BY c.chapter_no DESC LIMIT 1),
               n.updated_at=NOW() WHERE n.id=?
-            """, novelId);
+            """, vipSource ? 1 : 0, vipSource ? 0 : 999999, novelId);
     }
     private boolean truthy(Object value) { return value instanceof Boolean b ? b : value instanceof Number n && n.intValue() != 0; }
-    private void audit(Map<String, Object> row, String before, String after, Long operatorId, String action, String remark) {
-        Long authorizedId = jdbc.queryForObject("SELECT id FROM mini_novel_crawler.crawler_authorized_book WHERE source_code=? AND source_book_id=? LIMIT 1", Long.class, row.get("sourceCode"), row.get("sourceBookId"));
-        if (authorizedId == null) throw new IllegalArgumentException("Authorized-book audit target is missing.");
-        CrawlerAuthorizedBookAudit audit = new CrawlerAuthorizedBookAudit(); audit.authorizedBookId = authorizedId; audit.action = action; audit.operatorId = operatorId; audit.remark = remark; audit.createdAt = LocalDateTime.now();
-        try { audit.beforeJson = json.writeValueAsString(Map.of("chapterRawId", row.get("chapterRawId"), "contentStatus", before)); audit.afterJson = json.writeValueAsString(Map.of("chapterRawId", row.get("chapterRawId"), "contentStatus", after)); }
-        catch (Exception e) { throw new IllegalStateException(e); }
-        audits.insert(audit);
-    }
     private Map<String, Object> nonNullCounts(Map<String, Object> source) { source.replaceAll((k, v) -> v == null ? 0 : v); return source; }
     private void decorateBook(Map<String, Object> row) {
-        long reviewable = number(row.get("reviewableCount")), recrawl = number(row.get("recrawlCount")), blocked = number(row.get("blockedCount"));
-        List<String> labels = new ArrayList<>(); if (blocked > 0) labels.add("EXPLICIT_MINOR_BLOCKED"); if (reviewable > 0) labels.add("PENDING_REVIEW"); if (recrawl > 0) labels.add("MISSING_CONTENT"); row.put("riskLabels", labels);
+        long reviewable = number(row.get("reviewableCount")), recrawl = number(row.get("recrawlCount")), rejected = number(row.get("rejectedCount"));
+        List<String> labels = new ArrayList<>(); if (reviewable > 0) labels.add("PENDING_REVIEW"); if (recrawl > 0) labels.add("MISSING_CONTENT"); if (rejected > 0) labels.add("REVIEW_REJECTED"); row.put("riskLabels", labels);
         String csv = Objects.toString(row.remove("reviewableChapterIdsCsv"), "");
         List<Long> ids = StringUtils.hasText(csv) ? java.util.Arrays.stream(csv.split(",")).map(Long::valueOf).toList() : List.of();
         row.put("reviewableChapterIds", ids);

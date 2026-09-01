@@ -95,10 +95,11 @@ Current policy:
 
 - Pull high-value rank/category sources, currently the 13 homepage categories.
 - Pull actual chapter正文, not only IDs or URLs.
+- All crawled content (every source, public or VIP) lands in the unified content review queue (`PENDING_REVIEW`), and only approved content is published into the novel library. The authorized-book list feature and content filter rules were removed in the 2026-09-01 refactor.
 - Avoid re-crawling existing chapters where source mapping already confirms the chapter was collected.
 - Completed novels should carry a completed status; completed novels should need less follow-up crawling.
-- Staging data is cleaned/merged into business tables.
-- Daily schedule is currently `04:00` Asia/Shanghai for `23qb_public`.
+- Staging data is cleaned after review; no automatic clean-merge into business tables.
+- Daily schedules: `04:00` Asia/Shanghai for `23qb_public`, `02:00` for the h528 and 69hnovel sources.
 
 ## Important Operating Principles
 

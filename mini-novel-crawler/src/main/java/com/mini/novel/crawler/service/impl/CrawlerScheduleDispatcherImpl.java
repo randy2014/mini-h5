@@ -12,7 +12,6 @@ import com.mini.novel.crawler.mapper.CrawlScheduleMapper;
 import com.mini.novel.crawler.mapper.CrawlTaskRecordMapper;
 import com.mini.novel.crawler.mapper.CrawlerSourceConfigMapper;
 import com.mini.novel.crawler.service.CrawlerExecutionService;
-import com.mini.novel.crawler.service.CrawlerMergeService;
 import com.mini.novel.crawler.service.CrawlerScheduleDispatcher;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -41,7 +40,6 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     private final CrawlRankSourceMapper rankSourceMapper;
     private final CrawlerSourceConfigMapper sourceMapper;
     private final CrawlerExecutionService executionService;
-    private final CrawlerMergeService mergeService;
     private final JdbcTemplate jdbcTemplate;
 
     public CrawlerScheduleDispatcherImpl(CrawlScheduleMapper scheduleMapper,
@@ -50,7 +48,6 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                                          CrawlRankSourceMapper rankSourceMapper,
                                          CrawlerSourceConfigMapper sourceMapper,
                                          CrawlerExecutionService executionService,
-                                         CrawlerMergeService mergeService,
                                          JdbcTemplate jdbcTemplate) {
         this.scheduleMapper = scheduleMapper;
         this.taskRecordMapper = taskRecordMapper;
@@ -58,7 +55,6 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         this.rankSourceMapper = rankSourceMapper;
         this.sourceMapper = sourceMapper;
         this.executionService = executionService;
-        this.mergeService = mergeService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -75,18 +71,10 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                 .in("status", List.of("RUNNING"))
                 .last("LIMIT 200"));
         for (CrawlTaskRecord task : runningTasks) {
-            if ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType)) {
-                task.status = "PENDING";
-                task.finishedAt = null;
-            } else {
-                task.status = "FAILED";
-                task.finishedAt = now;
-            }
+            task.status = "FAILED";
+            task.finishedAt = now;
             task.updatedAt = now;
-            task.message = appendMessage(task.message, "Crawler service restarted; "
-                    + ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType)
-                    ? "recoverable authorized-content task was returned to PENDING."
-                    : "interrupted running task was closed."));
+            task.message = appendMessage(task.message, "Crawler service restarted; interrupted running task was closed.");
             taskRecordMapper.updateById(task);
         }
 
@@ -156,15 +144,11 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
             dispatchedSourceIds.add(task.sourceId);
             executionService.executeAsync(task.id);
         }
-        mergeService.mergePending();
     }
 
     private boolean isRunnablePendingTask(CrawlTaskRecord task) {
         if (task == null) {
             return false;
-        }
-        if ("AUTHORIZED_BOOK_CONTENT".equals(task.taskType)) {
-            return true;
         }
         if (task.sourceId == null || task.rankSourceId == null) {
             return false;
@@ -286,20 +270,6 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         task.createdAt = now;
         task.updatedAt = now;
         taskRecordMapper.insert(task);
-
-        if (schedule.autoMerge == null || schedule.autoMerge) {
-            CrawlMergeTask mergeTask = new CrawlMergeTask();
-            mergeTask.crawlTaskId = task.id;
-            mergeTask.status = "PENDING";
-            mergeTask.totalCount = 0;
-            mergeTask.mergedCount = 0;
-            mergeTask.pendingReviewCount = 0;
-            mergeTask.failedCount = 0;
-            mergeTask.message = "Merge will run when this rank task has ready books.";
-            mergeTask.createdAt = now;
-            mergeTask.updatedAt = now;
-            mergeTaskMapper.insert(mergeTask);
-        }
         return task;
     }
 

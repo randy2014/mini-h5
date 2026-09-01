@@ -12,7 +12,6 @@
         <el-menu-item index="/admin/orders">付费管理</el-menu-item>
         <el-menu-item index="/admin/crawler">采集管理</el-menu-item>
         <el-menu-item index="/admin/content-review">内容审核</el-menu-item>
-        <el-menu-item index="/admin/authorized-books">授权书单</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>

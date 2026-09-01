@@ -27,7 +27,6 @@
     <el-card shadow="never">
       <div class="toolbar">
         <el-select v-model="sourceFilter" clearable placeholder="来源筛选" style="width: 220px" @change="loadMappings">
-          <el-option label="xbookcn_authorized" value="xbookcn_authorized" />
           <el-option label="h528_authorized" value="h528_authorized" />
           <el-option label="novel69h_authorized" value="novel69h_authorized" />
         </el-select>
@@ -70,7 +69,6 @@
       <el-form label-width="110px">
         <el-form-item label="来源">
           <el-select v-model="mappingForm.sourceCode" style="width: 100%">
-            <el-option label="xbookcn_authorized" value="xbookcn_authorized" />
             <el-option label="h528_authorized" value="h528_authorized" />
             <el-option label="novel69h_authorized" value="novel69h_authorized" />
           </el-select>

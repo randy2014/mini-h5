@@ -18,15 +18,11 @@ import com.mini.novel.crawler.entity.CrawlChapterRaw;
 import com.mini.novel.crawler.entity.CrawlContentRaw;
 import com.mini.novel.crawler.entity.CrawlMergeItem;
 import com.mini.novel.crawler.entity.CrawlMergeTask;
-import com.mini.novel.crawler.entity.CrawlerAuthorizedBook;
-import com.mini.novel.crawler.entity.CrawlerAuthorizedBookAudit;
 import com.mini.novel.crawler.mapper.CrawlBookRawMapper;
 import com.mini.novel.crawler.mapper.CrawlChapterRawMapper;
 import com.mini.novel.crawler.mapper.CrawlContentRawMapper;
 import com.mini.novel.crawler.mapper.CrawlMergeItemMapper;
 import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
-import com.mini.novel.crawler.mapper.CrawlerAuthorizedBookMapper;
-import com.mini.novel.crawler.mapper.CrawlerAuthorizedBookAuditMapper;
 import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -52,8 +48,6 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     private final NovelMapper novelMapper;
     private final ChapterMapper chapterMapper;
     private final CategoryMapper categoryMapper;
-    private final CrawlerAuthorizedBookMapper authorizedBookMapper;
-    private final CrawlerAuthorizedBookAuditMapper authorizedAuditMapper;
 
     public CrawlerMergeServiceImpl(CrawlMergeTaskMapper mergeTaskMapper,
                                    CrawlMergeItemMapper mergeItemMapper,
@@ -65,9 +59,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                                    ChapterSourceMappingMapper chapterSourceMappingMapper,
                                    NovelMapper novelMapper,
                                    ChapterMapper chapterMapper,
-                                   CategoryMapper categoryMapper,
-                                   CrawlerAuthorizedBookMapper authorizedBookMapper,
-                                   CrawlerAuthorizedBookAuditMapper authorizedAuditMapper) {
+                                   CategoryMapper categoryMapper) {
         this.mergeTaskMapper = mergeTaskMapper;
         this.mergeItemMapper = mergeItemMapper;
         this.bookRawMapper = bookRawMapper;
@@ -79,8 +71,6 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         this.novelMapper = novelMapper;
         this.chapterMapper = chapterMapper;
         this.categoryMapper = categoryMapper;
-        this.authorizedBookMapper = authorizedBookMapper;
-        this.authorizedAuditMapper = authorizedAuditMapper;
     }
 
     @Override
@@ -141,25 +131,6 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
 
     @Override
     @Transactional
-    public void approveAuthorizedMergeItem(Long mergeItemId, Long operatorId, String remark) {
-        CrawlMergeItem item = mergeItemMapper.selectById(mergeItemId);
-        if (item == null || item.bookRawId == null || item.mergeTaskId == null) throw new IllegalArgumentException("Merge item does not exist.");
-        CrawlBookRaw book = bookRawMapper.selectById(item.bookRawId);
-        CrawlMergeTask task = mergeTaskMapper.selectById(item.mergeTaskId);
-        if (book == null || task == null || !isReviewOnlySource(book)) throw new IllegalArgumentException("Only isolated authorized books can use this approval.");
-        CrawlerAuthorizedBook authorized = authorizedBookMapper.selectOne(new QueryWrapper<CrawlerAuthorizedBook>()
-                .eq("source_code", book.sourceCode).eq("source_book_id", book.sourceBookId)
-                .eq("authorization_status", "AUTHORIZED").eq("review_status", "APPROVED")
-                .eq("allow_store", true).eq("allow_display", true).ne("risk_level", "BLOCKED").last("LIMIT 1"));
-        if (authorized == null || !StringUtils.hasText(authorized.proofRef)) throw new IllegalArgumentException("Authorized approval requires proof, APPROVED review, non-BLOCKED risk, store and display permissions.");
-        List<CrawlChapterRaw> chapters = chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>().eq("book_raw_id", book.id).orderByAsc("chapter_no").last("LIMIT 500"));
-        MergeOutcome outcome = mergeBook(task, book, chapters, true);
-        syncRetriedItemStatus(mergeItemId, outcome); refreshTaskCounters(task.id);
-        CrawlerAuthorizedBookAudit audit = new CrawlerAuthorizedBookAudit(); audit.authorizedBookId=authorized.id; audit.action="APPROVE_CONTENT_IMPORT"; audit.operatorId=operatorId; audit.remark=limit(remark,1000); audit.createdAt=LocalDateTime.now(); authorizedAuditMapper.insert(audit);
-    }
-
-    @Override
-    @Transactional
     public void ignoreMergeItem(Long mergeItemId, String reason) {
         CrawlMergeItem item = mergeItemMapper.selectById(mergeItemId);
         if (item == null) {
@@ -213,6 +184,9 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             }
             List<CrawlBookRaw> books = bookRawMapper.selectList(bookWrapper);
             for (CrawlBookRaw book : books) {
+                if (book.contentStatus != null && "PENDING_REVIEW".equals(book.contentStatus)) {
+                    continue;
+                }
                 List<CrawlChapterRaw> chapters = loadMergeChapters(book);
                 if (chapters.isEmpty()) {
                     continue;
@@ -251,8 +225,6 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         }
     }
 
-    private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters) { return mergeBook(task, book, chapters, false); }
-
     private List<CrawlChapterRaw> loadMergeChapters(CrawlBookRaw book) {
         int limit = book != null && "kkxsz_public".equalsIgnoreCase(book.sourceCode) ? 5000 : 500;
         return chapterRawMapper.selectList(new QueryWrapper<CrawlChapterRaw>()
@@ -261,11 +233,11 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                 .last("LIMIT " + limit));
     }
 
-    private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters, boolean authorizedApproval) {
+    private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters) {
         LocalDateTime now = LocalDateTime.now();
-        if (isReviewOnlySource(book) && !authorizedApproval) {
+        if (isReviewOnlySource(book)) {
             upsertMergeItem(task, book, null, null, "PENDING_REVIEW",
-                    "Authorized source is isolated for VIP/manual review; skipped free-site merge.");
+                    "Book is queued for manual content review; skipped by the clean-merge path.");
             return MergeOutcome.PENDING_REVIEW;
         }
         int acceptableChapters = 0;
@@ -638,7 +610,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         if (book == null) {
             return false;
         }
-        return book.rawJson != null && book.rawJson.contains("\"isolation\":\"VIP_REVIEW\"");
+        return book.contentStatus != null && "PENDING_REVIEW".equals(book.contentStatus);
     }
 
     private ContentQuality evaluateContent(String content) {
