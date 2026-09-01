@@ -106,7 +106,8 @@ run_migration "sql/migrations/20260726_kkxsz_public_source.sql"
 run_migration "sql/migrations/20260901_remove_authorized_book_review_flow.sql"
 
 echo "Building and starting application services..."
-compose up -d --build
+# 串行构建：防止 4 个镜像并发构建在低配 VPS 上打爆内存（2026-09-01 曾因此 OOM）
+COMPOSE_PARALLEL_LIMIT=1 compose up -d --build
 compose ps
 
 wait_for_http "Backend API" "http://127.0.0.1:${APP_PORT}/api/home"
