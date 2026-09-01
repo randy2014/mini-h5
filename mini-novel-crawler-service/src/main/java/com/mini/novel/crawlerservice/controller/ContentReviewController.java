@@ -313,7 +313,7 @@ public class ContentReviewController {
         String sql = """
             SELECT c.id chapterRawId,c.book_raw_id bookRawId,c.content_status contentStatus,r.id contentRawId,
                    c.chapter_no chapterNo,c.source_chapter_id sourceChapterId,c.title chapterTitle,c.source_url chapterSourceUrl,
-                   c.vip vip,r.content,r.content_hash contentHash,
+                   c.is_vip vip,r.content,r.content_hash contentHash,
                    b.source_code sourceCode,b.source_book_id sourceBookId,b.source_url bookSourceUrl,
                    b.title bookTitle,b.author,b.intro,b.cover_url coverUrl,b.category_name categoryName
             FROM mini_novel_crawler.crawl_chapter_raw c JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
