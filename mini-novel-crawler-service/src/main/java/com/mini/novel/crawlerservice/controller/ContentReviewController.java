@@ -92,8 +92,9 @@ public class ContentReviewController {
         }
         String countSql = "SELECT COUNT(DISTINCT b.id) FROM mini_novel_crawler.crawl_book_raw b"
                 + " JOIN mini_novel_crawler.crawl_chapter_raw c ON c.book_raw_id=b.id WHERE" + where;
-        Object countParam = StringUtils.hasText(source) ? new Object[]{source} : new Object[0];
-        Long total = jdbc.queryForObject(countSql, Long.class, countParam);
+        Long total = StringUtils.hasText(source)
+                ? jdbc.queryForObject(countSql, Long.class, source)
+                : jdbc.queryForObject(countSql, Long.class);
         String sql = """
             SELECT b.id bookRawId,b.title,b.source_code sourceCode,COUNT(*) chapterCount,
               SUM(c.content_status='PENDING_REVIEW' AND r.id IS NOT NULL) reviewableCount,
