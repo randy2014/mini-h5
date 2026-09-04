@@ -109,6 +109,9 @@ run_migration "sql/migrations/20260901_23qb_direct_publish.sql"
 echo "Building and starting application services..."
 # 串行构建：防止 4 个镜像并发构建在低配 VPS 上打爆内存（2026-09-01 曾因此 OOM）
 COMPOSE_PARALLEL_LIMIT=1 compose up -d --build
+# 后端容器重建后 IP 变化，前端 nginx 启动时缓存的上游 IP 失效会导致 502；
+# 强制重启前端容器让 nginx 重新解析 mini-novel-app / mini-novel-crawler-service（2026-09-05 事故）
+compose restart mini-novel-h5 mini-novel-admin-ui
 compose ps
 
 wait_for_http "Backend API" "http://127.0.0.1:${APP_PORT}/api/home"
