@@ -3,6 +3,12 @@ server:
 
 app:
   public-h5-base-url: ${PUBLIC_H5_BASE_URL:https://xs2026.site}
+  subscribe:
+    prices:
+      WEEK: 100
+      MONTH: 300
+      QUARTER: 800
+      YEAR: 3000
 
 spring:
   application:

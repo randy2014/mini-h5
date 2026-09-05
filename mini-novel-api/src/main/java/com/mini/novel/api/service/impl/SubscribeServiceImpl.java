@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -45,6 +46,9 @@ public class SubscribeServiceImpl implements SubscribeService {
     private final AppUserMapper appUserMapper;
     private final UserReadHistoryMapper readHistoryMapper;
     private final CoinService coinService;
+
+    @Value("#{${app.subscribe.prices:{WEEK:100, MONTH:300, QUARTER:800, YEAR:3000}}}")
+    private Map<String, Long> prices;
 
     public SubscribeServiceImpl(SubscribeChannelMapper channelMapper,
                                 SubscribeChannelNovelMapper channelNovelMapper,
@@ -276,12 +280,8 @@ public class SubscribeServiceImpl implements SubscribeService {
         };
     }
 
-    static long priceFor(String periodType) {
-        return switch (periodType) {
-            case UserSubscribe.PERIOD_WEEK -> 100;
-            case UserSubscribe.PERIOD_QUARTER -> 800;
-            case UserSubscribe.PERIOD_YEAR -> 3000;
-            default -> 300;
-        };
+    long priceFor(String periodType) {
+        Long price = prices.get(periodType);
+        return price == null ? 300L : price;
     }
 }
