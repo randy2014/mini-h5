@@ -27,3 +27,11 @@ export function addBookshelf(novelId) {
 export function removeBookshelf(novelId) {
   return http.delete(`/user/bookshelf/${novelId}`);
 }
+
+export function updateNickname(nickname) {
+  return http.put('/user/nickname', { nickname });
+}
+
+export function recordReadHistory(novelId, chapterId, progress) {
+  return http.post('/user/read-history', { novelId, chapterId, progress });
+}

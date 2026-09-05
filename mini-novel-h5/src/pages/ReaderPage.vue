@@ -76,6 +76,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } from '../services/book';
 import { markVipBookRead } from '../services/vipReadStatus';
+import { recordReadHistory } from '../services/user';
 import { formatTextLineBreaks } from '../utils/text';
 
 const CATALOG_PAGE_SIZE = 50;
@@ -298,6 +299,7 @@ function saveProgress(current) {
     totalChapters: totalChapters.value || 0,
     updatedAt: Date.now()
   }));
+  recordReadHistory(current.novelId, current.id, current.chapterNo || 0).catch(() => {});
 }
 
 function saveVipReadStatus(current) {

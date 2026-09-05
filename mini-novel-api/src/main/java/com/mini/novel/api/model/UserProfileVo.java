@@ -10,6 +10,7 @@ public class UserProfileVo {
     private boolean vipActive;
     private Integer vipStatus;
     private LocalDateTime vipExpireTime;
+    private LocalDateTime vipActivatedAt;
     private String tokenName;
     private String tokenValue;
     private Boolean newAccount;
@@ -33,6 +34,8 @@ public class UserProfileVo {
     public void setVipStatus(Integer vipStatus) { this.vipStatus = vipStatus; }
     public LocalDateTime getVipExpireTime() { return vipExpireTime; }
     public void setVipExpireTime(LocalDateTime vipExpireTime) { this.vipExpireTime = vipExpireTime; }
+    public LocalDateTime getVipActivatedAt() { return vipActivatedAt; }
+    public void setVipActivatedAt(LocalDateTime vipActivatedAt) { this.vipActivatedAt = vipActivatedAt; }
     public String getTokenName() { return tokenName; }
     public void setTokenName(String tokenName) { this.tokenName = tokenName; }
     public String getTokenValue() { return tokenValue; }

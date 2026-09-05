@@ -6,10 +6,15 @@ import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.book.mapper.NovelMapper;
 import com.mini.novel.book.service.BookReadService;
+import com.mini.novel.common.exception.BusinessException;
+import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.entity.UserBookshelf;
+import com.mini.novel.user.entity.UserReadHistory;
+import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.user.mapper.UserBookshelfMapper;
+import com.mini.novel.user.mapper.UserReadHistoryMapper;
 import com.mini.novel.vip.entity.VipInvitationCode;
 import com.mini.novel.vip.service.VipInvitationService;
 import java.time.LocalDateTime;
@@ -19,6 +24,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,15 +38,20 @@ public class UserController {
     private final UserBookshelfMapper bookshelfMapper;
     private final NovelMapper novelMapper;
     private final VipInvitationService vipInvitationService;
+    private final AppUserMapper appUserMapper;
+    private final UserReadHistoryMapper readHistoryMapper;
 
     public UserController(CurrentUserResolver currentUserResolver, BookReadService bookReadService,
                           UserBookshelfMapper bookshelfMapper, NovelMapper novelMapper,
-                          VipInvitationService vipInvitationService) {
+                          VipInvitationService vipInvitationService, AppUserMapper appUserMapper,
+                          UserReadHistoryMapper readHistoryMapper) {
         this.currentUserResolver = currentUserResolver;
         this.bookReadService = bookReadService;
         this.bookshelfMapper = bookshelfMapper;
         this.novelMapper = novelMapper;
         this.vipInvitationService = vipInvitationService;
+        this.appUserMapper = appUserMapper;
+        this.readHistoryMapper = readHistoryMapper;
     }
 
     @GetMapping("/profile")
@@ -105,5 +117,44 @@ public class UserController {
                 .eq("user_id", user.getId())
                 .eq("novel_id", novelId));
         return Result.ok(null);
+    }
+
+    @PutMapping("/nickname")
+    public Result<UserProfileVo> updateNickname(@RequestBody NicknameRequest request,
+                                                @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        AppUser user = currentUserResolver.requireUser(userId);
+        String nickname = request.nickname() == null ? "" : request.nickname().trim();
+        if (nickname.isEmpty()) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "昵称不能为空");
+        }
+        if (nickname.length() > 20) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "昵称不能超过20字");
+        }
+        AppUser update = new AppUser();
+        update.setId(user.getId());
+        update.setNickname(nickname);
+        update.setUpdatedAt(LocalDateTime.now());
+        appUserMapper.updateById(update);
+        return Result.ok(AuthController.toProfile(appUserMapper.selectById(user.getId())));
+    }
+
+    @PostMapping("/read-history")
+    public Result<Void> recordReadHistory(@RequestBody ReadHistoryRequest request,
+                                          @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        AppUser user = currentUserResolver.requireUser(userId);
+        UserReadHistory history = new UserReadHistory();
+        history.setUserId(user.getId());
+        history.setNovelId(request.novelId());
+        history.setChapterId(request.chapterId());
+        history.setProgress(request.progress());
+        history.setReadAt(LocalDateTime.now());
+        readHistoryMapper.insert(history);
+        return Result.ok(null);
+    }
+
+    public record NicknameRequest(String nickname) {
+    }
+
+    public record ReadHistoryRequest(Long novelId, Long chapterId, Integer progress) {
     }
 }

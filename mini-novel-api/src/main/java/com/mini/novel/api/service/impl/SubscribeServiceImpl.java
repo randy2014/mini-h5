@@ -75,6 +75,13 @@ public class SubscribeServiceImpl implements SubscribeService {
         Map<Long, UserSubscribe> activeByChannel = activeSubscribes(userId).stream()
                 .collect(Collectors.toMap(UserSubscribe::getChannelId, Function.identity(), (l, r) -> l));
         boolean trial = isTrialActive(userId);
+        LocalDateTime trialEndTime = null;
+        if (trial) {
+            AppUser user = appUserMapper.selectById(userId);
+            if (user != null && user.getVipActivatedAt() != null) {
+                trialEndTime = user.getVipActivatedAt().plusDays(TRIAL_DAYS);
+            }
+        }
         List<SubscribeChannelVo> result = new ArrayList<>();
         for (SubscribeChannel channel : channels) {
             SubscribeChannelVo vo = new SubscribeChannelVo();
@@ -84,6 +91,7 @@ public class SubscribeServiceImpl implements SubscribeService {
             vo.setDescription(channel.getDescription());
             vo.setSort(channel.getSort());
             vo.setTrial(trial);
+            vo.setTrialEndTime(trialEndTime);
             UserSubscribe active = activeByChannel.get(channel.getId());
             vo.setSubscribed(active != null || trial);
             if (active != null) {

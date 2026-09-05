@@ -10,7 +10,7 @@
     </div>
 
     <template v-else-if="isVip">
-      <div v-if="trialActive" class="trial-banner">🕘 试用期内 · 全频道开放</div>
+      <div v-if="trialActive" class="trial-banner">VIP权益-试用期内 · 全频道开放(试用到期日：{{ trialEndDate }})</div>
 
       <div v-if="!trialActive && unsubscribedCount > 0" class="all-btn" @click="onSubscribeAll">
         <div>
@@ -31,7 +31,7 @@
           <div class="info">
             <div class="nm">
               {{ c.name }}
-              <span v-if="c.trial" class="tag trial">试用中</span>
+              <span v-if="c.trial" class="tag trial">vip权益-试用中</span>
               <span v-else-if="c.subscribed" class="tag sub">已订阅</span>
               <span v-else class="tag locked">未订阅</span>
             </div>
@@ -39,7 +39,7 @@
             <div class="meta">{{ c.novelCount }} 本
               <template v-if="c.subscribed && c.endTime"> · 剩余 {{ c.daysLeft }} 天</template>
             </div>
-            <div v-if="c.subscribed && c.daysLeft <= 3" class="countdown">⚠️ 即将到期</div>
+            <div v-if="c.subscribed && c.endTime" class="countdown">{{ formatDate(c.endTime) }} 订阅到期</div>
           </div>
           <div v-if="!c.trial && !c.subscribed" class="price-box">
             <div class="price">300 <small>币/月</small></div>
@@ -67,6 +67,17 @@ const isVip = computed(() => userStore.isVip);
 
 const trialActive = computed(() => channels.value.some((c) => c.trial));
 const unsubscribedCount = computed(() => channels.value.filter((c) => !c.subscribed && !c.trial).length);
+const trialEndDate = computed(() => {
+  const c = channels.value.find((x) => x.trial && x.trialEndTime);
+  return c ? formatDate(c.trialEndTime) : '';
+});
+
+function formatDate(t) {
+  if (!t) return '';
+  const s = String(t).replace('T', ' ').slice(0, 10);
+  const parts = s.split('-');
+  return parts.length === 3 ? `${parts[0]}年${parts[1]}月${parts[2]}日` : s;
+}
 
 function coverClass(id) {
   return ['g1', 'g2', 'g3', 'g4', 'g5', 'g6'][id % 6];

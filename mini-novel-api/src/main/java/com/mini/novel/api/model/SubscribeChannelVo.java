@@ -10,6 +10,7 @@ public class SubscribeChannelVo {
     private Integer sort;
     private boolean subscribed;
     private boolean trial;
+    private LocalDateTime trialEndTime;
     private String periodType;
     private LocalDateTime endTime;
     private long daysLeft;
@@ -29,6 +30,8 @@ public class SubscribeChannelVo {
     public void setSubscribed(boolean subscribed) { this.subscribed = subscribed; }
     public boolean isTrial() { return trial; }
     public void setTrial(boolean trial) { this.trial = trial; }
+    public LocalDateTime getTrialEndTime() { return trialEndTime; }
+    public void setTrialEndTime(LocalDateTime trialEndTime) { this.trialEndTime = trialEndTime; }
     public String getPeriodType() { return periodType; }
     public void setPeriodType(String periodType) { this.periodType = periodType; }
     public LocalDateTime getEndTime() { return endTime; }

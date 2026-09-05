@@ -8,6 +8,7 @@ import com.mini.novel.vip.entity.UserCoinLog;
 import com.mini.novel.vip.mapper.UserCoinLogMapper;
 import com.mini.novel.vip.service.CoinService;
 import java.util.List;
+import java.util.Map;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,6 +40,11 @@ public class AdminCoinController {
             wrapper.and(w -> w.like(AppUser::getNickname, keyword).or().like(AppUser::getMobile, keyword));
         }
         return Result.ok(appUserMapper.selectList(wrapper));
+    }
+
+    @GetMapping("/balance")
+    public Result<Map<String, Long>> balance(@RequestParam Long userId) {
+        return Result.ok(Map.of("balance", coinService.balance(userId)));
     }
 
     @PostMapping("/recharge")

@@ -4,13 +4,22 @@
     <div class="profile-card">
       <div>
         <p>{{ statusLabel }}</p>
-        <h1>{{ profile?.nickname || '未登录' }}</h1>
+        <h1>
+          {{ profile?.nickname || '未登录' }}
+          <van-icon v-if="isAuthenticated" name="edit" class="nickname-edit" @click="openNicknameEdit" />
+        </h1>
         <span>{{ statusText }}</span>
       </div>
       <div class="profile-actions">
         <van-button v-if="!isAuthenticated" round size="small" color="#1f6f64" to="/h5/login">登录</van-button>
       </div>
     </div>
+
+    <van-dialog v-model:show="nicknameVisible" title="修改昵称" show-cancel-button @confirm="saveNickname">
+      <div style="padding: 16px;">
+        <van-field v-model="nicknameInput" placeholder="请输入新昵称（20字以内）" maxlength="20" />
+      </div>
+    </van-dialog>
 
     <div class="setting-list">
       <van-cell title="VIP 会员" value="查看权益" is-link to="/h5/vip" />
@@ -74,6 +83,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { useUserStore } from '../stores/user';
+import { updateNickname } from '../services/user';
 import { fetchBalance } from '../services/subscribe';
 
 const router = useRouter();
@@ -82,6 +92,8 @@ const profile = computed(() => userStore.profile);
 const isAuthenticated = computed(() => userStore.isAuthenticated);
 const loggingOut = ref(false);
 const coinBalance = ref(0);
+const nicknameVisible = ref(false);
+const nicknameInput = ref('');
 const statusLabel = computed(() => {
   if (!isAuthenticated.value) return '未登录';
   return profile.value?.vipActive ? 'VIP 会员' : '普通用户';
@@ -153,6 +165,26 @@ async function copyInviteCode() {
     showToast('邀请码已复制');
   } catch {
     showToast(profile.value.exclusiveInviteCode);
+  }
+}
+
+function openNicknameEdit() {
+  nicknameInput.value = profile.value?.nickname || '';
+  nicknameVisible.value = true;
+}
+
+async function saveNickname() {
+  const nickname = nicknameInput.value.trim();
+  if (!nickname) {
+    showToast('昵称不能为空');
+    return;
+  }
+  try {
+    await updateNickname(nickname);
+    userStore.profile = { ...userStore.profile, nickname };
+    showToast('已保存');
+  } catch {
+    // toast handled
   }
 }
 

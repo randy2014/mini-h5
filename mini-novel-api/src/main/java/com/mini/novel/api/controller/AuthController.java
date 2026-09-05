@@ -73,6 +73,7 @@ public class AuthController {
         vo.setAvatar(user.getAvatar());
         vo.setMobile(user.getMobile());
         vo.setVipExpireTime(user.getVipExpireTime());
+        vo.setVipActivatedAt(user.getVipActivatedAt());
         vo.setVipStatus(user.getVipStatus());
         vo.setVipActive(user.getVipExpireTime() != null && user.getVipExpireTime().isAfter(LocalDateTime.now()));
         return vo;

@@ -21,6 +21,9 @@
         <el-form-item label="用户">
           <span>{{ currentUser?.nickname || '' }}（{{ currentUser?.mobile || '' }}）</span>
         </el-form-item>
+        <el-form-item label="当前余额">
+          <span style="color: #e6a23c; font-weight: 600;">{{ currentBalance }} 快乐币</span>
+        </el-form-item>
         <el-form-item label="币数">
           <el-input-number v-model="rechargeForm.amount" :min="1" />
         </el-form-item>
@@ -47,6 +50,7 @@ const loading = ref(false);
 const rechargeVisible = ref(false);
 const currentUser = ref(null);
 const rechargeForm = reactive({ amount: 100, remark: '' });
+const currentBalance = ref(0);
 
 async function searchUsers() {
   loading.value = true;
@@ -57,11 +61,18 @@ async function searchUsers() {
   }
 }
 
-function openRecharge(row) {
+async function openRecharge(row) {
   currentUser.value = row;
   rechargeForm.amount = 100;
   rechargeForm.remark = '';
+  currentBalance.value = 0;
   rechargeVisible.value = true;
+  try {
+    const data = await adminApi.get('/coins/balance', { params: { userId: row.id } });
+    currentBalance.value = data.balance;
+  } catch {
+    // ignore balance load failure
+  }
 }
 
 async function submitRecharge() {
