@@ -3,12 +3,14 @@ server:
 
 app:
   public-h5-base-url: ${PUBLIC_H5_BASE_URL:https://xs2026.site}
+  # 订阅频道定价（单位：快乐币）
+  # 周期：WEEK=1周 / MONTH=1月 / QUARTER=1季 / YEAR=1年
   subscribe:
     prices:
-      WEEK: 100
-      MONTH: 300
-      QUARTER: 800
-      YEAR: 3000
+      WEEK: 100      # 1 周订阅价格
+      MONTH: 300     # 1 月订阅价格
+      QUARTER: 800   # 1 季订阅价格
+      YEAR: 3000     # 1 年订阅价格
 
 spring:
   application:
