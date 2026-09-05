@@ -9,6 +9,7 @@
       </div>
     </div>
 
+    <div v-if="readCount > 0" class="filter-hint">🔇 已隐藏已读 {{ readCount }} 本 · 仅展示未读</div>
     <div v-if="restricted" class="filter-hint">🔇 未订阅 · 仅预览第一页</div>
 
     <!-- 网格 -->
@@ -55,6 +56,7 @@ const channelName = ref('频道详情');
 const novels = ref([]);
 const total = ref(0);
 const restricted = ref(false);
+const readCount = ref(0);
 const viewMode = ref('grid');
 const page = ref(1);
 const pageSize = 20;
@@ -94,6 +96,7 @@ async function load(append = false) {
   novels.value = append ? novels.value.concat(data.records) : data.records;
   total.value = data.total;
   restricted.value = data.restricted;
+  readCount.value = data.readCount || 0;
 }
 
 onMounted(load);

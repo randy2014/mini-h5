@@ -122,6 +122,7 @@ public class SubscribeServiceImpl implements SubscribeService {
         Set<Long> unreadIds = channelNovelIds.stream()
                 .filter(id -> !readNovelIds.contains(id))
                 .collect(Collectors.toSet());
+        long readCount = channelNovelIds.size() - unreadIds.size();
 
         boolean accessible = isAccessible(userId, channelId);
         long safePageSize = Math.max(1, Math.min(100, pageSize));
@@ -129,6 +130,7 @@ public class SubscribeServiceImpl implements SubscribeService {
         if (unreadIds.isEmpty()) {
             vo.setRecords(new ArrayList<>());
             vo.setTotal(0);
+            vo.setReadCount(readCount);
             vo.setRestricted(!accessible);
             return vo;
         }
@@ -143,6 +145,7 @@ public class SubscribeServiceImpl implements SubscribeService {
         Page<Novel> result = novelMapper.selectPage(new Page<>(safePage, safePageSize), query);
         vo.setRecords(result.getRecords());
         vo.setTotal(result.getTotal());
+        vo.setReadCount(readCount);
         vo.setRestricted(!accessible);
         return vo;
     }
