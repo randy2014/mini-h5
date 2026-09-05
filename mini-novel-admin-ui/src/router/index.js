@@ -18,7 +18,9 @@ const routes = [
       { path: 'vip', component: () => import('../views/VipView.vue'), meta: { title: 'VIP 管理' } },
       { path: 'orders', component: () => import('../views/OrderView.vue'), meta: { title: '付费管理' } },
       { path: 'crawler', component: CrawlerView, meta: { title: '采集管理' } },
-      { path: 'content-review', component: () => import('../views/ContentReviewView.vue'), meta: { title: '内容审核' } }
+      { path: 'content-review', component: () => import('../views/ContentReviewView.vue'), meta: { title: '内容审核' } },
+      { path: 'subscribe-channels', component: () => import('../views/SubscribeChannelView.vue'), meta: { title: '订阅频道管理' } },
+      { path: 'coins', component: () => import('../views/CoinView.vue'), meta: { title: '快乐币管理' } }
     ]
   }
 ];

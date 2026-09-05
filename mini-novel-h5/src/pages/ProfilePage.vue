@@ -17,6 +17,7 @@
       <van-cell v-if="!profile?.vipActive" title="升级 VIP" value="联系客服升级" />
       <van-cell v-if="profile?.vipActive" title="专属邀请码" :value="profile?.exclusiveInviteCode || '生成中'" is-link @click="copyInviteCode" />
       <van-cell v-if="profile?.vipActive" title="剩余名额" :value="String(profile?.inviteQuotaLeft ?? 0)" />
+      <van-cell v-if="profile?.vipActive" title="我的快乐币" :value="String(coinBalance)" is-link to="/h5/coin" />
       <van-cell title="阅读历史" value="待接入" />
       <van-cell title="账号设置" value="待接入" />
     </div>
@@ -73,12 +74,14 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { useUserStore } from '../stores/user';
+import { fetchBalance } from '../services/subscribe';
 
 const router = useRouter();
 const userStore = useUserStore();
 const profile = computed(() => userStore.profile);
 const isAuthenticated = computed(() => userStore.isAuthenticated);
 const loggingOut = ref(false);
+const coinBalance = ref(0);
 const statusLabel = computed(() => {
   if (!isAuthenticated.value) return '未登录';
   return profile.value?.vipActive ? 'VIP 会员' : '普通用户';
@@ -95,9 +98,15 @@ const themes = [
   { value: 'night', label: '夜', color: '#1d2224' }
 ];
 
-onMounted(() => {
+onMounted(async () => {
   if (userStore.isAuthenticated) {
     userStore.loadProfile();
+    try {
+      const b = await fetchBalance();
+      coinBalance.value = b.balance;
+    } catch {
+      // ignore balance load failure
+    }
   }
 });
 

@@ -102,6 +102,11 @@ public class AdminNovelController {
                 .orderByAsc(Chapter::getChapterNo)));
     }
 
+    @GetMapping("/chapters/{id}/content")
+    public Result<Chapter> chapterContent(@PathVariable("id") Long id) {
+        return Result.ok(chapterMapper.selectById(id));
+    }
+
     @PutMapping("/chapters/{id}/vip")
     public Result<Chapter> chapterVip(@PathVariable("id") Long id, @RequestBody ChapterVipRequest request) {
         Chapter chapter = new Chapter();

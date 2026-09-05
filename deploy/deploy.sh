@@ -105,6 +105,7 @@ run_migration "sql/migrations/20260726_authorized_daily_schedule_dedupe.sql"
 run_migration "sql/migrations/20260726_kkxsz_public_source.sql"
 run_migration "sql/migrations/20260901_remove_authorized_book_review_flow.sql"
 run_migration "sql/migrations/20260901_23qb_direct_publish.sql"
+run_migration "sql/migrations/20260910_subscribe_channel.sql"
 
 echo "Building and starting application services..."
 # 串行构建：防止 4 个镜像并发构建在低配 VPS 上打爆内存（2026-09-01 曾因此 OOM）

@@ -35,6 +35,7 @@
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="primary" @click="openChapters(row)">章节</el-button>
+            <el-button link type="primary" @click="openJoinChannel(row)">加入频道</el-button>
             <el-button link :type="row.status === 0 ? 'success' : 'danger'" @click="toggleStatus(row)">
               {{ row.status === 0 ? '上架' : '下架' }}
             </el-button>
@@ -107,8 +108,33 @@
         <el-table-column prop="priceCoin" label="价格" width="110">
           <template #default="{ row }"><el-input-number v-model="row.priceCoin" :min="0" size="small" @change="saveChapterVip(row)" /></template>
         </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openContent(row)">查看正文</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-drawer>
+
+    <el-dialog v-model="joinVisible" title="加入订阅频道" width="440px">
+      <el-form label-width="90px">
+        <el-form-item label="小说"><span>{{ currentNovel?.title }}</span></el-form-item>
+        <el-form-item label="选择频道">
+          <el-select v-model="joinChannelId" placeholder="选择订阅频道" style="width: 100%">
+            <el-option v-for="c in channels" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="joinVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitJoin">加入</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="contentVisible" title="章节正文" width="720px">
+      <div class="content-body" style="white-space: pre-wrap; max-height: 60vh; overflow: auto; line-height: 1.8; font-size: 14px;">{{ chapterContent }}</div>
+      <template #footer><el-button @click="contentVisible = false">关闭</el-button></template>
+    </el-dialog>
   </section>
 </template>
 
@@ -128,6 +154,12 @@ const chapterVisible = ref(false);
 const query = reactive({ keyword: '', status: null });
 const form = reactive({});
 const importForm = reactive(defaultImportForm());
+const channels = ref([]);
+const joinVisible = ref(false);
+const joinChannelId = ref(null);
+const currentNovel = ref(null);
+const contentVisible = ref(false);
+const chapterContent = ref('');
 
 function defaultImportForm() {
   return {
@@ -209,6 +241,36 @@ async function openChapters(row) {
 async function saveChapterVip(row) {
   await adminApi.put(`/novels/chapters/${row.id}/vip`, { vip: row.vip, priceCoin: row.priceCoin });
   ElMessage.success('章节 VIP 已更新');
+}
+
+function openJoinChannel(row) {
+  currentNovel.value = row;
+  joinChannelId.value = null;
+  joinVisible.value = true;
+  loadChannels();
+}
+
+async function loadChannels() {
+  channels.value = await adminApi.get('/subscribe-channels');
+}
+
+async function submitJoin() {
+  if (!joinChannelId.value) {
+    ElMessage.warning('请选择频道');
+    return;
+  }
+  await adminApi.post(`/subscribe-channels/${joinChannelId.value}/novels`, {
+    novelId: currentNovel.value.id,
+    operatorId: 1
+  });
+  ElMessage.success('已加入频道');
+  joinVisible.value = false;
+}
+
+async function openContent(row) {
+  const chapter = await adminApi.get(`/novels/chapters/${row.id}/content`);
+  chapterContent.value = chapter.content || '';
+  contentVisible.value = true;
 }
 
 onMounted(load);

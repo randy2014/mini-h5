@@ -19,7 +19,11 @@ const routes = [
       { path: 'book/:id', name: 'book-detail', component: () => import('../pages/BookDetailPage.vue'), meta: { title: '书籍详情' } },
       { path: 'read/:id', name: 'reader', component: () => import('../pages/ReaderPage.vue'), meta: { title: '阅读' } },
       { path: 'login', name: 'login', component: () => import('../pages/LoginPage.vue'), meta: { title: '登录' } },
-      { path: 'vip', name: 'vip', component: () => import('../pages/VipPage.vue'), meta: { title: 'VIP 专区', tab: true } }
+      { path: 'vip', name: 'vip', component: () => import('../pages/VipPage.vue'), meta: { title: 'VIP 专区', tab: true } },
+      { path: 'subscribe', name: 'subscribe', component: () => import('../pages/SubscribePage.vue'), meta: { title: '订阅频道', tab: true } },
+      { path: 'subscribe/history', name: 'subscribe-history', component: () => import('../pages/SubscribeHistoryPage.vue'), meta: { title: '阅读历史' } },
+      { path: 'subscribe/:id', name: 'subscribe-channel', component: () => import('../pages/SubscribeChannelPage.vue'), meta: { title: '频道详情' } },
+      { path: 'coin', name: 'coin', component: () => import('../pages/CoinPage.vue'), meta: { title: '我的快乐币' } }
     ]
   }
 ];
