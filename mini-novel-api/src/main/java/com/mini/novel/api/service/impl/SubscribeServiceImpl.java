@@ -15,9 +15,7 @@ import com.mini.novel.book.mapper.SubscribeChannelNovelMapper;
 import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.user.entity.AppUser;
-import com.mini.novel.user.entity.UserReadHistory;
 import com.mini.novel.user.mapper.AppUserMapper;
-import com.mini.novel.user.mapper.UserReadHistoryMapper;
 import com.mini.novel.vip.entity.UserCoinLog;
 import com.mini.novel.vip.entity.UserSubscribe;
 import com.mini.novel.vip.mapper.UserSubscribeMapper;
@@ -44,7 +42,6 @@ public class SubscribeServiceImpl implements SubscribeService {
     private final UserSubscribeMapper subscribeMapper;
     private final NovelMapper novelMapper;
     private final AppUserMapper appUserMapper;
-    private final UserReadHistoryMapper readHistoryMapper;
     private final CoinService coinService;
 
     @Value("#{${app.subscribe.prices:{WEEK:100, MONTH:300, QUARTER:800, YEAR:3000}}}")
@@ -55,14 +52,12 @@ public class SubscribeServiceImpl implements SubscribeService {
                                 UserSubscribeMapper subscribeMapper,
                                 NovelMapper novelMapper,
                                 AppUserMapper appUserMapper,
-                                UserReadHistoryMapper readHistoryMapper,
                                 CoinService coinService) {
         this.channelMapper = channelMapper;
         this.channelNovelMapper = channelNovelMapper;
         this.subscribeMapper = subscribeMapper;
         this.novelMapper = novelMapper;
         this.appUserMapper = appUserMapper;
-        this.readHistoryMapper = readHistoryMapper;
         this.coinService = coinService;
     }
 
@@ -115,28 +110,19 @@ public class SubscribeServiceImpl implements SubscribeService {
         List<SubscribeChannelNovel> links = channelNovelMapper.selectList(new QueryWrapper<SubscribeChannelNovel>()
                 .eq("channel_id", channelId));
         Set<Long> channelNovelIds = links.stream().map(SubscribeChannelNovel::getNovelId).collect(Collectors.toSet());
-        Set<Long> readNovelIds = readHistoryMapper.selectList(new LambdaQueryWrapper<UserReadHistory>()
-                        .eq(UserReadHistory::getUserId, userId)
-                        .select(UserReadHistory::getNovelId))
-                .stream().map(UserReadHistory::getNovelId).collect(Collectors.toSet());
-        Set<Long> unreadIds = channelNovelIds.stream()
-                .filter(id -> !readNovelIds.contains(id))
-                .collect(Collectors.toSet());
-        long readCount = channelNovelIds.size() - unreadIds.size();
 
         boolean accessible = isAccessible(userId, channelId);
         long safePageSize = Math.max(1, Math.min(100, pageSize));
         ChannelNovelsVo vo = new ChannelNovelsVo();
-        if (unreadIds.isEmpty()) {
+        if (channelNovelIds.isEmpty()) {
             vo.setRecords(new ArrayList<>());
             vo.setTotal(0);
-            vo.setReadCount(readCount);
             vo.setRestricted(!accessible);
             return vo;
         }
         QueryWrapper<Novel> query = new QueryWrapper<Novel>()
                 .ne("status", 0)
-                .in("id", unreadIds)
+                .in("id", channelNovelIds)
                 .orderByDesc("updated_at");
         long safePage = Math.max(1, page);
         if (!accessible) {
@@ -145,7 +131,6 @@ public class SubscribeServiceImpl implements SubscribeService {
         Page<Novel> result = novelMapper.selectPage(new Page<>(safePage, safePageSize), query);
         vo.setRecords(result.getRecords());
         vo.setTotal(result.getTotal());
-        vo.setReadCount(readCount);
         vo.setRestricted(!accessible);
         return vo;
     }
@@ -210,13 +195,6 @@ public class SubscribeServiceImpl implements SubscribeService {
     @Override
     public List<UserSubscribe> mySubscribes(Long userId) {
         return activeSubscribes(userId);
-    }
-
-    @Override
-    public List<UserReadHistory> history(Long userId) {
-        return readHistoryMapper.selectList(new LambdaQueryWrapper<UserReadHistory>()
-                .eq(UserReadHistory::getUserId, userId)
-                .orderByDesc(UserReadHistory::getReadAt));
     }
 
     @Override

@@ -48,6 +48,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { fetchChannelNovels, subscribeChannel } from '../services/subscribe';
+import { markSubscribeRead, subscribeReadIds } from '../services/subscribeReadStatus';
 
 const route = useRoute();
 const router = useRouter();
@@ -72,6 +73,9 @@ function read(n) {
     showToast('订阅后查看');
     return;
   }
+  markSubscribeRead(n.id, { title: n.title, author: n.author });
+  novels.value = novels.value.filter((item) => item.id !== n.id);
+  readCount.value += 1;
   router.push(`/h5/read/${n.id}`);
 }
 
@@ -93,10 +97,14 @@ async function loadMore() {
 
 async function load(append = false) {
   const data = await fetchChannelNovels(channelId, page.value, pageSize);
-  novels.value = append ? novels.value.concat(data.records) : data.records;
+  const readIds = subscribeReadIds();
+  const incoming = data.records || [];
+  const visible = incoming.filter((n) => !readIds.has(String(n.id)));
+  novels.value = append ? novels.value.concat(visible) : visible;
   total.value = data.total;
   restricted.value = data.restricted;
-  readCount.value = data.readCount || 0;
+  const hidden = incoming.length - visible.length;
+  readCount.value = append ? readCount.value + hidden : hidden;
 }
 
 onMounted(load);

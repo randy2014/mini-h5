@@ -5,7 +5,6 @@ import com.mini.novel.api.model.SubscribeChannelVo;
 import com.mini.novel.api.service.SubscribeService;
 import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.common.result.Result;
-import com.mini.novel.user.entity.UserReadHistory;
 import com.mini.novel.vip.entity.UserSubscribe;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,11 +51,6 @@ public class SubscribeController {
     @GetMapping("/my")
     public Result<List<UserSubscribe>> my() {
         return Result.ok(subscribeService.mySubscribes(currentUserId()));
-    }
-
-    @GetMapping("/history")
-    public Result<List<UserReadHistory>> history() {
-        return Result.ok(subscribeService.history(currentUserId()));
     }
 
     private Long currentUserId() {

@@ -3,12 +3,12 @@
     <van-nav-bar title="阅读历史" left-arrow @click-left="$router.back()" />
 
     <div class="list">
-      <div v-for="h in history" :key="h.id" class="hist-book" @click="read(h)">
-        <div class="hcover" :class="coverClass(h.novelId)">{{ h.novelId }}</div>
+      <div v-for="h in history" :key="h.novelId" class="hist-book" @click="read(h)">
+        <div class="hcover" :class="coverClass(h.novelId)">{{ (h.title || '').slice(0, 4) }}</div>
         <div class="info">
-          <div class="ht">小说 #{{ h.novelId }}</div>
-          <div class="hs">章节 #{{ h.chapterId }} · {{ formatTime(h.readAt) }}</div>
-          <div class="prog">进度 {{ h.progress ?? 0 }}%</div>
+          <div class="ht">{{ h.title || ('小说 #' + h.novelId) }}</div>
+          <div class="hs">{{ h.author || '' }} · {{ formatTime(h.updatedAt) }}</div>
+          <div v-if="h.chapterNo" class="prog">读到第 {{ h.chapterNo }} 章</div>
         </div>
         <div class="go">继续读 ›</div>
       </div>
@@ -20,7 +20,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { fetchHistory } from '../services/subscribe';
+import { subscribeReadList } from '../services/subscribeReadStatus';
 
 const router = useRouter();
 const history = ref([]);
@@ -31,15 +31,18 @@ function coverClass(id) {
 
 function formatTime(t) {
   if (!t) return '';
-  return String(t).replace('T', ' ').slice(0, 16);
+  const d = new Date(Number(t));
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function read(h) {
   router.push(`/h5/read/${h.novelId}`);
 }
 
-onMounted(async () => {
-  history.value = await fetchHistory();
+onMounted(() => {
+  history.value = subscribeReadList();
 });
 </script>
 

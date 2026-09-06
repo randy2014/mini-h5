@@ -11,10 +11,8 @@ import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.entity.UserBookshelf;
-import com.mini.novel.user.entity.UserReadHistory;
 import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.user.mapper.UserBookshelfMapper;
-import com.mini.novel.user.mapper.UserReadHistoryMapper;
 import com.mini.novel.vip.entity.VipInvitationCode;
 import com.mini.novel.vip.service.VipInvitationService;
 import java.time.LocalDateTime;
@@ -39,19 +37,16 @@ public class UserController {
     private final NovelMapper novelMapper;
     private final VipInvitationService vipInvitationService;
     private final AppUserMapper appUserMapper;
-    private final UserReadHistoryMapper readHistoryMapper;
 
     public UserController(CurrentUserResolver currentUserResolver, BookReadService bookReadService,
                           UserBookshelfMapper bookshelfMapper, NovelMapper novelMapper,
-                          VipInvitationService vipInvitationService, AppUserMapper appUserMapper,
-                          UserReadHistoryMapper readHistoryMapper) {
+                          VipInvitationService vipInvitationService, AppUserMapper appUserMapper) {
         this.currentUserResolver = currentUserResolver;
         this.bookReadService = bookReadService;
         this.bookshelfMapper = bookshelfMapper;
         this.novelMapper = novelMapper;
         this.vipInvitationService = vipInvitationService;
         this.appUserMapper = appUserMapper;
-        this.readHistoryMapper = readHistoryMapper;
     }
 
     @GetMapping("/profile")
@@ -138,23 +133,6 @@ public class UserController {
         return Result.ok(AuthController.toProfile(appUserMapper.selectById(user.getId())));
     }
 
-    @PostMapping("/read-history")
-    public Result<Void> recordReadHistory(@RequestBody ReadHistoryRequest request,
-                                          @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        AppUser user = currentUserResolver.requireUser(userId);
-        UserReadHistory history = new UserReadHistory();
-        history.setUserId(user.getId());
-        history.setNovelId(request.novelId());
-        history.setChapterId(request.chapterId());
-        history.setProgress(request.progress());
-        history.setReadAt(LocalDateTime.now());
-        readHistoryMapper.insert(history);
-        return Result.ok(null);
-    }
-
     public record NicknameRequest(String nickname) {
-    }
-
-    public record ReadHistoryRequest(Long novelId, Long chapterId, Integer progress) {
     }
 }
