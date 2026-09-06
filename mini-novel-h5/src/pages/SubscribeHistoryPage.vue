@@ -1,6 +1,12 @@
 <template>
   <section class="page subscribe-history-page">
-    <van-nav-bar title="阅读历史" left-arrow @click-left="$router.back()" />
+    <van-nav-bar
+      title="阅读历史"
+      left-arrow
+      :right-text="history.length ? '一键清理' : ''"
+      @click-left="$router.back()"
+      @click-right="clearAll"
+    />
 
     <div class="list">
       <div v-for="h in history" :key="h.novelId" class="hist-book" @click="read(h)">
@@ -20,7 +26,8 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { subscribeReadList } from '../services/subscribeReadStatus';
+import { showConfirmDialog, showToast } from 'vant';
+import { clearSubscribeRead, subscribeReadList } from '../services/subscribeReadStatus';
 
 const router = useRouter();
 const history = ref([]);
@@ -39,6 +46,23 @@ function formatTime(t) {
 
 function read(h) {
   router.push(`/h5/read/${h.novelId}`);
+}
+
+async function clearAll() {
+  if (!history.value.length) return;
+  try {
+    await showConfirmDialog({
+      title: '清理阅读历史',
+      message: '清理后，已读的书会重新显示在订阅频道列表里。',
+      confirmButtonText: '清理',
+      cancelButtonText: '取消'
+    });
+  } catch {
+    return;
+  }
+  clearSubscribeRead();
+  history.value = [];
+  showToast('已清理');
 }
 
 onMounted(() => {

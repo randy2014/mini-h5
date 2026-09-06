@@ -46,3 +46,7 @@ export function markSubscribeRead(novelId, meta = {}, storage = localStorage) {
 export function subscribeReadList(storage = localStorage) {
   return Object.values(readState(storage)).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
+
+export function clearSubscribeRead(storage = localStorage) {
+  storage.removeItem(STORAGE_KEY);
+}
