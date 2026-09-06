@@ -23,7 +23,8 @@ const routes = [
       { path: 'subscribe', name: 'subscribe', component: () => import('../pages/SubscribePage.vue'), meta: { title: '订阅频道', tab: true } },
       { path: 'subscribe/history', name: 'subscribe-history', component: () => import('../pages/SubscribeHistoryPage.vue'), meta: { title: '阅读历史' } },
       { path: 'subscribe/:id', name: 'subscribe-channel', component: () => import('../pages/SubscribeChannelPage.vue'), meta: { title: '频道详情' } },
-      { path: 'coin', name: 'coin', component: () => import('../pages/CoinPage.vue'), meta: { title: '我的快乐币' } }
+      { path: 'coin', name: 'coin', component: () => import('../pages/CoinPage.vue'), meta: { title: '我的快乐币' } },
+      { path: 'ticket', name: 'ticket', component: () => import('../pages/TicketPage.vue'), meta: { title: '工单服务' } }
     ]
   }
 ];

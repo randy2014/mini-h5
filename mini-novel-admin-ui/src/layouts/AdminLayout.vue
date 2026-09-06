@@ -9,6 +9,7 @@
         <el-menu-item index="/admin/vip-categories">VIP 分类管理</el-menu-item>
         <el-menu-item index="/admin/subscribe-channels">订阅频道管理</el-menu-item>
         <el-menu-item index="/admin/coins">快乐币管理</el-menu-item>
+        <el-menu-item index="/admin/ticket">工单管理</el-menu-item>
         <el-menu-item index="/admin/users">用户管理</el-menu-item>
         <el-menu-item index="/admin/vip">VIP 管理</el-menu-item>
         <el-menu-item index="/admin/orders">付费管理</el-menu-item>

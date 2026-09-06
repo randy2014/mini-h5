@@ -27,6 +27,7 @@
       <van-cell v-if="profile?.vipActive" title="专属邀请码" :value="profile?.exclusiveInviteCode || '生成中'" is-link @click="copyInviteCode" />
       <van-cell v-if="profile?.vipActive" title="剩余名额" :value="String(profile?.inviteQuotaLeft ?? 0)" />
       <van-cell v-if="profile?.vipActive" title="我的快乐币" :value="String(coinBalance)" is-link to="/h5/coin" />
+      <van-cell title="工单服务" is-link to="/h5/ticket" />
       <van-cell title="阅读历史" value="待接入" />
       <van-cell title="账号设置" value="待接入" />
     </div>
