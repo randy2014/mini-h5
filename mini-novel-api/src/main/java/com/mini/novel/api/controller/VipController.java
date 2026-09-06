@@ -18,8 +18,6 @@ import com.mini.novel.common.result.Result;
 import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.user.entity.AppUser;
-import com.mini.novel.vip.entity.VipPlan;
-import com.mini.novel.vip.mapper.VipPlanMapper;
 import com.mini.novel.vip.service.VipAccessService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,7 +38,6 @@ public class VipController {
     static final String CATEGORY_ALL = "all";
     static final String CATEGORY_ALL_NAME = "\u5168\u90e8";
 
-    private final VipPlanMapper vipPlanMapper;
     private final CurrentUserResolver currentUserResolver;
     private final VipAccessService vipAccessService;
     private final NovelMapper novelMapper;
@@ -48,12 +45,11 @@ public class VipController {
     private final NovelVipCategoryMappingMapper novelVipCategoryMappingMapper;
     private final VipPublicationProgress publicationProgress;
 
-    public VipController(VipPlanMapper vipPlanMapper, CurrentUserResolver currentUserResolver,
+    public VipController(CurrentUserResolver currentUserResolver,
                          VipAccessService vipAccessService, NovelMapper novelMapper,
                          VipCategoryMapper vipCategoryMapper,
                          NovelVipCategoryMappingMapper novelVipCategoryMappingMapper,
                          VipPublicationProgress publicationProgress) {
-        this.vipPlanMapper = vipPlanMapper;
         this.currentUserResolver = currentUserResolver;
         this.vipAccessService = vipAccessService;
         this.novelMapper = novelMapper;
@@ -161,13 +157,6 @@ public class VipController {
         }
         novel.setCategoryId(null);
         novel.setCategoryName(category.getName().trim());
-    }
-
-    @GetMapping("/plans")
-    public Result<List<VipPlan>> plans() {
-        return Result.ok(vipPlanMapper.selectList(new LambdaQueryWrapper<VipPlan>()
-                .eq(VipPlan::getEnabled, true)
-                .orderByAsc(VipPlan::getSort)));
     }
 
     @GetMapping("/status")

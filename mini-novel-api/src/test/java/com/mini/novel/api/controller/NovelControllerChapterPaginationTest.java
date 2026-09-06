@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mini.novel.api.service.SubscribeService;
 import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.api.support.VipPublicationProgress;
 import com.mini.novel.book.entity.Chapter;
@@ -64,7 +65,7 @@ class NovelControllerChapterPaginationTest {
         when(users.resolveUserId(null)).thenReturn(9L);
         when(vipAccess.hasActiveVip(9L)).thenReturn(false);
         NovelController controller = new NovelController(
-                books, vipAccess, users, mock(VipPublicationProgress.class));
+                books, vipAccess, users, mock(VipPublicationProgress.class), mock(SubscribeService.class));
 
         BusinessException detailError = assertThrows(BusinessException.class,
                 () -> controller.detail(300L, null));
@@ -80,7 +81,7 @@ class NovelControllerChapterPaginationTest {
 
     private NovelController controller(BookReadService books) {
         return new NovelController(books, mock(VipAccessService.class), mock(CurrentUserResolver.class),
-                mock(VipPublicationProgress.class));
+                mock(VipPublicationProgress.class), mock(SubscribeService.class));
     }
 
     private Chapter chapter(long id) {

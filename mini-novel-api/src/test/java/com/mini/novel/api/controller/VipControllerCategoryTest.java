@@ -18,7 +18,6 @@ import com.mini.novel.book.mapper.NovelMapper;
 import com.mini.novel.book.mapper.NovelVipCategoryMappingMapper;
 import com.mini.novel.book.mapper.VipCategoryMapper;
 import com.mini.novel.common.result.Result;
-import com.mini.novel.vip.mapper.VipPlanMapper;
 import com.mini.novel.vip.service.VipAccessService;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.common.exception.BusinessException;
@@ -32,7 +31,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class VipControllerCategoryTest {
-    @Mock private VipPlanMapper vipPlanMapper;
     @Mock private CurrentUserResolver currentUserResolver;
     @Mock private VipAccessService vipAccessService;
     @Mock private NovelMapper novelMapper;
@@ -44,7 +42,7 @@ class VipControllerCategoryTest {
 
     @BeforeEach
     void setUp() {
-        controller = new VipController(vipPlanMapper, currentUserResolver, vipAccessService,
+        controller = new VipController(currentUserResolver, vipAccessService,
                 novelMapper, vipCategoryMapper, novelVipCategoryMappingMapper, publicationProgress);
         AppUser vip = new AppUser();
         vip.setId(1L);

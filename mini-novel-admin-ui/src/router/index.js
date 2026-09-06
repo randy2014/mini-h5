@@ -15,8 +15,6 @@ const routes = [
       { path: 'categories', component: () => import('../views/CategoryView.vue'), meta: { title: '分类管理' } },
       { path: 'vip-categories', component: () => import('../views/VipCategoryView.vue'), meta: { title: 'VIP 分类管理' } },
       { path: 'users', component: () => import('../views/UserView.vue'), meta: { title: '用户管理' } },
-      { path: 'vip', component: () => import('../views/VipView.vue'), meta: { title: 'VIP 管理' } },
-      { path: 'orders', component: () => import('../views/OrderView.vue'), meta: { title: '付费管理' } },
       { path: 'crawler', component: CrawlerView, meta: { title: '采集管理' } },
       { path: 'content-review', component: () => import('../views/ContentReviewView.vue'), meta: { title: '内容审核' } },
       { path: 'subscribe-channels', component: () => import('../views/SubscribeChannelView.vue'), meta: { title: '订阅频道管理' } },
