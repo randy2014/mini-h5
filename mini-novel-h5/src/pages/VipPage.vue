@@ -4,13 +4,22 @@
 
     <van-loading v-if="statusLoading" class="center-loading" />
 
+    <div v-else-if="!isAuthenticated" class="vip-access-denied">
+      <van-icon name="lock" />
+      <h1>登录后进入 VIP 专区</h1>
+      <p>登录后可验证 VIP 资格，浏览 VIP 专区书单与章节内容。</p>
+      <div class="vip-access-actions">
+        <van-button type="primary" :to="loginTarget">立即登录</van-button>
+        <van-button plain to="/h5/home">返回首页</van-button>
+      </div>
+    </div>
+
     <div v-else-if="!status.active" class="vip-access-denied">
       <van-icon name="lock" />
-      <h1>{{ isAuthenticated ? '需要 VIP 资格' : '探索 VIP 专区' }}</h1>
-      <p v-if="isAuthenticated">当前账号暂未开通有效 VIP，可使用邀请码获取资格；专区书单与章节信息不会展示。</p>
-      <p v-else>登录后可验证 VIP 资格或使用邀请码；未获得资格前不会展示专区书单与章节信息。</p>
+      <h1>需要 VIP 资格</h1>
+      <p>当前账号暂未开通有效 VIP，可使用邀请码获取资格；专区书单与章节信息不会展示。</p>
       <div class="vip-access-actions">
-        <van-button type="primary" :to="loginTarget">{{ isAuthenticated ? '使用邀请码' : '登录并验证资格' }}</van-button>
+        <van-button type="primary" :to="loginTarget">使用邀请码</van-button>
         <van-button plain to="/h5/home">返回首页</van-button>
       </div>
     </div>
