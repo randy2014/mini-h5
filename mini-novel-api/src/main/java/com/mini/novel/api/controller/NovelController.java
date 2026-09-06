@@ -1,6 +1,7 @@
 package com.mini.novel.api.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mini.novel.api.service.SubscribeService;
 import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.api.support.VipPublicationProgress;
 import com.mini.novel.book.entity.Chapter;
@@ -11,6 +12,8 @@ import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.vip.service.VipAccessService;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -25,19 +28,34 @@ public class NovelController {
     private final VipAccessService vipAccessService;
     private final CurrentUserResolver currentUserResolver;
     private final VipPublicationProgress publicationProgress;
+    private final SubscribeService subscribeService;
 
     public NovelController(BookReadService bookReadService, VipAccessService vipAccessService,
-                           CurrentUserResolver currentUserResolver, VipPublicationProgress publicationProgress) {
+                           CurrentUserResolver currentUserResolver, VipPublicationProgress publicationProgress,
+                           SubscribeService subscribeService) {
         this.bookReadService = bookReadService;
         this.vipAccessService = vipAccessService;
         this.currentUserResolver = currentUserResolver;
         this.publicationProgress = publicationProgress;
+        this.subscribeService = subscribeService;
     }
 
     @GetMapping("/search")
     public Result<List<Novel>> search(@RequestParam(value = "keyword", required = false) String keyword,
-                                      @RequestParam(value = "limit", defaultValue = "50") int limit) {
-        return Result.ok(bookReadService.searchNovels(keyword, limit));
+                                      @RequestParam(value = "limit", defaultValue = "50") int limit,
+                                      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Long resolvedUserId = currentUserResolver.resolveUserId(userId);
+        List<Novel> novels = bookReadService.searchNovels(keyword, limit);
+        if (resolvedUserId != null && subscribeService.isTrialActive(resolvedUserId)) {
+            return Result.ok(novels);
+        }
+        Set<Long> subscribedIds = resolvedUserId == null
+                ? Set.of()
+                : subscribeService.subscribedNovelIds(resolvedUserId);
+        List<Novel> filtered = novels.stream()
+                .filter(novel -> !Boolean.TRUE.equals(novel.getVipRequired()) || subscribedIds.contains(novel.getId()))
+                .collect(Collectors.toList());
+        return Result.ok(filtered);
     }
 
     @GetMapping("/rank")

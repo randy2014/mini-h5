@@ -5,6 +5,7 @@ import com.mini.novel.api.model.SubscribeChannelVo;
 import com.mini.novel.user.entity.UserReadHistory;
 import com.mini.novel.vip.entity.UserSubscribe;
 import java.util.List;
+import java.util.Set;
 
 public interface SubscribeService {
     List<SubscribeChannelVo> channels(Long userId);
@@ -22,6 +23,8 @@ public interface SubscribeService {
     boolean isTrialActive(Long userId);
 
     boolean isAccessible(Long userId, Long channelId);
+
+    Set<Long> subscribedNovelIds(Long userId);
 
     int expireSweep();
 }

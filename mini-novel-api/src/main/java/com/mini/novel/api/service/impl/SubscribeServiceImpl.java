@@ -237,6 +237,18 @@ public class SubscribeServiceImpl implements SubscribeService {
     }
 
     @Override
+    public Set<Long> subscribedNovelIds(Long userId) {
+        List<UserSubscribe> active = activeSubscribes(userId);
+        if (active.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> channelIds = active.stream().map(UserSubscribe::getChannelId).collect(Collectors.toSet());
+        return channelNovelMapper.selectList(new QueryWrapper<SubscribeChannelNovel>()
+                        .in("channel_id", channelIds))
+                .stream().map(SubscribeChannelNovel::getNovelId).collect(Collectors.toSet());
+    }
+
+    @Override
     @Transactional
     public int expireSweep() {
         List<UserSubscribe> expired = subscribeMapper.selectList(new LambdaQueryWrapper<UserSubscribe>()
