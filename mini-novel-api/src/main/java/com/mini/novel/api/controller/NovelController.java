@@ -11,6 +11,7 @@ import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.vip.service.VipAccessService;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -45,17 +46,27 @@ public class NovelController {
                                       @RequestParam(value = "limit", defaultValue = "50") int limit,
                                       @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Long resolvedUserId = currentUserResolver.resolveUserId(userId);
-        List<Novel> novels = bookReadService.searchNovels(keyword, limit);
-        if (resolvedUserId != null && subscribeService.isTrialActive(resolvedUserId)) {
-            return Result.ok(novels);
+        List<Novel> freeNovels = bookReadService.searchNovels(keyword, limit);
+        if (resolvedUserId == null) {
+            return Result.ok(freeNovels);
         }
-        Set<Long> subscribedIds = resolvedUserId == null
-                ? Set.of()
-                : subscribeService.subscribedNovelIds(resolvedUserId);
-        List<Novel> filtered = novels.stream()
-                .filter(novel -> !Boolean.TRUE.equals(novel.getVipRequired()) || subscribedIds.contains(novel.getId()))
+        if (subscribeService.isTrialActive(resolvedUserId)) {
+            List<Novel> vipNovels = bookReadService.searchVipNovels(keyword, limit);
+            List<Novel> merged = new ArrayList<>(freeNovels);
+            merged.addAll(vipNovels);
+            return Result.ok(merged);
+        }
+        Set<Long> subscribedIds = subscribeService.subscribedNovelIds(resolvedUserId);
+        if (subscribedIds.isEmpty()) {
+            return Result.ok(freeNovels);
+        }
+        List<Novel> vipNovels = bookReadService.searchVipNovels(keyword, limit);
+        List<Novel> subscribedVip = vipNovels.stream()
+                .filter(novel -> subscribedIds.contains(novel.getId()))
                 .collect(Collectors.toList());
-        return Result.ok(filtered);
+        List<Novel> merged = new ArrayList<>(freeNovels);
+        merged.addAll(subscribedVip);
+        return Result.ok(merged);
     }
 
     @GetMapping("/rank")

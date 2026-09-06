@@ -1,6 +1,7 @@
 package com.mini.novel.book.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mini.novel.book.entity.Chapter;
 import com.mini.novel.book.entity.Category;
@@ -40,6 +41,30 @@ public class BookReadServiceImpl implements BookReadService {
             String trimmed = keyword.trim();
             wrapper.and(query -> query.like(Novel::getTitle, trimmed).or().like(Novel::getAuthor, trimmed));
         }
+        return novelMapper.selectPage(Page.of(1, pageSize), wrapper).getRecords();
+    }
+
+    @Override
+    public List<Novel> searchVipNovels(String keyword, int limit) {
+        int pageSize = normalizeLimit(limit, 50);
+        QueryWrapper<Novel> wrapper = new QueryWrapper<Novel>()
+                .ne("status", 0)
+                .eq("vip_required", true)
+                .exists("""
+                        SELECT 1
+                        FROM novel_source_mapping vip_mapping
+                        JOIN mini_novel_crawler.crawl_source vip_source
+                          ON vip_source.source_code = vip_mapping.source_code
+                         AND vip_source.source_type = 'AUTHORIZED_VIP'
+                        WHERE vip_mapping.novel_id = novel.id
+                          AND vip_mapping.content_status = 'CONTENT_READY'
+                        """)
+                .exists("SELECT 1 FROM chapter vip_chapter WHERE vip_chapter.novel_id = novel.id");
+        if (StringUtils.hasText(keyword)) {
+            String trimmed = keyword.trim();
+            wrapper.and(query -> query.like("title", trimmed).or().like("author", trimmed));
+        }
+        wrapper.orderByDesc("updated_at");
         return novelMapper.selectPage(Page.of(1, pageSize), wrapper).getRecords();
     }
 

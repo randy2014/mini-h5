@@ -11,6 +11,8 @@ public interface BookReadService {
 
     List<Novel> searchNovels(String keyword, int limit);
 
+    List<Novel> searchVipNovels(String keyword, int limit);
+
     List<Novel> rankNovels(String rankType, int limit);
 
     List<Category> listCategories();
