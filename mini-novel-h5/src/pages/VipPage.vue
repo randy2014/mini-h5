@@ -132,7 +132,7 @@
           />
         </div>
       </van-list>
-      <div v-if="!hasSubscription && finished && books.length" class="subscribe-prompt">
+      <div v-if="!hasSubscription && !isTrial && finished && books.length" class="subscribe-prompt">
         <span>仅展示最新 3 页内容</span>
         <van-button size="small" round color="#e6b422" @click="$router.push('/h5/subscribe')">订阅频道解锁全部</van-button>
       </div>
@@ -148,6 +148,7 @@ import { fetchVipBooks, fetchVipCategories, fetchVipStatus } from '../services/v
 import { canRequestVipContent, shouldCheckVipStatus } from '../services/vipAccess';
 import { clearVipReadBooks, vipReadIds } from '../services/vipReadStatus';
 import { fetchMySubscribes } from '../services/subscribe';
+import { useUserStore } from '../stores/user';
 
 const key = 'mini_novel_vip_adult_confirmed';
 const adult = ref(false);
@@ -172,6 +173,8 @@ const statusError = ref(false);
 const pageSize = 20;
 const MAX_FREE_PAGES = 3;
 const hasSubscription = ref(false);
+const isTrial = ref(false);
+const userStore = useUserStore();
 let requestVersion = 0;
 
 const loginTarget = { path: '/h5/login', query: { redirect: '/h5/vip' } };
@@ -225,7 +228,7 @@ async function loadNextPage() {
     loading.value = false;
     return;
   }
-  if (!hasSubscription.value && page.value > MAX_FREE_PAGES) {
+  if (!hasSubscription.value && !isTrial.value && page.value > MAX_FREE_PAGES) {
     finished.value = true;
     loading.value = false;
     return;
@@ -318,6 +321,13 @@ async function loadSubscriptionState() {
     hasSubscription.value = Array.isArray(subs) && subs.length > 0;
   } catch {
     hasSubscription.value = false;
+  }
+  try {
+    const profile = await userStore.loadProfile();
+    const activatedAt = profile?.vipActivatedAt;
+    isTrial.value = Boolean(activatedAt && new Date(activatedAt).getTime() + 7 * 24 * 60 * 60 * 1000 > Date.now());
+  } catch {
+    isTrial.value = false;
   }
 }
 
