@@ -132,6 +132,10 @@
           />
         </div>
       </van-list>
+      <div v-if="!hasSubscription && finished && books.length" class="subscribe-prompt">
+        <span>仅展示最新 3 页内容</span>
+        <van-button size="small" round color="#e6b422" @click="$router.push('/h5/subscribe')">订阅频道解锁全部</van-button>
+      </div>
     </template>
   </section>
 </template>
@@ -143,6 +147,7 @@ import BookCard from '../components/BookCard.vue';
 import { fetchVipBooks, fetchVipCategories, fetchVipStatus } from '../services/vip';
 import { canRequestVipContent, shouldCheckVipStatus } from '../services/vipAccess';
 import { clearVipReadBooks, vipReadIds } from '../services/vipReadStatus';
+import { fetchMySubscribes } from '../services/subscribe';
 
 const key = 'mini_novel_vip_adult_confirmed';
 const adult = ref(false);
@@ -165,6 +170,8 @@ const isAuthenticated = Boolean(localStorage.getItem('mini_novel_auth_token'));
 const statusLoading = ref(shouldCheckVipStatus(isAuthenticated));
 const statusError = ref(false);
 const pageSize = 20;
+const MAX_FREE_PAGES = 3;
+const hasSubscription = ref(false);
 let requestVersion = 0;
 
 const loginTarget = { path: '/h5/login', query: { redirect: '/h5/vip' } };
@@ -215,6 +222,11 @@ async function loadCategories() {
 
 async function loadNextPage() {
   if (!canRequestVipContent(isAuthenticated, status.value)) {
+    loading.value = false;
+    return;
+  }
+  if (!hasSubscription.value && page.value > MAX_FREE_PAGES) {
+    finished.value = true;
     loading.value = false;
     return;
   }
@@ -296,7 +308,17 @@ function retryBooks() {
 function confirm() {
   localStorage.setItem(key, 'yes');
   confirmed.value = true;
+  loadSubscriptionState();
   loadCategories();
+}
+
+async function loadSubscriptionState() {
+  try {
+    const subs = await fetchMySubscribes();
+    hasSubscription.value = Array.isArray(subs) && subs.length > 0;
+  } catch {
+    hasSubscription.value = false;
+  }
 }
 
 function bookIdOf(book) {
@@ -328,7 +350,10 @@ async function clearLocalReadBooks() {
 onMounted(async () => {
   if (!shouldCheckVipStatus(isAuthenticated)) return;
   await loadStatus();
-  if (canRequestVipContent(isAuthenticated, status.value) && confirmed.value) loadCategories();
+  if (canRequestVipContent(isAuthenticated, status.value)) {
+    loadSubscriptionState();
+    if (confirmed.value) loadCategories();
+  }
 });
 </script>
 
@@ -371,6 +396,8 @@ onMounted(async () => {
 .vip-feedback { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; margin-top:12px; padding:11px 12px; border-radius:var(--radius); font-size:13px; }
 .vip-feedback--error { border:1px solid rgba(180,75,75,.16); background:#fff1f0; color:var(--danger); }
 .vip-feedback button { padding:4px 0; border:0; background:transparent; color:inherit; font-weight:800; }
+.subscribe-prompt { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:14px 0 20px; padding:14px; border-radius:var(--radius); background:#fff7e8; border:1px solid rgba(230,180,34,.25); }
+.subscribe-prompt span { font-size:13px; color:#886126; }
 .vip-adult-gate { display:grid; grid-template-columns:40px minmax(0,1fr); gap:14px; margin-top:18px; padding:18px; border:1px solid rgba(31,37,40,.08); border-radius:var(--radius); background:var(--panel); }
 .vip-gate-icon { display:flex; width:40px; height:40px; align-items:center; justify-content:center; border-radius:var(--radius); background:#e9f4f0; color:var(--brand); font-size:21px; }
 .vip-gate-copy h1 { margin:0 0 6px; font-size:20px; }
