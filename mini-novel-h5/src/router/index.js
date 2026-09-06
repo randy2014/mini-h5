@@ -12,7 +12,7 @@ const routes = [
     children: [
       { path: 'home', name: 'home', component: () => import('../pages/HomePage.vue'), meta: { title: '首页', tab: true } },
       { path: 'category', name: 'category', component: () => import('../pages/CategoryPage.vue'), meta: { title: '分类', tab: true } },
-      { path: 'bookshelf', name: 'bookshelf', component: () => import('../pages/BookshelfPage.vue'), meta: { title: '书架', tab: true, auth: true } },
+      { path: 'bookshelf', name: 'bookshelf', component: () => import('../pages/BookshelfPage.vue'), meta: { title: '书架', tab: true } },
       { path: 'profile', name: 'profile', component: () => import('../pages/ProfilePage.vue'), meta: { title: '我的', tab: true } },
       { path: 'search', name: 'search', component: () => import('../pages/SearchPage.vue'), meta: { title: '搜索' } },
       { path: 'rank/:type', name: 'rank', component: () => import('../pages/RankPage.vue'), meta: { title: '榜单' } },

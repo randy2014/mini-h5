@@ -1,7 +1,13 @@
 <template>
   <section class="page with-tab bookshelf-page">
     <van-nav-bar title="我的书架" />
-    <van-loading v-if="loading" class="center-loading" />
+    <div v-if="!isAuthenticated" class="no-login">
+      <div class="lock">🔖</div>
+      <h3>登录后同步你的书架</h3>
+      <p>登录后可收藏喜欢的小说，跨设备同步阅读进度</p>
+      <van-button round color="#1f6f64" to="/h5/login">立即登录</van-button>
+    </div>
+    <van-loading v-else-if="loading" class="center-loading" />
     <template v-else>
       <div class="section-title first">
         <h2>继续阅读</h2>
@@ -31,8 +37,11 @@ import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import BookCard from '../components/BookCard.vue';
 import { fetchBookshelf, removeBookshelf } from '../services/user';
+import { useUserStore } from '../stores/user';
 
 const router = useRouter();
+const userStore = useUserStore();
+const isAuthenticated = computed(() => userStore.isAuthenticated);
 const loading = ref(true);
 const books = ref([]);
 const sortedBooks = computed(() => {
@@ -41,7 +50,13 @@ const sortedBooks = computed(() => {
   });
 });
 
-onMounted(loadBookshelf);
+onMounted(() => {
+  if (!userStore.isAuthenticated) {
+    loading.value = false;
+    return;
+  }
+  loadBookshelf();
+});
 
 async function loadBookshelf() {
   loading.value = true;
@@ -115,3 +130,10 @@ async function removeBook(book) {
   showToast('已移出书架');
 }
 </script>
+
+<style scoped>
+.no-login { padding: 80px 30px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.no-login .lock { font-size: 44px; }
+.no-login h3 { font-size: 17px; color: #2a2a34; }
+.no-login p { font-size: 13px; color: #8a92a3; line-height: 1.7; }
+</style>
