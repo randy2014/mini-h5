@@ -53,6 +53,7 @@ services:
       - "0.0.0.0:${APP_PORT:-8080}:8080"
     volumes:
       - mini-novel-cover-cache:/var/cache/covers
+      - mini-novel-media:/data/media
 
   mini-novel-h5:
     build:
@@ -101,3 +102,4 @@ volumes:
   mini-novel-mysql-data:
   mini-novel-redis-data:
   mini-novel-cover-cache:
+  mini-novel-media:

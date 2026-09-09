@@ -14,6 +14,8 @@ import com.mini.novel.book.mapper.SubscribeChannelMapper;
 import com.mini.novel.book.mapper.SubscribeChannelNovelMapper;
 import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
+import com.mini.novel.media.entity.MediaPost;
+import com.mini.novel.media.mapper.MediaPostMapper;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.vip.entity.UserCoinLog;
@@ -43,6 +45,7 @@ public class SubscribeServiceImpl implements SubscribeService {
     private final NovelMapper novelMapper;
     private final AppUserMapper appUserMapper;
     private final CoinService coinService;
+    private final MediaPostMapper mediaPostMapper;
 
     @Value("#{${app.subscribe.prices:{WEEK:100, MONTH:300, QUARTER:800, YEAR:3000}}}")
     private Map<String, Long> prices;
@@ -52,13 +55,15 @@ public class SubscribeServiceImpl implements SubscribeService {
                                 UserSubscribeMapper subscribeMapper,
                                 NovelMapper novelMapper,
                                 AppUserMapper appUserMapper,
-                                CoinService coinService) {
+                                CoinService coinService,
+                                MediaPostMapper mediaPostMapper) {
         this.channelMapper = channelMapper;
         this.channelNovelMapper = channelNovelMapper;
         this.subscribeMapper = subscribeMapper;
         this.novelMapper = novelMapper;
         this.appUserMapper = appUserMapper;
         this.coinService = coinService;
+        this.mediaPostMapper = mediaPostMapper;
     }
 
     @Override
@@ -96,6 +101,9 @@ public class SubscribeServiceImpl implements SubscribeService {
             }
             vo.setNovelCount(channelNovelMapper.selectCount(new QueryWrapper<SubscribeChannelNovel>()
                     .eq("channel_id", channel.getId())));
+            vo.setMediaCount(mediaPostMapper.selectCount(new LambdaQueryWrapper<MediaPost>()
+                    .eq(MediaPost::getChannelId, channel.getId())
+                    .eq(MediaPost::getStatus, MediaPost.STATUS_PUBLISHED)));
             result.add(vo);
         }
         return result;

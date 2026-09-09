@@ -36,7 +36,8 @@
               <span v-else class="tag locked">未订阅</span>
             </div>
             <div class="desc">{{ c.description || '暂无简介' }}</div>
-            <div class="meta">{{ c.novelCount }} 本
+            <div class="meta">{{ c.novelCount + (c.mediaCount || 0) }} 条内容
+              <template v-if="(c.mediaCount || 0) > 0"> · {{ c.mediaCount }} 图文视频</template>
               <template v-if="c.subscribed && c.endTime"> · 剩余 {{ c.daysLeft }} 天</template>
             </div>
             <div v-if="c.subscribed && c.endTime" class="countdown">{{ formatDate(c.endTime) }} 订阅到期</div>

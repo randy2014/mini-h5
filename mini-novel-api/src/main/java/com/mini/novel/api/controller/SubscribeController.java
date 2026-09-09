@@ -1,7 +1,9 @@
 package com.mini.novel.api.controller;
 
+import com.mini.novel.api.model.ChannelFeedVo;
 import com.mini.novel.api.model.ChannelNovelsVo;
 import com.mini.novel.api.model.SubscribeChannelVo;
+import com.mini.novel.api.service.ChannelFeedService;
 import com.mini.novel.api.service.SubscribeService;
 import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.common.result.Result;
@@ -18,16 +20,28 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/subscribe")
 public class SubscribeController {
     private final SubscribeService subscribeService;
+    private final ChannelFeedService channelFeedService;
     private final CurrentUserResolver currentUserResolver;
 
-    public SubscribeController(SubscribeService subscribeService, CurrentUserResolver currentUserResolver) {
+    public SubscribeController(SubscribeService subscribeService,
+                               ChannelFeedService channelFeedService,
+                               CurrentUserResolver currentUserResolver) {
         this.subscribeService = subscribeService;
+        this.channelFeedService = channelFeedService;
         this.currentUserResolver = currentUserResolver;
     }
 
     @GetMapping("/channels")
     public Result<List<SubscribeChannelVo>> channels() {
         return Result.ok(subscribeService.channels(currentUserId()));
+    }
+
+    /** 频道统一内容流（小说 + 图文/视频 混排，时间倒序）—— 频道详情网格/列表数据源。 */
+    @GetMapping("/channels/{channelId}/feed")
+    public Result<ChannelFeedVo> feed(@PathVariable Long channelId,
+                                      @RequestParam(defaultValue = "1") long page,
+                                      @RequestParam(defaultValue = "20") long pageSize) {
+        return Result.ok(channelFeedService.feed(currentUserId(), channelId, page, pageSize));
     }
 
     @GetMapping("/channels/{channelId}/novels")

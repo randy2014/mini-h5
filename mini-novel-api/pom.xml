@@ -18,6 +18,11 @@
         </dependency>
         <dependency>
             <groupId>com.mini.novel</groupId>
+            <artifactId>mini-novel-media</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.mini.novel</groupId>
             <artifactId>mini-novel-user</artifactId>
             <version>${project.version}</version>
         </dependency>

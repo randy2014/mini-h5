@@ -15,6 +15,7 @@
         <module>mini-novel-common</module>
         <module>mini-novel-core</module>
         <module>mini-novel-book</module>
+        <module>mini-novel-media</module>
         <module>mini-novel-user</module>
         <module>mini-novel-vip</module>
         <module>mini-novel-crawler</module>

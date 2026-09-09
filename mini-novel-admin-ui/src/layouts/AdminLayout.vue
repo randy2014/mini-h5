@@ -2,11 +2,12 @@
   <el-container class="admin-shell">
     <el-aside width="224px" class="admin-aside">
       <div class="brand">Mini Novel</div>
-      <el-menu router :default-active="$route.path" background-color="#1f2937" text-color="#cbd5e1" active-text-color="#ffffff">
+      <el-menu router :default-active="$route.path" background-color="#154f4b" text-color="#cfe0da" active-text-color="#ffffff">
         <el-menu-item index="/admin/dashboard">首页</el-menu-item>
         <el-menu-item index="/admin/articles">文章管理</el-menu-item>
         <el-menu-item index="/admin/categories">分类管理</el-menu-item>
         <el-menu-item index="/admin/vip-categories">VIP 分类管理</el-menu-item>
+        <el-menu-item index="/admin/media-pool">🖼 多媒体池子</el-menu-item>
         <el-menu-item index="/admin/subscribe-channels">订阅频道管理</el-menu-item>
         <el-menu-item index="/admin/coins">快乐币管理</el-menu-item>
         <el-menu-item index="/admin/ticket">工单管理</el-menu-item>

@@ -1,5 +1,15 @@
 server:
   port: 8080
+  # 大视频/图集上传（多媒体池子）
+  tomcat:
+    max-swallow-size: -1
+    max-http-form-post-size: 350MB
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 300MB
+      max-request-size: 320MB
 
 app:
   public-h5-base-url: ${PUBLIC_H5_BASE_URL:https://xs2026.site}

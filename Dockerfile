@@ -5,6 +5,7 @@ COPY pom.xml .
 COPY mini-novel-common/pom.xml mini-novel-common/pom.xml
 COPY mini-novel-core/pom.xml mini-novel-core/pom.xml
 COPY mini-novel-book/pom.xml mini-novel-book/pom.xml
+COPY mini-novel-media/pom.xml mini-novel-media/pom.xml
 COPY mini-novel-user/pom.xml mini-novel-user/pom.xml
 COPY mini-novel-vip/pom.xml mini-novel-vip/pom.xml
 COPY mini-novel-crawler/pom.xml mini-novel-crawler/pom.xml
@@ -21,6 +22,9 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 ENV TZ=Asia/Shanghai
+# ffmpeg: 多媒体池子视频转码/抽帧依赖（见 docs/media-pool-design.md §5.2）
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /workspace/mini-novel-application/target/mini-novel-application-0.1.0-SNAPSHOT.jar /app/app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.profiles.active=docker"]

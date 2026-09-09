@@ -15,6 +15,8 @@ public class SubscribeChannelVo {
     private LocalDateTime endTime;
     private long daysLeft;
     private long novelCount;
+    /** 多媒体内容（图文+视频帖）数量。 */
+    private long mediaCount;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -40,4 +42,6 @@ public class SubscribeChannelVo {
     public void setDaysLeft(long daysLeft) { this.daysLeft = daysLeft; }
     public long getNovelCount() { return novelCount; }
     public void setNovelCount(long novelCount) { this.novelCount = novelCount; }
+    public long getMediaCount() { return mediaCount; }
+    public void setMediaCount(long mediaCount) { this.mediaCount = mediaCount; }
 }

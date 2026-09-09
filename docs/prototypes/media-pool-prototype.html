@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多媒体池子 · 交互原型</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:#eef1f6; color:#333; padding-bottom:60px; }
+  .proto-top { position:sticky; top:0; z-index:99; background:#1f2d3d; padding:14px 20px 12px; box-shadow:0 2px 8px rgba(0,0,0,.18); }
+  .proto-top h1 { color:#fff; font-size:16px; font-weight:600; letter-spacing:.5px; }
+  .proto-top .sub { color:#8ea3b8; font-size:12px; margin-top:3px; }
+  .screen-nav { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .screen-nav button { border:1px solid #3d5268; background:transparent; color:#b9c6d4; padding:6px 14px; border-radius:16px; font-size:12px; cursor:pointer; transition:.15s; }
+  .screen-nav button.on { background:#1f6f64; border-color:#1f6f64; color:#fff; font-weight:600; }
+  .screen-nav button.grp { color:#7ecbaf; font-weight:700; background:transparent; border:none; cursor:default; font-size:12px; }
+
+  .stage { max-width:1180px; margin:22px auto 0; padding:0 18px; display:none; }
+  .stage.on { display:block; }
+  .stage-label { color:#5b6b7f; font-size:12px; margin:8px 0 14px; }
+  .stage-label b { color:#1f6f64; }
+
+  .board { background:#f5f7fa; border:1px solid #e2e8f2; border-radius:12px; overflow:hidden; }
+
+  /* ===== 后台（桌面）布局 ===== */
+  .admin-wrap { display:flex; min-height:600px; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 4px 18px rgba(30,45,61,.08); }
+  .admin-side { width:196px; background:#304156; color:#bfcbd9; padding-top:10px; flex-shrink:0; }
+  .admin-side .logo { color:#fff; font-weight:700; font-size:15px; padding:14px 18px; border-bottom:1px solid #3a4f66; display:flex; align-items:center; gap:8px; }
+  .admin-side .logo .dot { width:20px; height:20px; border-radius:6px; background:linear-gradient(135deg,#1f6f64,#2f9e8f); display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; }
+  .admin-side .mi { padding:11px 18px; font-size:13px; cursor:pointer; transition:.15s; border-left:3px solid transparent; }
+  .admin-side .mi:hover { background:#3a5068; color:#fff; }
+  .admin-side .mi.on { background:#1f6f64; color:#fff; border-left-color:#2fceab; font-weight:600; }
+  .admin-side .grp { padding:14px 18px 6px; font-size:11px; color:#5f7591; }
+  .admin-main { flex:1; background:#f0f2f7; padding:16px; min-width:0; }
+  .card { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
+  .card-hd { padding:14px 18px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #f0f2f5; }
+  .card-hd h3 { font-size:15px; color:#1f2d3d; font-weight:600; }
+  .tabs2 { display:flex; background:#eef1f6; border-radius:8px; padding:3px; }
+  .tabs2 span { padding:5px 16px; font-size:13px; border-radius:6px; color:#6b7a8d; cursor:pointer; }
+  .tabs2 span.on { background:#fff; color:#1f6f64; font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .btn { display:inline-flex; align-items:center; gap:5px; border:none; border-radius:6px; padding:8px 14px; font-size:13px; cursor:pointer; transition:.15s; }
+  .btn.primary { background:#1f6f64; color:#fff; }
+  .btn.primary:hover { background:#174f47; }
+  .btn.gold { background:#e6b422; color:#5c4300; font-weight:600; }
+  .btn.gold:hover { background:#d0a219; }
+  .btn.plain { background:#fff; border:1px solid #d8dee8; color:#4b5a6a; }
+  .btn.plain:hover { border-color:#1f6f64; color:#1f6f64; }
+  .btn.danger { background:#fff; border:1px solid #f0c0bd; color:#c0392b; }
+  .btn.danger:hover { background:#fdeeec; }
+  .btn.link { background:none; border:none; color:#1f6f64; cursor:pointer; font-size:12px; padding:4px 6px; }
+  .btn.link.red { color:#c0392b; }
+  .btn.link.disabled, .btn.link[disabled] { color:#b0b8c4; cursor:not-allowed; }
+  .btn.mini { padding:5px 10px; font-size:12px; border-radius:5px; }
+
+  table.tbl { width:100%; border-collapse:collapse; }
+  .tbl th { text-align:left; font-size:12px; color:#8a97a8; font-weight:500; padding:11px 14px; border-bottom:1px solid #eef1f5; background:#fafbfd; }
+  .tbl td { padding:10px 14px; font-size:13px; border-bottom:1px solid #f2f4f8; vertical-align:middle; }
+  .tbl tr:hover td { background:#f8fafc; }
+  .cover-thumb { width:52px; height:36px; border-radius:6px; object-fit:cover; display:block; background:linear-gradient(135deg,#c7d3e0,#e8eef6); }
+  .post-cell { display:flex; align-items:center; gap:10px; min-width:0; }
+  .post-cell .inf b { display:block; font-size:13px; color:#26384c; font-weight:600; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .post-cell .inf span { display:block; font-size:11px; color:#98a5b5; margin-top:2px; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:4px; }
+  .tag.g { background:#e7f6f0; color:#1f7a5c; }       /* 图文 */
+  .tag.v { background:#eaf2ff; color:#2f6fd8; }       /* 视频 */
+  .tag.m { background:#f6eefe; color:#7a3fe0; }       /* 图文+视频 */
+  .tag.st-draft { background:#f1f3f6; color:#7a8698; }
+  .tag.st-pub { background:#e3f7e9; color:#1e8e50; }
+  .tag.ch { background:#fdf3dd; color:#b07f13; }
+  .cell-ch { font-size:12px; color:#55657a; }
+  .fade { color:#b3bdc9; }
+
+  /* 编辑抽屉 */
+  .drawer { position:relative; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 6px 30px rgba(30,45,61,.15); }
+  .drawer-hd { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #eef1f5; }
+  .drawer-hd h3 { font-size:15px; }
+  .x { border:none; background:#f0f2f7; width:28px; height:28px; border-radius:50%; cursor:pointer; color:#66788c; font-size:13px; }
+  .form { padding:18px 20px; }
+  .f-label { font-size:12px; color:#5b6b7f; margin:0 0 8px; }
+  .f-label b { color:#e0433f; }
+  .f-input, .f-area { width:100%; border:1px solid #dbe2ec; border-radius:8px; padding:9px 12px; font-size:13px; outline:none; font-family:inherit; }
+  .f-input:focus, .f-area:focus { border-color:#1f6f64; }
+  .f-area { resize:none; }
+  .upload-box { border:1.6px dashed #c3cdd9; border-radius:10px; padding:22px; text-align:center; color:#8a97a8; cursor:pointer; background:#fafbfd; }
+  .upload-box .big { font-size:26px; color:#1f6f64; }
+  .upload-box b { color:#1f6f64; }
+  .media-grid { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+  .media-item { width:104px; position:relative; border-radius:8px; overflow:hidden; border:1px solid #e3e9f1; background:#f7f9fb; }
+  .media-item img, .media-item .vi { width:104px; height:72px; display:block; object-fit:cover; background:linear-gradient(135deg,#20313f,#3a5568); }
+  .media-item .vi { position:relative; display:flex; align-items:center; justify-content:center; color:#fff; }
+  .media-item .vi .dur { position:absolute; right:5px; bottom:4px; font-size:10px; background:rgba(0,0,0,.55); padding:1px 5px; border-radius:3px; }
+  .media-item .del { position:absolute; top:4px; right:4px; background:rgba(0,0,0,.5); color:#fff; width:17px; height:17px; line-height:15px; text-align:center; border-radius:50%; font-size:10px; cursor:pointer; }
+  .media-item .ord { position:absolute; left:4px; bottom:4px; background:rgba(31,111,100,.9); color:#fff; font-size:10px; padding:0 6px; border-radius:3px; }
+  .media-item .first { position:absolute; left:4px; top:4px; background:rgba(230,180,34,.95); color:#5c4300; font-size:9px; padding:0 5px; border-radius:3px; }
+  .play-tri { width:0; height:0; border-left:13px solid #fff; border-top:8px solid transparent; border-bottom:8px solid transparent; margin-left:4px; opacity:.95; }
+
+  /* 弹窗 */
+  .modal-mask { position:fixed; inset:0; background:rgba(20,32,46,.45); display:flex; align-items:center; justify-content:center; z-index:60; }
+  .modal { width:430px; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.22); }
+  .modal-hd { padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eef1f5; }
+  .modal-hd h3 { font-size:15px; }
+  .modal-bd { padding:18px 20px; }
+  .sel { width:100%; padding:9px 12px; border:1px solid #dbe2ec; border-radius:8px; font-size:13px; outline:none; background:#fff; color:#26384c; }
+  .channel-pick { border:1px solid #e3e9f1; border-radius:10px; padding:12px; margin-top:12px; background:#fafbfd; }
+  .channel-pick .row { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px dashed #e8edf4; cursor:pointer; }
+  .channel-pick .row:last-child { border:none; }
+  .channel-pick .row.on { background:#e9f6f2; border-radius:8px; padding-left:8px; }
+  .c-av { width:38px; height:38px; border-radius:9px; background:linear-gradient(135deg,#1f6f64,#2f9e8f); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
+  .c-av.g { background:linear-gradient(135deg,#e07b39,#f39c12); }
+  .c-av.b { background:linear-gradient(135deg,#5a6acf,#8e7cc3); }
+  .c-info { flex:1; }
+  .c-info b { display:block; font-size:13px; color:#26384c; }
+  .c-info span { font-size:11px; color:#98a5b5; }
+  .modal-ft { padding:13px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #eef1f5; }
+  .toast-suc { position:fixed; top:26px; left:50%; transform:translateX(-50%); background:rgba(24,80,66,.94); color:#fff; padding:9px 22px; border-radius:20px; font-size:13px; z-index:99; box-shadow:0 6px 20px rgba(0,0,0,.25); display:none; }
+
+  /* ===== H5 手机框 ===== */
+  .phone-wrap { display:flex; justify-content:center; }
+  .phone { width:380px; border-radius:38px; background:#0e1620; padding:10px; box-shadow:0 18px 50px rgba(10,20,35,.35); }
+  .phone-screen { border-radius:30px; overflow:hidden; background:#f2f3f7; height:760px; position:relative; display:flex; flex-direction:column; }
+  .statusbar { background:#1f6f64; color:#fff; font-size:11px; padding:6px 16px; display:flex; justify-content:space-between; }
+  .h5-nav { background:#1f6f64; color:#fff; display:flex; align-items:center; padding:0 8px; height:44px; }
+  .h5-nav .bk { font-size:16px; width:34px; }
+  .h5-nav h4 { flex:1; text-align:center; font-size:15px; font-weight:600; }
+  .h5-nav .sp { width:34px; }
+  .h5-body { flex:1; overflow-y:auto; padding-bottom:58px; }
+  .h5-tabbar { position:absolute; bottom:0; left:0; right:0; background:#fff; border-top:1px solid #e9ecf2; display:flex; z-index:5; }
+  .h5-tabbar .it { flex:1; text-align:center; padding:7px 0 6px; font-size:10px; color:#8a92a3; }
+  .h5-tabbar .it.on { color:#1f6f64; font-weight:600; }
+  .h5-tabbar .ic { font-size:18px; display:block; margin-bottom:1px; }
+
+  .chan-head { background:#1f6f64; color:#fff; padding:14px 14px 22px; position:relative; }
+  .chan-head .nm { font-size:19px; font-weight:700; }
+  .chan-head .ds { font-size:11px; opacity:.85; margin-top:5px; line-height:1.5; }
+  .chan-head .cnt { font-size:11px; opacity:.8; margin-top:7px; }
+  .filter-hint { padding:9px 14px 0; font-size:11px; color:#a6adb9; }
+  .sub-head { padding:10px 14px 6px; display:flex; align-items:center; justify-content:space-between; }
+  .sub-head .tt { font-size:13px; font-weight:700; color:#2b3648; display:flex; align-items:center; gap:6px; }
+  .sub-head .tt .pill { font-size:10px; background:#e7f6f0; color:#1f7a5c; padding:1px 7px; border-radius:8px; font-weight:600; }
+  .sub-head .more { font-size:11px; color:#a6adb9; }
+
+  .feed { padding:0 12px; }
+  .fcard { background:#fff; border-radius:12px; padding:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(30,45,61,.04); }
+  .fcard .ft { font-size:13px; font-weight:700; color:#26384c; margin-bottom:4px; }
+  .fcard .fprev { font-size:11px; color:#8a92a3; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .fcard .thumb { width:100%; height:150px; border-radius:9px; margin-top:9px; background:linear-gradient(135deg,#20313f,#3a5568); display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; color:#fff; }
+  .fcard .thumb.g1 { background:linear-gradient(135deg,#b5432f,#e07b39); }
+  .fcard .thumb.g2 { background:linear-gradient(135deg,#236a5c,#2f9e8f); }
+  .fcard .thumb.g3 { background:linear-gradient(135deg,#4a3fa8,#7a6fe0); }
+  .fcard .thumb.g4 { background:linear-gradient(135deg,#c9a10f,#e6c53f); }
+  .fcard .thumb .label { font-size:15px; letter-spacing:4px; text-shadow:0 1px 4px rgba(0,0,0,.25); }
+  .fcard .thumb .mask { position:absolute; bottom:0; left:0; right:0; height:70px; background:linear-gradient(transparent,rgba(0,0,0,.35)); }
+  .fcard .fmeta { display:flex; justify-content:space-between; align-items:center; margin-top:9px; }
+  .fcard .fmeta .tgs { display:flex; gap:6px; align-items:center; }
+  .fcard .fmeta .playbtn { width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; }
+  .count-tag { font-size:10px; background:rgba(0,0,0,.45); color:#fff; padding:1px 7px; border-radius:9px; }
+  .lock-note { text-align:center; padding:40px 20px; }
+  .lock-note .lg { font-size:40px; }
+  .lock-note h4 { margin:10px 0 6px; font-size:15px; color:#2b3648; }
+  .lock-note p { font-size:11px; color:#98a5b5; line-height:1.7; }
+
+  /* 帖子详情 */
+  .post-title { padding:14px 14px 2px; font-size:16px; font-weight:700; color:#1d2a39; line-height:1.45; }
+  .post-sub { padding:6px 14px 10px; font-size:11px; color:#a6adb9; }
+  .gallery { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; padding:0 0 4px; }
+  .gallery .gi { height:118px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; letter-spacing:2px; }
+  .gallery .gi.big { grid-column:span 2; grid-row:span 2; height:auto; }
+  .post-text { padding:12px 14px; font-size:13px; color:#3d4b5c; line-height:1.85; }
+  .video-box { margin:10px 12px 0; border-radius:12px; overflow:hidden; background:#000; position:relative; }
+  .video-box .screen { height:200px; background:linear-gradient(160deg,#1c2c3b,#0b1218); display:flex; align-items:center; justify-content:center; color:#fff; position:relative; }
+  .video-box.v .screen { background:linear-gradient(160deg,#12233a,#0a1622); }
+  .video-box .screen .bigplay { width:54px; height:54px; border-radius:50%; background:rgba(255,255,255,.92); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 16px rgba(0,0,0,.4); }
+  .video-box .dur-pill { position:absolute; right:9px; bottom:9px; background:rgba(0,0,0,.55); color:#fff; font-size:10px; padding:2px 7px; border-radius:4px; }
+  .video-box .ctrl { background:#000; padding:6px 10px 8px; color:#dfe6ee; font-size:10px; }
+  .video-box .prog { height:3px; background:#2a3644; border-radius:2px; position:relative; margin:6px 0 4px; }
+  .video-box .prog .now { position:absolute; left:0; top:0; bottom:0; width:38%; background:#2fceab; border-radius:2px; }
+  .video-box .ctrlbar { display:flex; justify-content:space-between; align-items:center; }
+  .h5-btn-gold { display:block; width:calc(100% - 28px); margin:14px; border:none; border-radius:22px; background:#e6b422; color:#5c4300; font-weight:700; font-size:14px; padding:11px; }
+
+  .pill-read { background:#eef1f6 !important; color:#9aa6b6 !important; }
+
+  .notes { margin-top:18px; background:#fff8ea; border:1px solid #f1dfb8; border-radius:10px; padding:12px 16px; font-size:12px; color:#8a6d1c; line-height:1.9; }
+  .notes b { color:#6e5610; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin:12px 0 4px; font-size:12px; color:#55657a; }
+</style>
+</head>
+<body>
+
+<div class="toast-suc" id="toast">✔ 已发布到频道</div>
+
+<div class="proto-top">
+  <h1>📦 多媒体池子 · 后台 + H5 界面原型</h1>
+  <div class="sub">模拟数据演示 · 点击上方场景切换 · 主色 #1f6f64（H5）· #304156 侧栏（后台）</div>
+  <div class="screen-nav" id="nav">
+    <button class="grp">┃ 后台管理</button>
+    <button data-s="admin-draft" class="on">草稿列表</button>
+    <button data-s="admin-pub">已发布列表</button>
+    <button data-s="admin-edit">新建/编辑帖</button>
+    <button data-s="admin-publish">发布弹窗</button>
+    <button class="grp">┃ H5 画面</button>
+    <button data-s="h5-channel">频道详情(含媒体)</button>
+    <button data-s="h5-images">图文帖详情</button>
+    <button data-s="h5-video">视频帖详情</button>
+    <button data-s="h5-locked">未订阅预览态</button>
+  </div>
+</div>
+
+<!-- ================= 后台 · 草稿列表 ================= -->
+<div class="stage on" id="admin-draft">
+  <div class="stage-label"><b>后台管理 · 多媒体池子</b> → 草稿列表（新建/编辑后在此；发布=先挂载频道；删除仅草稿可用）</div>
+  <div class="admin-wrap">
+    <div class="admin-side">
+      <div class="logo"><span class="dot">M</span> Mini Novel</div>
+      <div class="grp">内容</div>
+      <div class="mi">📊 数据看板</div>
+      <div class="mi">📚 小说管理</div>
+      <div class="mi">🗂 分类管理</div>
+      <div class="mi on">🖼 多媒体池子</div>
+      <div class="grp">订阅变现</div>
+      <div class="mi">📡 订阅频道</div>
+      <div class="mi">🪙 快乐币</div>
+      <div class="grp">系统</div>
+      <div class="mi">👤 用户管理</div>
+      <div class="mi">🕸 爬虫管理</div>
+    </div>
+    <div class="admin-main">
+      <div class="card">
+        <div class="card-hd">
+          <div class="tabs2">
+            <span class="on" id="t-draft-tab">草稿列表 <b style="color:#e07b39">6</b></span>
+            <span id="t-pub-tab">已发布列表 <b style="color:#1e8e50">4</b></span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn gold mini">＋ 新建图文帖</button>
+            <button class="btn gold mini">＋ 新建视频帖</button>
+            <button class="btn plain mini">🔄 刷新</button>
+          </div>
+        </div>
+        <table class="tbl">
+          <tr><th style="width:34px">ID</th><th>内容</th><th>类型</th><th>媒体</th><th>挂载频道</th><th>状态</th><th style="width:200px">操作</th></tr>
+          <tr>
+            <td class="fade">128</td>
+            <td><div class="post-cell"><img class="cover-thumb" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='70'%3E%3Crect width='100' height='70' fill='%23b5432f'/%3E%3C/svg%3E"><div class="inf"><b>【新书剧透】山海秘闻录 插画合集</b><span>正文：第 3 卷关键场景设定图 4 张，含分镜草稿…</span></div></div></td>
+            <td><span class="tag g">图文</span></td><td class="cell-ch">4 图</td>
+            <td class="cell-ch">未挂载 <span class="tag ch">需选频道</span></td>
+            <td><span class="tag st-draft">草稿</span></td>
+            <td>
+              <button class="btn link">编辑</button>
+              <button class="btn link">发布</button>
+              <button class="btn link red">删除</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="fade">127</td>
+            <td><div class="post-cell"><div class="cover-thumb" style="display:flex;align-items:center;justify-content:center;color:#fff"><div class="play-tri" style="border-left-color:#2f6fd8"></div></div><div class="inf"><b>作者见面会 · 现场问答实录</b><span>视频时长 12:36 · 1080P 转码完成</span></div></div></td>
+            <td><span class="tag v">视频</span></td><td class="cell-ch">1 视频</td>
+            <td class="cell-ch">仙侠修真馆</td>
+            <td><span class="tag st-draft">草稿</span></td>
+            <td>
+              <button class="btn link">编辑</button>
+              <button class="btn link">发布</button>
+              <button class="btn link red">删除</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="fade">126</td>
+            <td><div class="post-cell"><img class="cover-thumb" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='70'%3E%3Crect width='100' height='70' fill='%234a3fa8'/%3E%3C/svg%3E"><div class="inf"><b>玄天宗弟子服饰设定 · 六宫格</b><span>正文：本周更新角色的全套外观，含配色表…</span></div></div></td>
+            <td><span class="tag m">图+视频</span></td><td class="cell-ch">6 图 + 1 视频</td>
+            <td class="cell-ch">玄幻国度</td>
+            <td><span class="tag st-draft">草稿</span></td>
+            <td>
+              <button class="btn link">编辑</button>
+              <button class="btn link">发布</button>
+              <button class="btn link red">删除</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="fade">124</td>
+            <td><div class="post-cell"><img class="cover-thumb" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='70'%3E%3Crect width='100' height='70' fill='%23236a5c'/%3E%3C/svg%3E"><div class="inf"><b>双周活动：签售会现场图集</b><span>含 12 张高清大图，其中 2 张正在压缩中…</span></div></div></td>
+            <td><span class="tag g">图文</span></td><td class="cell-ch">12 图</td>
+            <td class="cell-ch">都市文娱</td>
+            <td><span class="tag st-draft">草稿</span></td>
+            <td>
+              <button class="btn link">编辑</button>
+              <button class="btn link">发布</button>
+              <button class="btn link red">删除</button>
+            </td>
+          </tr>
+        </table>
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;color:#98a5b5;font-size:12px">
+          <span>共 6 条 · 每页 10 条</span>
+          <span style="display:flex;gap:6px"><span class="btn plain mini">上一页</span><span class="btn plain mini">下一页</span></span>
+        </div>
+      </div>
+      <div class="legend">
+        <span><span class="tag g">图文</span> 标题+批量图片</span>
+        <span><span class="tag v">视频</span> 标题+视频(每帖≤1)</span>
+        <span><span class="tag m">图+视频</span> 混合内容</span>
+        <span>删除仅对草稿开放；已发布请先「取消发布」回草稿</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 后台 · 已发布列表 ================= -->
+<div class="stage" id="admin-pub">
+  <div class="stage-label"><b>后台管理 · 多媒体池子</b> → 已发布列表（发布成功进入此列表；操作=取消发布/编辑，<b>无删除按钮</b>）</div>
+  <div class="admin-wrap">
+    <div class="admin-side">
+      <div class="logo"><span class="dot">M</span> Mini Novel</div>
+      <div class="grp">内容</div>
+      <div class="mi">📊 数据看板</div>
+      <div class="mi">📚 小说管理</div>
+      <div class="mi">🗂 分类管理</div>
+      <div class="mi on">🖼 多媒体池子</div>
+      <div class="grp">订阅变现</div>
+      <div class="mi">📡 订阅频道</div>
+      <div class="mi">🪙 快乐币</div>
+      <div class="grp">系统</div>
+      <div class="mi">👤 用户管理</div>
+      <div class="mi">🕸 爬虫管理</div>
+    </div>
+    <div class="admin-main">
+      <div class="card">
+        <div class="card-hd">
+          <div class="tabs2">
+            <span id="t2-draft-tab">草稿列表 <b style="color:#e07b39">6</b></span>
+            <span class="on" id="t2-pub-tab">已发布列表 <b style="color:#1e8e50">4</b></span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select class="sel" style="width:150px;padding:6px 10px"><option>全部频道</option><option>仙侠修真馆</option><option>玄幻国度</option></select>
+            <button class="btn plain mini">🔄 刷新</button>
+          </div>
+        </div>
+        <table class="tbl">
+          <tr><th style="width:34px">ID</th><th>内容</th><th>类型</th><th>挂载频道</th><th>发布时间</th><th>状态</th><th style="width:200px">操作</th></tr>
+          <tr>
+            <td class="fade">123</td>
+            <td><div class="post-cell"><img class="cover-thumb" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='70'%3E%3Crect width='100' height='70' fill='%23c9a10f'/%3E%3C/svg%3E"><div class="inf"><b>最新完本封面大赏 · 50 张精选</b><span>正文：本期精品图书封面合集…</span></div></div></td>
+            <td><span class="tag g">图文</span></td>
+            <td class="cell-ch"><span class="tag ch">玄幻国度</span></td>
+            <td class="cell-ch">09-13 14:22</td>
+            <td><span class="tag st-pub">已发布</span></td>
+            <td>
+              <button class="btn link">编辑</button>
+              <button class="btn link">预览 H5</button>
+              <button class="btn link" style="color:#d8792a">↩ 取消发布</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="fade">122</td>
+            <td><div class="post-cell"><div class="cover-thumb" style="display:flex;align-items:center;justify-content:center;color:#fff"><div class="play-tri" style="border-left-color:#2f6fd8"></div></div><div class="inf"><b>作者手记：写这本书的 100 个夜晚</b><span>视频时长 08:04</span></div></div></td>
+            <td><span class="tag v">视频</span></td>
+            <td class="cell-ch"><span class="tag ch">仙侠修真馆</span></td>
+            <td class="cell-ch">09-12 21:05</td>
+            <td><span class="tag st-pub">已发布</span></td>
+            <td>
+              <button class="btn link">编辑</button>
+              <button class="btn link">预览 H5</button>
+              <button class="btn link" style="color:#d8792a">↩ 取消发布</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="fade">120</td>
+            <td><div class="post-cell"><img class="cover-thumb" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='70'%3E%3Crect width='100' height='70' fill='%236d3fb0'/%3E%3C/svg%3E"><div class="inf"><b>宗门地图手稿 · 设定放送</b><span>正文：完整宗门布局 + 机关说明…</span></div></div></td>
+            <td><span class="tag m">图+视频</span></td>
+            <td class="cell-ch"><span class="tag ch">玄幻国度</span></td>
+            <td class="cell-ch">09-11 10:40</td>
+            <td><span class="tag st-pub">已发布</span></td>
+            <td>
+              <button class="btn link">编辑</button>
+              <button class="btn link">预览 H5</button>
+              <button class="btn link" style="color:#d8792a">↩ 取消发布</button>
+            </td>
+          </tr>
+        </table>
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;color:#98a5b5;font-size:12px">
+          <span>共 4 条 · 每页 10 条</span>
+          <span style="display:flex;gap:6px"><span class="btn plain mini">上一页</span><span class="btn plain mini">下一页</span></span>
+        </div>
+      </div>
+      <div class="legend">已发布内容<b>不提供删除</b>，需先「取消发布 → 回草稿列表」后删除，防止误删线上内容。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 后台 · 新建/编辑帖 ================= -->
+<div class="stage" id="admin-edit">
+  <div class="stage-label"><b>后台管理 · 新建图文帖</b> → 标题 + 批量图片（拖动排序，第 1 张 = 封面预览） · 同页可加 1 个视频变混合帖</div>
+  <div class="drawer" style="width:860px;margin:0 auto">
+    <div class="drawer-hd">
+      <h3>✏️ 新建内容（保存后进入草稿列表）</h3>
+      <button class="x">✕</button>
+    </div>
+    <div class="form">
+      <div class="f-label">内容标题 <b>*</b></div>
+      <input class="f-input" placeholder="例：新书剧透 · 山海秘闻录 插画合集" style="margin-bottom:14px">
+      <div class="f-label">正文（可选，纯文本支持换行）</div>
+      <textarea class="f-area" rows="3" placeholder="例：先放 4 张场景设定图，第 3 卷的机关与秘境都藏在这些细节里……">第一卷收官，把关键场景的设定图都整理出来了。每张图都藏了后面的伏笔，仔细看。👇</textarea>
+      <div style="margin-top:14px">
+        <div class="f-label">图片素材 <b>*</b>（批量上传 · 自动压缩 ≈1MB/张 · 不模糊）</div>
+        <div class="upload-box" id="fake-upload" onclick="addFakeImage()">
+          <div class="big">＋</div>
+          <div>点击选择图片 / 拖拽到此处批量上传</div>
+          <div style="font-size:11px;margin-top:4px">支持 jpg/png/webp · 建议 ≤20 张 · 上传后自动压缩</div>
+        </div>
+        <div class="media-grid" id="media-grid">
+          <div class="media-item">
+            <span class="first">封面</span><span class="del">✕</span>
+            <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='208' height='144'%3E%3Crect width='208' height='144' fill='%23b5432f'/%3E%3C/svg%3E">
+            <span class="ord">1</span>
+          </div>
+          <div class="media-item">
+            <span class="del">✕</span>
+            <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='208' height='144'%3E%3Crect width='208' height='144' fill='%23236a5c'/%3E%3C/svg%3E">
+            <span class="ord">2</span>
+          </div>
+          <div class="media-item">
+            <span class="del">✕</span>
+            <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='208' height='144'%3E%3Crect width='208' height='144' fill='%234a3fa8'/%3E%3C/svg%3E">
+            <span class="ord">3</span>
+          </div>
+          <div class="media-item">
+            <span class="del">✕</span>
+            <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='208' height='144'%3E%3Crect width='208' height='144' fill='%23c9a10f'/%3E%3C/svg%3E">
+            <span class="ord">4</span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <div class="f-label">视频素材（可选 · 每帖最多 1 个 · ffmpeg 自动转码 H.264 + 抽封面）</div>
+        <div class="upload-box" style="padding:13px">
+          <span style="color:#8a97a8">＋ 添加视频</span>
+          <span style="font-size:11px;margin-left:8px;color:#b3bdc9">mp4/mov/mkv · ≤300MB · ≤15 分钟</span>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:#8a97a8">当前无视频 → 保存后为 <span class="tag g">图文帖</span>；添加视频后自动变为 <span class="tag m">图文+视频</span></div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn plain" onclick="showStage('admin-draft')">存为草稿</button>
+      <button class="btn primary" onclick="showStage('admin-publish')">保存并发布 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 后台 · 发布弹窗 ================= -->
+<div class="stage" id="admin-publish">
+  <div class="stage-label"><b>后台管理 · 发布</b> → 草稿必须「挂载到具体订阅频道」后发布，发布后进入已发布列表，C 端频道详情可见</div>
+  <div class="phone-wrap" style="align-items:center;gap:40px;flex-wrap:wrap">
+    <div style="flex:1;min-width:380px;max-width:520px">
+      <div class="card">
+        <div class="card-hd"><h3>📌 发布内容到频道</h3></div>
+        <div style="padding:18px 20px">
+          <div class="post-cell" style="background:#f7f9fb;border-radius:10px;padding:10px 12px;margin-bottom:6px">
+            <img class="cover-thumb" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='70'%3E%3Crect width='100' height='70' fill='%23b5432f'/%3E%3C/svg%3E">
+            <div class="inf"><b>【新书剧透】山海秘闻录 插画合集</b><span>图文帖 · 4 图 · 草稿 ID 128</span></div>
+          </div>
+          <div class="f-label" style="margin-top:16px">选择挂载频道 <b>*</b></div>
+          <select class="sel"><option value="">— 请选择 —</option><option>仙侠修真馆（仙侠玄幻 · 1.2k 会员）</option></select>
+          <div class="channel-pick" style="max-height:210px;overflow:auto">
+            <div class="row on">
+              <div class="c-av">仙侠</div>
+              <div class="c-info"><b>仙侠修真馆</b><span>68 本小说 · 1,240 订阅 · 300币/月</span></div>
+              <span class="tag st-pub">可发布</span>
+            </div>
+            <div class="row">
+              <div class="c-av g">玄幻</div>
+              <div class="c-info"><b>玄幻国度</b><span>52 本小说 · 980 订阅 · 300币/月</span></div>
+              <span class="tag st-pub">可发布</span>
+            </div>
+            <div class="row">
+              <div class="c-av b">都市</div>
+              <div class="c-info"><b>都市文娱</b><span>41 本小说 · 760 订阅 · 300币/月</span></div>
+              <span class="tag st-pub">可发布</span>
+            </div>
+          </div>
+          <div style="margin-top:12px;font-size:11px;color:#b07f13;background:#fdf3dd;border-radius:6px;padding:7px 10px">⚠️ 发布即对全部订阅用户可见；仅出现在所选频道详情页，不上首页。可随时「取消发布」回草稿。</div>
+        </div>
+        <div class="modal-ft">
+          <button class="btn plain">取消</button>
+          <button class="btn gold" onclick="toast('已发布到「仙侠修真馆」· 进入已发布列表')">✔ 确认发布</button>
+        </div>
+      </div>
+    </div>
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-screen" style="height:640px">
+          <div class="statusbar" style="background:#fff;color:#333">9:41&emsp;&emsp;📶 🔋</div>
+          <div style="flex:1;overflow:hidden;position:relative">
+            <div class="chan-head"><div class="nm">仙侠修真馆</div><div class="ds">刚发布 ✓ 图文内容已在频道内刷新置顶（↓ 右侧预览为会员视角）</div></div>
+            <div class="h5-body" style="height:calc(100% - 100px)">
+              <div class="sub-head"><div class="tt">图文视频 <span class="pill">新</span></div></div>
+              <div class="feed">
+                <div class="fcard" style="outline:2px solid #e6b422">
+                  <div class="ft">【新书剧透】山海秘闻录 插画合集</div>
+                  <div class="fprev">第一卷收官，把关键场景的设定图都整理出来了。每张图都藏了后面的伏笔，仔细看。👇</div>
+                  <div class="thumb g1"><span class="label">山海秘闻录</span><div class="mask"></div></div>
+                  <div class="fmeta"><div class="tgs"><span class="tag g" style="background:#e7f6f0;color:#1f7a5c">图文</span><span class="count-tag">4 图</span></div><span style="font-size:10px;color:#a6adb9">刚刚</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= H5 · 频道详情（含媒体流） ================= -->
+<div class="stage" id="h5-channel">
+  <div class="stage-label"><b>H5 · 订阅频道详情页</b>（会员视角）→ 顶部「图文视频」内容流 + 下方原小说网格；内容<b>仅此页可见</b></div>
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="statusbar" style="background:#1f6f64">9:41&emsp;&emsp;📶 🔋</div>
+        <div class="h5-nav"><span class="bk">‹</span><h4>仙侠修真馆</h4><span class="sp"></span></div>
+        <div class="h5-body">
+          <div class="chan-head">
+            <div class="nm">仙侠修真馆</div>
+            <div class="ds">订阅频道 · 小说 + 作者图文/视频福利</div>
+            <div class="cnt">68 本小说 · 6 条图文视频 · 已订阅 剩余 22 天</div>
+          </div>
+
+          <div class="filter-hint">🔔 频道图文/视频 · 仅订阅可见</div>
+          <div class="sub-head"><div class="tt">图文视频 <span class="pill">6</span></div><div class="more">更新于刚刚</div></div>
+          <div class="feed">
+            <div class="fcard">
+              <div class="ft">最新完本封面大赏 · 50 张精选</div>
+              <div class="fprev">本期精品图书封面合集，做完本纪念收藏刚刚好。</div>
+              <div class="thumb g4"><span class="label">封面大赏</span><div class="mask"></div></div>
+              <div class="fmeta"><div class="tgs"><span class="tag g">图文</span><span class="count-tag">9 图</span></div><span style="font-size:10px;color:#a6adb9">昨天 14:22</span></div>
+            </div>
+            <div class="fcard">
+              <div class="ft">作者手记：写这本书的 100 个夜晚</div>
+              <div class="fprev">从第一行字到完结，中间放弃过三次……视频里聊聊心路。</div>
+              <div class="thumb g2">
+                <span class="label">▶ 作者手记</span>
+                <div class="fcard fmeta" style="position:absolute;left:10px;bottom:8px;background:none;padding:0;margin:0"><span class="count-tag" style="background:rgba(0,0,0,.6)">08:04 · 1080P</span></div>
+                <div class="mask"></div>
+              </div>
+              <div class="fmeta"><div class="tgs"><span class="tag v">视频</span></div><span style="font-size:10px;color:#a6adb9">昨天 21:05</span></div>
+            </div>
+            <div class="fcard">
+              <div class="ft">宗门地图手稿 · 设定放送</div>
+              <div class="fprev">完整宗门布局图 + 机关暗道的说明，配合 30 秒设定视频食用。</div>
+              <div class="thumb g3"><span class="label">宗门地图</span><div class="mask"></div></div>
+              <div class="fmeta"><div class="tgs"><span class="tag m">图文+视频</span><span class="count-tag">5图·1视频</span></div><span style="font-size:10px;color:#a6adb9">09-11</span></div>
+            </div>
+            <div class="fcard">
+              <div class="ft">【新书剧透】山海秘闻录 插画合集</div>
+              <div class="fprev">第一卷收官，关键场景设定图整理好了，仔细看每张图都藏伏笔。</div>
+              <div class="thumb g1"><span class="label">山海秘闻录</span><div class="mask"></div></div>
+              <div class="fmeta"><div class="tgs"><span class="tag g">图文</span><span class="count-tag">4 图</span></div><span style="font-size:10px;color:#a6adb9">09-09</span></div>
+            </div>
+          </div>
+
+          <div class="sub-head" style="margin-top:6px"><div class="tt">全部小说 <span class="pill" style="background:#eef1f6;color:#98a5b5">已读已隐藏</span></div><div class="more">网格/列表</div></div>
+          <div class="grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:4px 12px 14px">
+            <div style="border-radius:9px;background:linear-gradient(135deg,#6a5acd,#8e7cc3);height:88px;display:flex;align-items:flex-end;color:#fff;font-size:11px;padding:8px;font-weight:600">剑来山海</div>
+            <div style="border-radius:9px;background:linear-gradient(135deg,#2f80ed,#56a0f5);height:88px;display:flex;align-items:flex-end;color:#fff;font-size:11px;padding:8px;font-weight:600">青云之上</div>
+            <div style="border-radius:9px;background:linear-gradient(135deg,#16a085,#2ecc71);height:88px;display:flex;align-items:flex-end;color:#fff;font-size:11px;padding:8px;font-weight:600">不朽丹尊</div>
+          </div>
+        </div>
+        <div class="h5-tabbar">
+          <div class="it"><span class="ic">🏠</span>首页</div><div class="it"><span class="ic">🗂</span>分类</div><div class="it"><span class="ic">📚</span>书架</div>
+          <div class="it on"><span class="ic">📡</span>订阅</div><div class="it"><span class="ic">👤</span>我的</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= H5 · 图文帖详情 ================= -->
+<div class="stage" id="h5-images">
+  <div class="stage-label"><b>H5 · 图文帖详情</b> → 标题 + 图集（首图为大图）+ 正文；图片已压缩可快速加载</div>
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="statusbar" style="background:#f2f3f7;color:#333">9:41&emsp;&emsp;📶 🔋</div>
+        <div class="h5-nav" style="background:#f2f3f7;color:#1f6f64"><span class="bk">‹</span><h4 style="color:#26384c">图文详情</h4><span class="sp">···</span></div>
+        <div class="h5-body">
+          <div class="post-title">【新书剧透】山海秘闻录 插画合集</div>
+          <div class="post-sub">仙侠修真馆 · 09-09 10:20 · 4 图</div>
+          <div class="gallery">
+            <div class="gi big" style="background:linear-gradient(135deg,#7a2e20,#b5432f)">场景·秘境入口</div>
+            <div class="gi" style="background:linear-gradient(135deg,#1c5348,#2f9e8f)">机关总览</div>
+            <div class="gi" style="background:linear-gradient(135deg,#2c2a6e,#7a6fe0)">阵图</div>
+            <div class="gi" style="background:linear-gradient(135deg,#8a6d10,#e6c53f)">人物服饰</div>
+          </div>
+          <div class="post-text">
+            第一卷收官，把关键场景的设定图都整理出来了。<br><br>
+            ① 秘境入口：黑水潭的机关就藏在桥柱第三格；<br>
+            ② 宗门大阵的阵眼在图的西南角，注意那棵歪脖子树；<br><br>
+            每张图都藏了后面的伏笔，仔细看。剧透勿怪，哈哈哈哈。
+          </div>
+        </div>
+        <div class="h5-tabbar">
+          <div class="it"><span class="ic">🏠</span>首页</div><div class="it"><span class="ic">🗂</span>分类</div><div class="it"><span class="ic">📚</span>书架</div>
+          <div class="it on"><span class="ic">📡</span>订阅</div><div class="it"><span class="ic">👤</span>我的</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= H5 · 视频帖详情 ================= -->
+<div class="stage" id="h5-video">
+  <div class="stage-label"><b>H5 · 视频帖详情（播放中）</b> → Android/iOS 原生播放器 · playsinline 不跳全屏 · 封面 poster · 点击才加载</div>
+  <div class="phone-wrap" style="gap:26px;flex-wrap:wrap;justify-content:center">
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="statusbar" style="background:#f2f3f7;color:#333">9:41&emsp;&emsp;📶 🔋</div>
+        <div class="h5-nav" style="background:#f2f3f7;color:#1f6f64"><span class="bk">‹</span><h4 style="color:#26384c">视频详情</h4><span class="sp">···</span></div>
+        <div class="h5-body">
+          <div class="post-title">作者手记：写这本书的 100 个夜晚</div>
+          <div class="post-sub">仙侠修真馆 · 09-12 21:05 · 视频 08:04</div>
+          <div class="video-box">
+            <div class="screen">
+              <span style="position:absolute;left:14px;top:12px;font-size:11px;color:rgba(255,255,255,.75)">▶ 播放中 · 已加载 38%</span>
+              <div style="text-align:center"><div style="font-size:22px;letter-spacing:3px;color:rgba(255,255,255,.85)">作者手记</div><div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:6px">横屏 1080P · H.264 · 服务端已转码</div></div>
+              <div class="dur-pill">04:42 / 08:04</div>
+            </div>
+            <div class="ctrl">
+              <div class="prog"><div class="now"></div></div>
+              <div class="ctrlbar">
+                <span>⏸ &ensp;04:42</span>
+                <span>🔊</span>
+                <span>⛶ 全屏</span>
+              </div>
+            </div>
+          </div>
+          <div class="post-text">
+            从第一行字到完结，中间放弃过三次。这个视频是我整理硬盘时翻到的旧素材，剪了一晚上。<br><br>
+            想对一直追更的你们说：谢谢没有放弃这本书的人。评论区聊。
+          </div>
+          <div class="notes" style="margin:14px">✅ 移动端播放规范：H.264 Main + faststart + Range 流式 → iOS Safari / 微信 / Android Chrome / X5 均可拖进度；竖拍视频方向已物理转正。</div>
+        </div>
+        <div class="h5-tabbar">
+          <div class="it"><span class="ic">🏠</span>首页</div><div class="it"><span class="ic">🗂</span>分类</div><div class="it"><span class="ic">📚</span>书架</div>
+          <div class="it on"><span class="ic">📡</span>订阅</div><div class="it"><span class="ic">👤</span>我的</div>
+        </div>
+      </div>
+    </div>
+    <div style="max-width:330px;font-size:12px;color:#55657a;line-height:2">
+      <div class="card" style="padding:16px"><b style="color:#1f6f64">双端播放要点（已画入此屏）</b><br>
+        ▸ poster 封面：未播放先显图，不预载整段<br>
+        ▸ playsinline：iOS 不强制全屏<br>
+        ▸ 系统控件：双端行为最稳<br>
+        ▸ 失败兜底：@error 提示"视频加载失败"<br>
+        ▸ 竖拍视频物理转正，不横躺
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= H5 · 未订阅预览态 ================= -->
+<div class="stage" id="h5-locked">
+  <div class="stage-label"><b>H5 · 未订阅用户视角</b>（该频道会员可见）→ 预览第一页：仅看标题 + 封面缩略图，点开/播放被拦截 → 引导订阅</div>
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="statusbar" style="background:#1f6f64">9:41&emsp;&emsp;📶 🔋</div>
+        <div class="h5-nav"><span class="bk">‹</span><h4>仙侠修真馆</h4><span class="sp"></span></div>
+        <div class="h5-body">
+          <div class="chan-head">
+            <div class="nm">仙侠修真馆</div>
+            <div class="ds">订阅频道 · 小说 + 作者图文/视频福利</div>
+            <div class="cnt">🔒 未订阅 · 仅预览第一页</div>
+          </div>
+          <div class="filter-hint">🔇 未订阅 · 图文视频仅展示 1 页封面预览</div>
+          <div class="feed">
+            <div class="fcard" style="opacity:.9">
+              <div class="ft">最新完本封面大赏 · 50 张精选</div>
+              <div class="thumb g4" style="filter:blur(2px) saturate(.7)"><span class="label">封面大赏</span><div class="mask"></div></div>
+              <div class="fmeta"><div class="tgs"><span class="count-tag">🔒 订阅后查看 9 图</span></div><span style="font-size:10px;color:#a6adb9">昨天 14:22</span></div>
+            </div>
+            <div class="fcard" style="opacity:.9">
+              <div class="ft">作者手记：写这本书的 100 个夜晚</div>
+              <div class="thumb g2" style="filter:blur(2px) saturate(.7)"><span class="label">▶ 作者手记</span><div class="mask"></div></div>
+              <div class="fmeta"><div class="tgs"><span class="count-tag">🔒 订阅后播放 08:04</span></div><span style="font-size:10px;color:#a6adb9">昨天</span></div>
+            </div>
+          </div>
+          <div style="padding:0 14px;text-align:center">
+            <button class="h5-btn-gold" onclick="toast('跳转订阅页 · 300 币/月 或 VIP 试用期全开')">🔓 订阅后查看全部内容</button>
+            <div style="font-size:10px;color:#a6adb9;margin-top:-6px">VIP 试用期内全频道开放 · 到期自动回收不扣费</div>
+          </div>
+        </div>
+        <div class="h5-tabbar">
+          <div class="it"><span class="ic">🏠</span>首页</div><div class="it"><span class="ic">🗂</span>分类</div><div class="it"><span class="ic">📚</span>书架</div>
+          <div class="it on"><span class="ic">📡</span>订阅</div><div class="it"><span class="ic">👤</span>我的</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="notes" style="max-width:520px;margin:16px auto 0">说明：未订阅（含非 VIP）进入频道只能看到<b>第一页</b>的封面缩略图与标题；点开正文大图 / 播放视频时后端校验订阅 → 403 → 前端引导订阅。媒体字节经 App 鉴权流式下发，直连 URL 无效。</div>
+</div>
+
+<script>
+function showStage(id){
+  document.querySelectorAll('.stage').forEach(s=>s.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  document.querySelectorAll('#nav button[data-s]').forEach(b=>b.classList.toggle('on', b.dataset.s===id));
+  document.getElementById('toast').style.display='none';
+}
+document.querySelectorAll('#nav button[data-s]').forEach(b=>{
+  b.addEventListener('click',()=>showStage(b.dataset.s));
+});
+var gi=5;
+function addFakeImage(){
+  var g=document.getElementById('media-grid');
+  if(g.children.length>=6){toast('单帖图片已达上限 20 张（演示取 6 张）');return;}
+  var c=['#8e3a5d','#3a6ea8','#9c7a12','#2e7d5b'];
+  var it=document.createElement('div');it.className='media-item';
+  it.innerHTML='<span class="del">✕</span><img src="data:image/svg+xml;utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'208\' height=\'144\'%3E%3Crect width=\'208\' height=\'144\' fill=\''+c[gi%c.length]+'\'/%3E%3C/svg%3E"><span class="ord">'+(g.children.length+1)+'</span>';
+  g.appendChild(it);gi++;
+  document.querySelector('#fake-upload').innerHTML='<div style="font-size:11px;color:#1e8e50">✔ 已上传 '+(g.children.length)+' 张 · 压缩完成，每张 ≤1MB</div><div class="big" style="font-size:16px">＋ 继续添加</div>';
+  toast('模拟上传成功 · 已自动压缩');
+}
+function toast(msg){
+  var t=document.getElementById('toast');t.textContent=msg;t.style.display='block';
+  clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2000);
+}
+</script>
+</body>
+</html>

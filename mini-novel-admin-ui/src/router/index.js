@@ -18,6 +18,7 @@ const routes = [
       { path: 'crawler', component: CrawlerView, meta: { title: '采集管理' } },
       { path: 'content-review', component: () => import('../views/ContentReviewView.vue'), meta: { title: '内容审核' } },
       { path: 'subscribe-channels', component: () => import('../views/SubscribeChannelView.vue'), meta: { title: '订阅频道管理' } },
+      { path: 'media-pool', component: () => import('../views/MediaPoolView.vue'), meta: { title: '多媒体池子' } },
       { path: 'coins', component: () => import('../views/CoinView.vue'), meta: { title: '快乐币管理' } },
       { path: 'ticket', component: () => import('../views/TicketView.vue'), meta: { title: '工单管理' } }
     ]
