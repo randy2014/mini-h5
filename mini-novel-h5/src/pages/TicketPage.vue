@@ -19,7 +19,7 @@
         <div class="ticket-content">{{ t.content }}</div>
         <div class="ticket-foot">
           <span>{{ formatTime(t.createdAt) }}</span>
-          <van-button v-if="t.status === 'OPEN'" size="mini" plain type="danger" @click.stop="closeTicket(t)">
+          <van-button v-if="t.status === 'OPEN'" round plain type="danger" size="small" @click.stop="closeTicket(t)">
             关闭工单
           </van-button>
         </div>
@@ -27,7 +27,13 @@
       <van-empty v-if="tickets.length === 0" description="暂无工单" />
     </div>
 
-    <van-dialog v-model:show="createVisible" title="新增工单" show-cancel-button @confirm="submitCreate">
+    <van-dialog
+      v-model:show="createVisible"
+      title="新增工单"
+      show-cancel-button
+      confirm-button-color="#1f6f64"
+      @confirm="submitCreate"
+    >
       <div class="create-form">
         <van-field v-model="form.title" placeholder="标题（必填）" maxlength="100" />
         <van-field
@@ -56,6 +62,7 @@
           </div>
           <div v-if="replies.length === 0" class="no-reply">暂无回复</div>
         </div>
+        <van-button round block color="#1f6f64" @click="detailVisible = false">关闭</van-button>
       </div>
     </van-popup>
   </section>
