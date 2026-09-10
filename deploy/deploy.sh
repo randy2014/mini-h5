@@ -41,28 +41,11 @@ wait_for_mysql() {
 run_migration() {
   file="$1"
   if [ -f "$file" ]; then
-    echo "Applying migration: $file"
+    echo "Applying schema script: $file"
     docker exec -i mini-novel-mysql mysql \
       --default-character-set=utf8mb4 \
       -uroot \
       -p"$MYSQL_ROOT_PASSWORD" < "$file"
-  fi
-}
-
-run_migration_if_table_missing() {
-  file="$1"
-  database="$2"
-  marker_table="$3"
-  exists="$(docker exec mini-novel-mysql mysql \
-    --default-character-set=utf8mb4 \
-    -uroot \
-    -p"$MYSQL_ROOT_PASSWORD" \
-    --batch --skip-column-names \
-    -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${database}' AND table_name='${marker_table}'")"
-  if [ "$exists" = "0" ]; then
-    run_migration "$file"
-  else
-    echo "Migration already applied: $file"
   fi
 }
 
@@ -87,28 +70,12 @@ echo "Starting infrastructure services..."
 compose up -d mini-novel-mysql mini-novel-redis
 wait_for_mysql
 
-run_migration "sql/migrations/20260629_crawl_task_scope.sql"
-run_migration "sql/migrations/20260629_rule_config_chain.sql"
-run_migration "sql/migrations/20260701_shuqi_public_seed.sql"
-run_migration "sql/migrations/20260701_shuqi_store_rank_sources.sql"
-run_migration "sql/migrations/20260701_23qb_category_sources.sql"
-run_migration "sql/migrations/20260702_23qb_only_crawler_source.sql"
-run_migration_if_table_missing "sql/migrations/20260711_vip_invitation.sql" "mini_novel" "vip_operation_audit"
-run_migration "sql/migrations/20260714_vip_invitation_expiry.sql"
-run_migration "sql/migrations/20260716_h528_authorized_poc.sql"
-run_migration "sql/migrations/20260717_novel69h_authorized_poc.sql"
-run_migration "sql/migrations/20260719_vip_category_isolation.sql"
-run_migration "sql/migrations/20260720_novel69h_batch_config.sql"
-run_migration "sql/migrations/20260726_vip_category_converge.sql"
-run_migration "sql/migrations/20260726_authorized_daily_schedule.sql"
-run_migration "sql/migrations/20260726_authorized_daily_schedule_dedupe.sql"
-run_migration "sql/migrations/20260726_kkxsz_public_source.sql"
-run_migration "sql/migrations/20260901_remove_authorized_book_review_flow.sql"
-run_migration "sql/migrations/20260901_23qb_direct_publish.sql"
-run_migration "sql/migrations/20260910_subscribe_channel.sql"
-run_migration "sql/migrations/20260912_ticket.sql"
-run_migration_if_table_missing "sql/migrations/20260915_media_pool.sql" "mini_novel" "media_asset"
-run_migration "sql/migrations/20260916_media_asset_nullable_paths.sql"
+# 数据库结构与基础数据由唯一脚本 sql/schema.sql 维护（2026-09 起：31 个分散迁移已合并为一份）：
+#   §1 建库 + 清理废弃表   §2 全部表结构（当前形态）
+#   §3 预置配置与幂等数据修正   §4 后续变更区   §5 结构自检
+# 该脚本全部语句幂等，每次部署重复执行结果一致；失败会因 set -e 直接中断部署。
+# 新增结构变更请直接追加到该文件 §4，不要再新建 sql/migrations 脚本。
+run_migration "sql/schema.sql"
 
 echo "Building and starting application services..."
 # 串行构建：防止 4 个镜像并发构建在低配 VPS 上打爆内存（2026-09-01 曾因此 OOM）
