@@ -114,7 +114,13 @@ echo "Building and starting application services..."
 COMPOSE_PARALLEL_LIMIT=1 compose up -d --build
 
 # 先等后端 ready，再重启前端容器，确保 nginx 重新解析到后端新 IP（避免 502）
-wait_for_http "Backend API" "http://127.0.0.1:${APP_PORT}/api/home"
+if ! wait_for_http "Backend API" "http://127.0.0.1:${APP_PORT}/api/home"; then
+  echo "Backend failed to start, dumping app logs:" >&2
+  docker logs --tail 150 mini-novel-app >&2 || true
+  echo "--- app container state ---" >&2
+  docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} restarts={{.RestartCount}}' mini-novel-app >&2 || true
+  exit 1
+fi
 
 # 后端容器重建后 IP 变化，前端 nginx 启动时缓存的上游 IP 失效会导致 502；
 # 强制重启前端容器让 nginx 重新解析 mini-novel-app / mini-novel-crawler-service（2026-09-05 事故）
