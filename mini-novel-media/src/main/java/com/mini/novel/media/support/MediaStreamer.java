@@ -100,6 +100,12 @@ public final class MediaStreamer {
         if (name.endsWith(".mp4")) {
             return "video/mp4";
         }
+        // 媒体池自定义扩展名（见 MediaFileStorage.EXT_*）：均为 JPEG 成品/缩略/封面帧
+        if (name.endsWith("." + MediaFileStorage.EXT_MAIN_IMAGE)
+                || name.endsWith("." + MediaFileStorage.EXT_THUMB)
+                || name.endsWith("." + MediaFileStorage.EXT_POSTER)) {
+            return "image/jpeg";
+        }
         if (name.endsWith(".jpg") || name.endsWith(".jpeg")) {
             return "image/jpeg";
         }
