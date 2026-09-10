@@ -22,9 +22,9 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 ENV TZ=Asia/Shanghai
-# ffmpeg: 多媒体池子视频转码/抽帧依赖（见 docs/media-pool-design.md §5.2）
+# ffmpeg: 多媒体池子视频转码/抽帧依赖；安装失败不阻塞构建（VPS 网络不稳时视频功能降级，图片/后端不受影响）
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* || echo "WARN: ffmpeg install failed, video features degraded"
 COPY --from=builder /workspace/mini-novel-application/target/mini-novel-application-0.1.0-SNAPSHOT.jar /app/app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.profiles.active=docker"]
