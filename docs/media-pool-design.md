@@ -290,4 +290,27 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - Admin `MediaPoolView.vue`（草稿/已发布/编辑器/发布弹窗/后台视频播放）；Admin 全局墨绿主题（styles.css token + Element Plus 主色 + 侧栏/登录页）+ 菜单/路由。
 - H5：`SubscribePage` 频道卡片统计内容数；`SubscribeChannelPage` 重写为统一网格/列表混排（小说+图文+视频，**已读隐藏仅小说且响应式即时移除**：点击小说 markSubscribeRead → 从列表消失 + 计数，封面加载失败自动回退品牌色块占位，媒体封面无 cookie 会话时同样回退不裂图）；新增 `SubscribeMediaPostPage`（图集 + 视频播放 + 禁下载：controlslist 禁下载/禁画中画/禁右键/禁长按/禁拖拽）。
 
-**待 VPS 部署后验收（P8 剩余项）**：CI/CD 部署 → 真机双端播放/禁下载 → 上传→发布→H5 播放→下架→越权 403 全链路核对（§12 验收 1-11）。
+**生产部署与端到端验收（2026-09-10，VPS 64.90.19.6 / 部署版本 8c3ead1）**
+
+部署链路：push main → GitHub Actions（rsync + deploy.sh）→ 全部容器重建成功，三端 HTTP 200；迁移 `20260915`（建表）与 `20260916`（列修正）均已执行。
+
+上线路程中修复的 4 个问题（均已提交并验证）：
+| # | 现象 | 根因 | 修复 |
+|---|---|---|---|
+| 1 | 部署后后端 502、启动崩溃 | `mediaProcessExecutor`（Executor 类型）抢占 Spring `@ConditionalOnMissingBean(Executor.class)`，默认 `applicationTaskExecutor` 不再创建，crawler 模块 `@Qualifier("applicationTaskExecutor")` 装配失败 | 显式定义同名 `applicationTaskExecutor` bean（commit 3ddd9f3） |
+| 2 | Docker 构建受网络影响中断 | VPS 拉取 ffmpeg 不稳 | ffmpeg 安装改为失败不阻塞构建（视频降级、图片/后端不受影响）（commit 70d9232） |
+| 3 | 后台新建视频报 `Field 'main_path' doesn't have a default value` | 视频 `registerVideo` 阶段为 PROCESSING 尚无成品路径，而 `main_path/thumb_path` 定义为 NOT NULL | 迁移 `20260916` 改为可空 + 视频 md5 改流式计算（commit 39f66ed） |
+| 4 | 媒体图片裂图 | 自定义扩展名 `.img/.thumb/.poster` 未被识别 → 响应 `application/octet-stream`，叠加 `nosniff` 后浏览器拒渲染 | `MediaStreamer` 按扩展名返回 `image/jpeg`（commit 8c3ead1） |
+
+端到端验收结果（生产实测）：
+- ✅ 图片上传：800×600 PNG → 压缩 READY，main/thumb 落盘（`images/202609/*.img|.thumb`）
+- ✅ 视频上传+转码：3s/640×360 源 → **25s 内 READY**，产物 **h264 Main / yuv420p / mp4**，自动生成 poster 帧与缩略图
+- ✅ 媒体字节：图片 `image/jpeg`、视频 `video/mp4`、封面 `image/jpeg`；**Range 请求返回 206 + Content-Range**（双端拖动可用）
+- ✅ 草稿→发布→挂载频道：post 落库 PUBLISHED、channel_id 正确、封面自动取首图/视频帧
+- ✅ 规则校验：**已发布直接删除被拒绝**（"仅草稿可操作：已发布内容请先下架回到草稿"）；下架回草稿保留频道；删除草稿成功且**素材记录与文件同步回收（无孤儿）**
+- ✅ C 端 feed：登录（邀请码自动 VIP）后频道 feed 返回**统一混排**（IMAGE 帖 + NOVEL 小说同一时间流），`restricted=false`
+- ✅ 鉴权：未登录访问 feed / thumb / full 均 **401**；媒体字节需登录+订阅
+- ✅ 前端部署：H5 含 `SubscribeMediaPostPage` chunk、Admin 含 `MediaPoolView` chunk；小说封面代理 `/api/cover/{id}` 正常（200 image/jpeg）
+- ⏳ 待真机验收（需人工设备）：iOS Safari / Android Chrome / 微信内播放与拖动、禁下载（长按/右键/画中画）实际表现、页面视觉与交互
+
+> 测试数据说明：验收过程中在频道 1 发布了一条 **"E2E测试图文"**（1 图）用于链路验证，可在后台「多媒体池子 → 已发布 → 下架/删除」移除；测试账号与邀请码配额已回滚清理。
