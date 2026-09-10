@@ -5,12 +5,6 @@ server:
     max-swallow-size: -1
     max-http-form-post-size: 350MB
 
-spring:
-  servlet:
-    multipart:
-      max-file-size: 300MB
-      max-request-size: 320MB
-
 app:
   public-h5-base-url: ${PUBLIC_H5_BASE_URL:https://xs2026.site}
   # 订阅频道定价（单位：快乐币）
@@ -23,6 +17,10 @@ app:
       YEAR: 3000     # 1 年订阅价格
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 300MB
+      max-request-size: 320MB
   application:
     name: mini-novel
   datasource:
