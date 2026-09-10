@@ -94,8 +94,7 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
     public MediaAsset registerVideo(InputStream in, String originalName, Long operatorId) throws IOException {
         Path tmp = storage.saveTmp(in);
         try {
-            byte[] head = Files.readAllBytes(tmp);
-            String md5 = md5(head);
+            String md5 = md5OfFile(tmp); // 流式计算，避免大视频全量读入内存
             MediaAsset existing = findByMd5(md5);
             if (existing != null && MediaAsset.STATUS_READY.equals(existing.getStatus())) {
                 Files.deleteIfExists(tmp);
@@ -209,6 +208,27 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
             byte[] d = md.digest(data);
             StringBuilder sb = new StringBuilder();
             for (byte b : d) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new IOException("MD5 计算失败", e);
+        }
+    }
+
+    /** 流式计算文件 md5（大视频不占内存）。 */
+    private static String md5OfFile(Path file) throws IOException {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            try (var in = Files.newInputStream(file)) {
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    md.update(buf, 0, n);
+                }
+            }
+            StringBuilder sb = new StringBuilder();
+            for (byte b : md.digest()) {
                 sb.append(String.format("%02x", b));
             }
             return sb.toString();
