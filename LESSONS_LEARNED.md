@@ -1,5 +1,11 @@
 # Lessons Learned
 
+> Status: historical archive | Documentation map: [`docs/README.md`](docs/README.md)
+> This file keeps the original post-mortems from the build/deploy phase. New incidents go to
+> [`docs/incident-log-YYYYMM.md`](docs/incident-log-202609.md); reusable decisions go to [`DECISIONS.md`](DECISIONS.md).
+> Note: the MySQL binlog lesson below is superseded — binary logging is now permanently disabled
+> (`--disable-log-bin`).
+
 This document records practical lessons from building, deploying, and debugging Mini H5.
 
 ## Docker Desktop

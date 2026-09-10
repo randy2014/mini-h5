@@ -1,11 +1,14 @@
 # Production Deployment
 
+> Status: current | Last tidy-up: 2026-09 | Documentation map: [`../docs/README.md`](../docs/README.md)
+> Full deployment reference: [`../DEPLOYMENT.md`](../DEPLOYMENT.md).
+
 This project uses GitHub Actions to copy source code to a VPS and run Docker Compose on the server.
 
 Required GitHub repository secrets:
 
 - `VPS_HOST`: server IP or domain
-- `VPS_PORT`: SSH port, usually `22`
+- `VPS_PORT`: SSH port (current production host uses `52527`)
 - `VPS_USER`: SSH user, for example `root` or `deploy`
 - `VPS_SSH_KEY`: private SSH key used by GitHub Actions
 - `VPS_DEPLOY_PATH`: target path on the server, for example `/opt/mini-h5`
@@ -21,10 +24,11 @@ cp deploy/.env.prod.example .env
 
 Edit `.env` on the server and set a strong `MYSQL_ROOT_PASSWORD`.
 
-Manual deploy command on the server:
+Manual deploy command on the server (the normal path is CI/CD; `deploy.sh` applies `sql/schema.sql`, then builds
+serially and runs health checks):
 
 ```bash
-docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --build
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --build
 ```
 
 Public ports:

@@ -2,6 +2,26 @@
 
 > 生成自产品共创沟通。覆盖：订阅核心（C 端 + 后台 + 数据层）+ 精品内容 + 埋点 + 支付。
 > 状态约定：`[ ]` 未开始 · `[x]` 已完成
+> 文档地图：[`docs/README.md`](docs/README.md) ｜ 本文件是当前产品主线（对比：[`TODO.md`](TODO.md) 为早期工程主线）
+
+## 零、实施状态核实（2026-09 整理）
+
+> 逐项勾选状态**未回填**，以下表为准。依据：`main` 分支代码、`sql/schema.sql`（原迁移文件已合并进该脚本）、`docs/media-pool-design.md` 的生产验收记录。
+
+| 批次 | 状态 | 证据 |
+|---|---|---|
+| A 数据层 | 已落地 | `sql/schema.sql` §2：`subscribe_channel` / `subscribe_channel_novel` / `user_coin_balance` / `user_coin_log` / `user_subscribe`（原 `20260910_subscribe_channel.sql`） |
+| B 订阅后端 API | 已落地 | `SubscribeController`（channels / feed / novels / 订阅 / 一键订阅 / my）、`CoinController`（`/api/coin` 余额 + 流水）、`AdminCoinController`（后台充值）、`SubscribeExpireJob`（每小时到期回收）、`SubscribeService`（访问控制 + 试用期） |
+| C C 端 UI | 已落地 | `H5Layout` 底部 tab「订阅」；`SubscribePage` / `SubscribeChannelPage` / `SubscribeHistoryPage` / `CoinPage` / `SubscribeMediaPostPage` |
+| D 后台 UI | 已落地 | `SubscribeChannelView` / `CoinView`；`ArticleView` 已有「章节 → 查看正文」与「加入频道」 |
+| E 精品内容机制 | 未落地 | 13 个分类入口当前用的是 `lastupdate` 列表源，未接完本/热门/推荐榜；无质量评分、无归位审核 |
+| F 数据埋点 | 未落地 | H5 代码中没有埋点上报 |
+| G 自助充值支付 | 未落地 | 无支付网关；快乐币目前只能由后台充值（冷启动权宜仍在） |
+
+已在线上、但本清单未登记的功能：
+
+- **工单系统**：`sql/schema.sql` §2 的 `ticket` / `ticket_reply` 表、`TicketPage.vue`、`TicketView.vue`、`AdminTicketController`。需要时补入里程碑。
+- **多媒体池子**：已上线，属独立需求线，见 [`docs/media-pool-requirements.md`](docs/media-pool-requirements.md) 与 [`docs/media-pool-design.md`](docs/media-pool-design.md)。
 
 ## 一、已定关键决策（避免后续反复）
 

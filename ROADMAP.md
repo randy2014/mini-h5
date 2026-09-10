@@ -1,5 +1,10 @@
 # Roadmap
 
+> Status: partially stale | Last tidy-up: 2026-09 | Documentation map: [`docs/README.md`](docs/README.md)
+> Phase 1, 2 and 3 are largely delivered. Phase 4-6 are still the reference for crawler quality and production
+> hardening. This roadmap predates the subscribe-channel and media-pool product lines — those are tracked in
+> [`TASKS.md`](TASKS.md) and [`docs/media-pool-requirements.md`](docs/media-pool-requirements.md).
+
 ## Direction
 
 Mini H5 will continue along two main work streams:

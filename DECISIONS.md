@@ -1,5 +1,9 @@
 # Decisions
 
+> Status: current | Last tidy-up: 2026-09 | Documentation map: [`docs/README.md`](docs/README.md)
+> Scope: architecture, deployment, database, crawler and product decisions that should not be re-litigated.
+> Current state lives in [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md); product tasks in [`TASKS.md`](TASKS.md).
+
 This document records project decisions that should guide future work. It is meant to prevent repeated debates and keep implementation aligned with the current direction.
 
 ## Architecture
@@ -121,17 +125,22 @@ Reason:
 - Failed records are rarely useful right now.
 - Disk pressure has already been a real operational risk.
 
-### MySQL binlog should be short-retention
+### MySQL binlog is disabled (supersedes the earlier 1-day retention decision)
 
 Decision:
 
-- Keep binlog retention short unless replication/backup requirements change.
-- Current target retention is 1 day.
+- Keep binary logging disabled for the single-node production MySQL (`--disable-log-bin`).
+- Do not re-enable it unless replication or point-in-time recovery is actually introduced.
 
 Reason:
 
 - The VPS is not using MySQL replication.
-- Large crawler writes can generate very large binlogs.
+- Crawler-heavy writes generated tens of GB of binlog and filled the disk twice.
+- Retention tuning (1 day) reduced but did not remove the risk; disabling removes it.
+
+History: the original decision was "keep binlog retention short (target 1 day)"; that was superseded on
+2026-08-31 when binary logging was turned off (see [`LESSONS_LEARNED.md`](LESSONS_LEARNED.md) and
+[`docs/ops-handbook.md`](docs/ops-handbook.md)).
 
 ## Crawler
 
@@ -203,6 +212,56 @@ Reason:
 
 - Completed works are preferred for initial data quality.
 - They are stable and reduce ongoing crawler cost.
+
+### Collected content is published in two tiers
+
+Decision:
+
+- Public sources (currently `23qb_public`) publish directly: crawled chapters become `CONTENT_READY` and the
+  clean-merge service writes them into the business tables automatically (`auto_merge=1`).
+- Authorized VIP sources (`h528_authorized`, `novel69h_authorized`) always go through the content review queue:
+  chapters become `PENDING_REVIEW`, and only human-approved chapters are published (`auto_merge=0`).
+- The merge service only processes `CONTENT_READY` books and never touches `PENDING_REVIEW` ones.
+
+Reason:
+
+- Public content has low risk and volume matters, so review would only add latency.
+- Authorized content carries rights/quality risk, so a human gate is required before it reaches H5.
+
+Removed in the 2026-09-01 refactor: the authorized-book list feature and the automated content filter rules
+(risk keyword blocking, reject patterns, minimum-length checks). See
+[`CRAWLER_DESIGN.md`](CRAWLER_DESIGN.md) and [`docs/incident-log-202609.md`](docs/incident-log-202609.md).
+
+### The database has exactly one idempotent script
+
+Decision:
+
+- `sql/schema.sql` is the only database script. It holds databases, current table structures, seeded
+  configuration and the necessary idempotent data corrections, and is applied on every deploy.
+- Every statement in it must be safe to re-run: `CREATE TABLE IF NOT EXISTS`, `ON DUPLICATE KEY UPDATE` or
+  `NOT EXISTS` guarded inserts, and `information_schema` + `PREPARE` guards for `ADD COLUMN` / `ADD INDEX`.
+- New changes are appended to §4 of that file. Do **not** add numbered `sql/migrations/*.sql` files again.
+
+Reason:
+
+- `deploy.sh` re-applies the script on each deployment, so non-idempotent statements break or corrupt data
+  (the 2026-09-01 incident flipped already-approved content back to the review queue on every deploy).
+- A single ordered file removes the "which migration has run?" question and the need for marker-table guards.
+- History: 31 separate migration files were merged into the single script in 2026-09; the old files remain
+  readable in git history.
+
+### Schedulers need stale-task recovery and a global switch
+
+Decision:
+
+- Only enabled schedules run; an active `PENDING`/`RUNNING` task for the same source blocks duplicate creation.
+- Stale `RUNNING`/`MERGING` tasks must be closed instead of silently blocking all future collection.
+- Keep the global `CRAWLER_SCHEDULE_ENABLED` switch so crawling can be paused instantly when disk or load spikes.
+
+Reason:
+
+- A single stuck task previously blocked scheduled collection indefinitely.
+- Runaway crawling filled the VPS disk twice and made the server unresponsive.
 
 ## Product
 

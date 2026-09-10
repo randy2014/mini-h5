@@ -1,5 +1,8 @@
 # Crawler Design
 
+> Status: current | Last tidy-up: 2026-09 | Documentation map: [`docs/README.md`](docs/README.md)
+> Deployment facts live in [`DEPLOYMENT.md`](DEPLOYMENT.md); current product scope in [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md).
+
 ## Goal
 
 The crawler must collect real novel chapter正文 from stable public sources, clean the data, deduplicate across sources, and write usable novels/chapters into the business database so the H5 reader can display them normally.
@@ -152,15 +155,19 @@ Rules:
 - Only enabled schedules run.
 - Current active `PENDING` or `RUNNING` tasks for the same source should block duplicate task creation.
 - `auto_merge=1` means merge should run after crawl.
-- `crawl_public=1` and `crawl_vip=0` is the current default.
+- `crawl_public=1` and `crawl_vip=0` is the default for public sources.
+- The global on/off switch is `CRAWLER_SCHEDULE_ENABLED` in `deploy/docker-compose.prod.yml`.
 
-Current active schedule:
+Schedules registered by `sql/schema.sql` (actual enabled state lives in `mini_novel_crawler.crawl_schedule`):
 
 ```text
 source: 23qb_public
-time: 04:00
-timezone: Asia/Shanghai
-auto_merge: enabled
+time: 04:00 Asia/Shanghai
+auto_merge: enabled (1)
+
+source: h528_authorized, novel69h_authorized
+time: 02:00 Asia/Shanghai
+crawl_vip: 1, auto_merge: disabled (0) -> content goes to the review queue
 ```
 
 ## Failure Retention Policy
@@ -172,7 +179,8 @@ Recommended behavior:
 - Keep task-level summary and counts.
 - Do not keep large failed正文 raw data indefinitely.
 - Clean raw staging tables after successful merge or on a short retention schedule.
-- Do not let raw tables or binlog growth threaten the VPS disk.
+- Do not let raw tables or the media volume threaten the VPS disk. MySQL binary logging is permanently disabled
+  (`--disable-log-bin`), so crawler writes no longer generate binlogs.
 
 ## Validation Checklist
 
@@ -192,8 +200,8 @@ For each crawler change:
 ## Known Risks
 
 - Source HTML can change and break selectors.
-- Large crawls can generate large MySQL binlogs.
 - Raw正文 can grow quickly if not cleaned.
+- The media volume (image/video content) is now a comparable disk risk to raw crawler data.
 - Some novels may have missing or reordered source chapters.
 - Source category names may not match business categories exactly.
 - Aggressive crawling may be blocked by source-side anti-abuse rules.

@@ -2,8 +2,8 @@
 
 > 版本：v1.0（需求定稿）
 > 状态：**已实施并上线**（生产版本 `1e0f693`，2026-09-10）
-> 相关文档：技术设计见 `docs/media-pool-design.md`；界面原型见 `docs/prototypes/media-pool-prototype.html`
-> 关联模块：订阅频道（M1，已上线）
+> 文档地图：[`README.md`](README.md) ｜ 技术设计见 [`media-pool-design.md`](media-pool-design.md)；界面原型见 `docs/prototypes/media-pool-prototype.html`
+> 关联模块：订阅频道（M1，已上线）；任务清单见 [`../TASKS.md`](../TASKS.md)
 
 ---
 

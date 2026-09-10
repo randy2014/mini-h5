@@ -1,5 +1,11 @@
 # TODO
 
+> Status: partially stale | Last tidy-up: 2026-09 | Documentation map: [`docs/README.md`](docs/README.md)
+> This is the **early engineering mainline** (crawler stability + H5 UX, written 2026-08).
+> The current product mainline is [`TASKS.md`](TASKS.md) (subscribe channels); shipped work should not be
+> re-claimed from here. Unfinished items here are technical debt, not new product requirements.
+> Status convention: `[ ]` open · `[x]` done.
+
 ## P0 - Crawler Stability
 
 - [ ] Let the current `23qb_public` task finish and verify final task status.
@@ -45,7 +51,8 @@
 - [ ] Consider disabling MySQL binlog in non-replication environments, or keep one-day retention.
 - [ ] Add database backup/export plan before the project becomes production-like.
 - [ ] Add a lightweight deployment verification script.
-- [ ] Fix README encoding and align it with the new docs.
+- [x] Fix README encoding and align it with the new docs. (2026-09: README rewritten as valid UTF-8 and aligned
+      with the current module list, ports and doc map.)
 
 ## Deferred
 
