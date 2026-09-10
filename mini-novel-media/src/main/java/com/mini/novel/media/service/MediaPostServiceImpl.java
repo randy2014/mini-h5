@@ -245,8 +245,21 @@ public class MediaPostServiceImpl implements MediaPostService {
     // ---------- 内部 ----------
 
     private void replaceAssets(Long postId, List<Long> assetIds) {
+        // 记录旧关联，替换后释放不再被引用的素材（记录 + 磁盘文件同步删除）
+        List<MediaPostAsset> previous = postAssetMapper.selectList(
+                new LambdaQueryWrapper<MediaPostAsset>().eq(MediaPostAsset::getPostId, postId));
         postAssetMapper.delete(new LambdaQueryWrapper<MediaPostAsset>().eq(MediaPostAsset::getPostId, postId));
+
+        java.util.Set<Long> kept = new java.util.HashSet<>();
+        if (assetIds != null) {
+            for (Long id : assetIds) {
+                if (id != null) {
+                    kept.add(id);
+                }
+            }
+        }
         if (assetIds == null || assetIds.isEmpty()) {
+            releaseRemovedAssets(previous, kept);
             return;
         }
         int seq = 0;
@@ -267,6 +280,16 @@ public class MediaPostServiceImpl implements MediaPostService {
             link.setAssetId(assetId);
             link.setSeq(seq++);
             postAssetMapper.insert(link);
+        }
+        releaseRemovedAssets(previous, kept);
+    }
+
+    /** 释放本次编辑中被移除的素材：无任何帖引用时删除记录与磁盘文件。 */
+    private void releaseRemovedAssets(List<MediaPostAsset> previous, java.util.Set<Long> kept) {
+        for (MediaPostAsset link : previous) {
+            if (!kept.contains(link.getAssetId())) {
+                releaseAssetIfOrphan(link.getAssetId());
+            }
         }
     }
 

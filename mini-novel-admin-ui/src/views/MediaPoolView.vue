@@ -88,7 +88,7 @@
     </el-card>
 
     <!-- 新建/编辑抽屉 -->
-    <el-drawer v-model="editorVisible" :title="editorTitle" size="560px" destroy-on-close>
+    <el-drawer v-model="editorVisible" :title="editorTitle" size="560px" destroy-on-close @closed="onEditorClosed">
       <div v-loading="saving">
         <el-form label-position="top">
           <el-form-item label="标题（必填）">
@@ -121,7 +121,7 @@
               <div class="v-meta">{{ videoAsset.originalName }}
                 <span v-if="videoAsset.status !== 'READY'">{{ videoAsset.status === 'FAILED' ? '(转码失败)' : '(转码中…)' }}</span>
               </div>
-              <el-button size="small" @click="videoAsset = null">移除视频</el-button>
+              <el-button size="small" @click="removeVideo">移除视频</el-button>
             </div>
             <div class="hint">mp4/mov/mkv ≤300MB ≤15 分钟；转码完成后才可发布</div>
           </el-form-item>
@@ -199,6 +199,9 @@ const publishChannelId = ref(null);
 
 const detailVisible = ref(false);
 const detail = ref(null);
+/** 本次编辑器会话上传的素材 id（未保存即取消时回收，避免磁盘残留） */
+const sessionUploaded = ref([]);
+const savedThisSession = ref(false);
 
 const allAssets = computed(() => (videoAsset.value ? [...imageAssets.value, videoAsset.value] : imageAssets.value));
 
@@ -272,6 +275,7 @@ function openEditor(mode, row) {
   form.title = row?.title || '';
   imageAssets.value = [];
   videoAsset.value = null;
+  sessionUploaded.value = []; // 本次编辑器会话上传的素材（取消/未采用时回收，避免磁盘残留）
   if (row) {
     // 编辑：复用 detail 数据装载素材
     adminApi.get(`/media/posts/${row.id}`).then((d) => {
@@ -286,6 +290,29 @@ function openEditor(mode, row) {
   editorVisible.value = true;
 }
 
+/** 删除未采用的素材（后端对仍被引用的素材会拒绝，安全） */
+async function discardAssets(ids) {
+  for (const id of ids) {
+    try {
+      await adminApi.delete(`/media/assets/${id}`);
+    } catch { /* 仍被其他内容引用则保留 */ }
+  }
+}
+
+/** 抽屉关闭且未保存 → 回收本次上传的素材（记录 + 磁盘文件） */
+async function onEditorClosed() {
+  if (savedThisSession.value) {
+    savedThisSession.value = false;
+    sessionUploaded.value = [];
+    return;
+  }
+  const pending = [...sessionUploaded.value];
+  sessionUploaded.value = [];
+  if (pending.length) {
+    await discardAssets(pending);
+  }
+}
+
 async function uploadOne(opt) {
   const fd = new FormData();
   fd.append('files', opt.file);
@@ -298,6 +325,7 @@ async function uploadOne(opt) {
     }
     // 图片由后端在非事务线程同步处理完返回 READY；视频为 PROCESSING，轮询
     const asset = { id: r.assetId, fileType: r.fileType, status: r.status, originalName: opt.file.name };
+    sessionUploaded.value.push(r.assetId);
     if (r.fileType === 'VIDEO') {
       videoAsset.value = asset;
       pollAsset(asset);
@@ -329,6 +357,21 @@ function pollAsset(asset) {
 function removeAsset(a) {
   const i = imageAssets.value.indexOf(a);
   if (i >= 0) imageAssets.value.splice(i, 1);
+  // 新建模式（素材尚未被任何内容引用）→ 立即回收磁盘文件；编辑模式留待保存时由后端释放
+  if (!editId.value) {
+    discardAssets([a.id]);
+    sessionUploaded.value = sessionUploaded.value.filter((id) => id !== a.id);
+  }
+}
+
+/** 移除已选视频（同上：新建模式立即回收） */
+function removeVideo() {
+  const v = videoAsset.value;
+  videoAsset.value = null;
+  if (!editId.value && v?.id) {
+    discardAssets([v.id]);
+    sessionUploaded.value = sessionUploaded.value.filter((id) => id !== v.id);
+  }
 }
 
 async function saveDraft() {
@@ -353,6 +396,14 @@ async function saveDraft() {
       await adminApi.post('/media/posts', body);
     }
     ElMessage.success('已保存到草稿');
+    savedThisSession.value = true;
+    // 回收本次上传但未被采用（被移除）的素材，避免磁盘残留
+    const usedIds = new Set(allAssets.value.map((a) => a.id));
+    const unused = sessionUploaded.value.filter((id) => !usedIds.has(id));
+    if (unused.length) {
+      await discardAssets(unused);
+    }
+    sessionUploaded.value = [];
     editorVisible.value = false;
     tab.value = 'draft';
     page.value = 1;
