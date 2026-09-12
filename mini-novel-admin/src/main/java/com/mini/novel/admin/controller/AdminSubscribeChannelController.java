@@ -89,12 +89,38 @@ public class AdminSubscribeChannelController {
         return Result.ok(existing);
     }
 
+    /**
+     * 小说已加入的频道 id 列表（后台弹窗用于把「已加入」的频道置为已加入态，避免重复提交）。
+     */
+    @GetMapping("/novels/{novelId}")
+    public Result<List<Long>> channelsOfNovel(@PathVariable Long novelId) {
+        return Result.ok(channelNovelMapper.selectList(new LambdaQueryWrapper<SubscribeChannelNovel>()
+                        .eq(SubscribeChannelNovel::getNovelId, novelId))
+                .stream()
+                .map(SubscribeChannelNovel::getChannelId)
+                .distinct()
+                .toList());
+    }
+
+    /**
+     * 小说加入频道：幂等语义——重复加入直接返回既有关系，不再让唯一键 uk_channel_novel 抛 500。
+     */
     @PostMapping("/{channelId}/novels")
     public Result<SubscribeChannelNovel> addNovel(@PathVariable Long channelId,
                                                   @RequestBody AddNovelRequest request) {
         require(channelId);
+        if (request.novelId() == null) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "小说 id 必填");
+        }
         if (novelMapper.selectById(request.novelId()) == null) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "小说不存在");
+        }
+        SubscribeChannelNovel existing = channelNovelMapper.selectOne(new LambdaQueryWrapper<SubscribeChannelNovel>()
+                .eq(SubscribeChannelNovel::getChannelId, channelId)
+                .eq(SubscribeChannelNovel::getNovelId, request.novelId())
+                .last("limit 1"));
+        if (existing != null) {
+            return Result.ok(existing);
         }
         SubscribeChannelNovel link = new SubscribeChannelNovel();
         link.setChannelId(channelId);

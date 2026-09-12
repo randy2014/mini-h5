@@ -13,7 +13,7 @@
 | A 数据层 | 已落地 | `sql/schema.sql` §2：`subscribe_channel` / `subscribe_channel_novel` / `user_coin_balance` / `user_coin_log` / `user_subscribe`（原 `20260910_subscribe_channel.sql`） |
 | B 订阅后端 API | 已落地 | `SubscribeController`（channels / feed / novels / 订阅 / 一键订阅 / my）、`CoinController`（`/api/coin` 余额 + 流水）、`AdminCoinController`（后台充值）、`SubscribeExpireJob`（每小时到期回收）、`SubscribeService`（访问控制 + 试用期） |
 | C C 端 UI | 已落地 | `H5Layout` 底部 tab「订阅」；`SubscribePage` / `SubscribeChannelPage` / `SubscribeHistoryPage` / `CoinPage` / `SubscribeMediaPostPage` |
-| D 后台 UI | 已落地 | `SubscribeChannelView` / `CoinView`；`ArticleView` 已有「章节 → 查看正文」与「加入频道」 |
+| D 后台 UI | 已落地 | `SubscribeChannelView` / `CoinView`；`ArticleView` 已有「查看」（后台内看简介/目录/正文）、「章节 → 查看正文」与「加入频道」 |
 | E 精品内容机制 | 未落地 | 13 个分类入口当前用的是 `lastupdate` 列表源，未接完本/热门/推荐榜；无质量评分、无归位审核 |
 | F 数据埋点 | 未落地 | H5 代码中没有埋点上报 |
 | G 自助充值支付 | 未落地 | 无支付网关；快乐币目前只能由后台充值（冷启动权宜仍在） |
@@ -92,7 +92,12 @@
 - [ ] D1 订阅频道管理页 `SubscribeChannelView`（新增/改名/发布/下架）
 - [ ] D2 快乐币管理页 `CoinView`（查用户 + 充值弹窗 + 充值记录）
 - [ ] D3 小说内容查看（`ArticleView` 章节抽屉加「查看正文」→ 读 `chapter_content`）
-- [ ] D4 VIP 小说加入频道（`ArticleView` 操作列加「加入频道」→ 写 `subscribe_channel_novel`）
+- [ ] D4 VIP 小说加入频道（`ArticleView` 操作列加「加入频道」→ 写 `subscribe_channel_novel`；
+      弹窗按 `GET /admin/subscribe-channels/novels/{novelId}` 展示「已加入/加入/移出」，
+      后端加入接口幂等，重复加入不再 500 —— 见 `docs/incident-log-202609.md` §7）
+- [ ] D5 文章列表查看文章（`ArticleView` 操作列加「查看」→ 后台内抽屉：封面/元信息/简介 + 目录 + 正文预览，
+      目录走新增的 `GET /admin/novels/{id}/chapter-list`（只取章节元信息，不带正文，避免数千章书籍 MB 级响应），
+      正文按需 `GET /admin/novels/chapters/{id}/content`；不跳 H5 前台）
 
 ### E. 精品内容机制（M2）
 

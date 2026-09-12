@@ -133,6 +133,36 @@
 
 ---
 
+## 7. 文章管理「加入订阅频道」重复提交返回 500（09-13）
+
+**现象**
+- 后台「文章管理 → 加入频道」选定频道点「加入」返回 500；同一小说在 3 秒内连点 3 次，每次都 500。
+- 后端日志：`DuplicateKeyException` → `Duplicate entry '1-4209' for key 'subscribe_channel_novel.uk_channel_novel'`。
+
+**根因**
+- `POST /admin/subscribe-channels/{channelId}/novels` 直接 insert，未校验该小说是否已在该频道；
+- `subscribe_channel_novel` 上有 `UNIQUE KEY uk_channel_novel (channel_id, novel_id)`，
+  重复加入必然违反唯一键（novel 4209 本就已在频道 1 中）；
+- `GlobalExceptionHandler` 只处理 `BusinessException` 与参数校验异常，`DuplicateKeyException`
+  落到 Spring 默认错误处理 → HTTP 500，前端只显示「网络异常」。
+
+**修复**
+- `AdminSubscribeChannelController.addNovel` 改为**幂等**：先按 (channelId, novelId) 查既有关系，
+  存在即原样返回，不再 insert；同时补 novelId 非空校验；
+- 新增 `GET /admin/subscribe-channels/novels/{novelId}`（该小说已加入的频道 id 列表），
+  后台弹窗据此把已加入的频道显示为「已加入」，并复用既有
+  `DELETE /{channelId}/novels/{novelId}` 提供「移出」，从交互上消灭重复提交入口；
+- `GlobalExceptionHandler` 增加 `DuplicateKeyException` 兜底，统一返回
+  `数据已存在，请勿重复提交`（HTTP 200 + 业务失败码），避免其它唯一键（如频道重名 `uk_name`）
+  再次以 500 暴露。
+
+**预防**
+- 关联表/映射表写接口一律实现为幂等（先查后写或 upsert），不要依赖前端保证不重复提交；
+- 建表带 `UNIQUE KEY` 时，必须同时检查所有写入路径是否会命中重复；
+- 唯一键冲突属于可预期业务结果，应在全局异常处理里转成业务提示，而不是 500。
+
+---
+
 ## 运维核对清单（部署后必查）
 
 ```bash
@@ -162,6 +192,13 @@ curl -s -o /dev/null -w 'admin=%{http_code}\n' http://127.0.0.1:5180/admin/login
 # 6) 前端代理无 502（重点看 nginx error log 是否有旧 upstream IP）
 docker logs mini-novel-h5 2>&1 | grep -E '502|Connection refused' | tail -5
 docker logs mini-novel-admin-ui 2>&1 | grep -E '502|Connection refused' | tail -5
+
+# 7) 加入频道幂等（对已存在关系重复调用应返回 code=0，而非 500）
+LINK=$(docker exec mini-novel-mysql mysql -uroot -p"$MYSQLPW" -N -e \
+  "SELECT CONCAT(channel_id,' ',novel_id) FROM mini_novel.subscribe_channel_novel LIMIT 1")
+set -- $LINK
+curl -s -X POST "http://127.0.0.1:8080/admin/subscribe-channels/$1/novels" \
+  -H 'Content-Type: application/json' -d "{\"novelId\":$2,\"operatorId\":1}"
 ```
 
 ---

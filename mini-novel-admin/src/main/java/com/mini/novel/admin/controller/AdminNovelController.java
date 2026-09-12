@@ -102,6 +102,21 @@ public class AdminNovelController {
                 .orderByAsc(Chapter::getChapterNo)));
     }
 
+    /**
+     * 查看文章用的目录：只取章节元信息，不返回正文。
+     * 采集书籍动辄数千章，带正文的 {@link #chapters(Long)} 响应会到 MB 级，后台看目录不需要正文。
+     */
+    @GetMapping("/{id}/chapter-list")
+    public Result<List<Chapter>> chapterList(@PathVariable("id") Long id) {
+        return Result.ok(chapterMapper.selectList(new LambdaQueryWrapper<Chapter>()
+                .select(Chapter::getId, Chapter::getNovelId, Chapter::getChapterNo, Chapter::getTitle,
+                        Chapter::getVip, Chapter::getPriceCoin, Chapter::getSourceUrl, Chapter::getCreatedAt,
+                        Chapter::getUpdatedAt)
+                .eq(Chapter::getNovelId, id)
+                .orderByAsc(Chapter::getChapterNo)
+                .orderByAsc(Chapter::getId)));
+    }
+
     @GetMapping("/chapters/{id}/content")
     public Result<Chapter> chapterContent(@PathVariable("id") Long id) {
         return Result.ok(chapterMapper.selectById(id));

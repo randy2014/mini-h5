@@ -110,7 +110,8 @@ H5 has:
 Admin UI has:
 
 - Dashboard.
-- Article management.
+- Article management (list actions: view inside the admin — meta/intro, catalog and chapter content — plus edit,
+  chapters, join subscribe channel, online/offline).
 - Category management.
 - User management.
 - VIP management (including VIP categories).
