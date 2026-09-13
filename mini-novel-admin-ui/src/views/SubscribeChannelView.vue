@@ -9,6 +9,11 @@
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="name" label="频道名称" />
       <el-table-column prop="sort" label="排序" width="90" />
+      <el-table-column label="频道内容" width="170">
+        <template #default="{ row }">
+          <span class="muted">小说 {{ row.novelCount ?? 0 }} · 图文视频 {{ row.mediaCount ?? 0 }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="description" label="简介" show-overflow-tooltip />
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
@@ -17,8 +22,9 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="290">
         <template #default="{ row }">
+          <el-button link type="primary" @click="openDetail(row)">查看频道详情</el-button>
           <el-button link type="primary" @click="open(row)">编辑</el-button>
           <el-button v-if="row.status !== 'PUBLISHED'" link type="success" @click="publish(row)">发布</el-button>
           <el-button v-else link type="warning" @click="offline(row)">下架</el-button>
@@ -43,8 +49,10 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useRouter } from 'vue-router';
 import { adminApi } from '../services/http';
 
+const router = useRouter();
 const rows = ref([]);
 const loading = ref(false);
 const visible = ref(false);
@@ -63,6 +71,11 @@ function open(row) {
   Object.keys(form).forEach((key) => delete form[key]);
   Object.assign(form, row || { name: '', sort: 100, description: '' });
   visible.value = true;
+}
+
+// 频道详情页：频道内小说 + 已发布图文/视频内容
+function openDetail(row) {
+  router.push(`/admin/subscribe-channels/${row.id}`);
 }
 
 async function save() {

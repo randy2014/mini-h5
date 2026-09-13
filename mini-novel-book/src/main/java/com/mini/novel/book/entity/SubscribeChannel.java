@@ -1,6 +1,7 @@
 package com.mini.novel.book.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
@@ -20,6 +21,12 @@ public class SubscribeChannel {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    /** 频道内容统计（非表字段）：小说数 + 已发布多媒体帖数，后台列表/详情用。 */
+    @TableField(exist = false)
+    private Long novelCount;
+    @TableField(exist = false)
+    private Long mediaCount;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getName() { return name; }
@@ -36,4 +43,8 @@ public class SubscribeChannel {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public Long getNovelCount() { return novelCount; }
+    public void setNovelCount(Long novelCount) { this.novelCount = novelCount; }
+    public Long getMediaCount() { return mediaCount; }
+    public void setMediaCount(Long mediaCount) { this.mediaCount = mediaCount; }
 }

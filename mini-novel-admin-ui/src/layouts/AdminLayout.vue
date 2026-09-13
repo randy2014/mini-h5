@@ -2,7 +2,7 @@
   <el-container class="admin-shell">
     <el-aside width="224px" class="admin-aside">
       <div class="brand">Mini Novel</div>
-      <el-menu router :default-active="$route.path" background-color="#154f4b" text-color="#cfe0da" active-text-color="#ffffff">
+      <el-menu router :default-active="activeMenu" background-color="#154f4b" text-color="#cfe0da" active-text-color="#ffffff">
         <el-menu-item index="/admin/dashboard">首页</el-menu-item>
         <el-menu-item index="/admin/articles">文章管理</el-menu-item>
         <el-menu-item index="/admin/categories">分类管理</el-menu-item>
@@ -29,9 +29,14 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router';
+import { computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
+const route = useRoute();
 const router = useRouter();
+
+// 子页面（如 /admin/subscribe-channels/3）也高亮所属一级菜单
+const activeMenu = computed(() => '/' + route.path.split('/').filter(Boolean).slice(0, 2).join('/'));
 
 function logout() {
   localStorage.removeItem('mini_admin_token');

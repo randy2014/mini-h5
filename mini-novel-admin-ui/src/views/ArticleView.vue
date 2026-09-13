@@ -12,8 +12,12 @@
         <el-button type="primary" @click="load">查询</el-button>
         <el-button @click="openEdit()">新增文章</el-button>
         <el-button type="success" @click="openImport">TXT 导入</el-button>
+        <el-button type="warning" :disabled="!selectedNovels.length" @click="openBatchJoin">
+          批量加入频道{{ selectedNovels.length ? `（${selectedNovels.length}）` : '' }}
+        </el-button>
       </div>
-      <el-table :data="rows" v-loading="loading" row-key="id">
+      <el-table :data="rows" v-loading="loading" row-key="id" @selection-change="onSelectionChange">
+        <el-table-column type="selection" width="46" />
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="title" label="标题" min-width="220" />
         <el-table-column prop="author" label="作者" width="130" />
@@ -117,26 +121,43 @@
       </el-table>
     </el-drawer>
 
-    <el-dialog v-model="joinVisible" title="加入订阅频道" width="520px">
-      <el-form label-width="90px">
-        <el-form-item label="小说"><span>{{ currentNovel?.title }}</span></el-form-item>
+    <el-dialog v-model="joinVisible" :title="joinMode === 'batch' ? '批量加入订阅频道' : '加入订阅频道'" width="560px">
+      <el-form label-width="100px">
+        <el-form-item :label="joinMode === 'batch' ? '已选小说' : '小说'">
+          <span v-if="joinMode === 'single'">{{ currentNovel?.title }}</span>
+          <span v-else class="join-titles">
+            共 {{ selectedNovels.length }} 本：{{ selectedNovels.map((n) => n.title).join('、') }}
+          </span>
+        </el-form-item>
         <el-form-item label="频道">
           <div v-loading="joinLoading" class="join-list">
             <div v-for="c in channels" :key="c.id" class="join-row">
               <span class="join-name">
                 <span class="join-title">{{ c.name }}</span>
                 <el-tag v-if="c.status !== 'PUBLISHED'" size="small" type="info" effect="plain">已下架</el-tag>
+                <span class="join-count">小说 {{ c.novelCount ?? 0 }} · 图文视频 {{ c.mediaCount ?? 0 }}</span>
               </span>
-              <template v-if="joinedChannelIds.includes(c.id)">
+              <template v-if="joinMode === 'single' && joinedChannelIds.includes(c.id)">
                 <el-tag size="small" type="success" effect="plain">已加入</el-tag>
                 <el-button link type="danger" @click="removeFromChannel(c)">移出</el-button>
               </template>
-              <el-button v-else link type="primary" @click="joinChannel(c)">加入</el-button>
+              <el-button
+                v-else
+                link
+                type="primary"
+                :loading="joiningChannelId === c.id"
+                @click="joinChannel(c)"
+              >
+                加入
+              </el-button>
             </div>
             <p v-if="!channels.length" class="join-empty">
               暂无订阅频道，请先在「订阅频道管理」新增并发布频道
             </p>
           </div>
+        </el-form-item>
+        <el-form-item v-if="joinMode === 'batch' && batchResult" label="加入结果">
+          <span class="join-result">{{ batchResult }}</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -250,8 +271,12 @@ const importForm = reactive(defaultImportForm());
 const channels = ref([]);
 const joinVisible = ref(false);
 const joinLoading = ref(false);
+const joiningChannelId = ref(null);
 const joinedChannelIds = ref([]);
+const joinMode = ref('single');
+const batchResult = ref('');
 const currentNovel = ref(null);
+const selectedNovels = ref([]);
 const contentVisible = ref(false);
 const chapterContent = ref('');
 
@@ -443,21 +468,42 @@ async function saveChapterVip(row) {
   ElMessage.success('章节 VIP 已更新');
 }
 
+function onSelectionChange(rows) {
+  selectedNovels.value = rows || [];
+}
+
 function openJoinChannel(row) {
   currentNovel.value = row;
+  joinMode.value = 'single';
+  batchResult.value = '';
   channels.value = [];
   joinedChannelIds.value = [];
   joinVisible.value = true;
   loadChannels(row.id);
 }
 
-// 频道下拉 + 该小说已加入的频道（已加入的直接展示为已加入态，避免重复提交）
+// 批量：勾选多本小说后一次加入同一个频道（整批幂等，后端返回新增/跳过/不存在数量）
+function openBatchJoin() {
+  if (!selectedNovels.value.length) {
+    ElMessage.warning('请先勾选要加入频道的小说');
+    return;
+  }
+  currentNovel.value = null;
+  joinMode.value = 'batch';
+  batchResult.value = '';
+  channels.value = [];
+  joinedChannelIds.value = [];
+  joinVisible.value = true;
+  loadChannels(null);
+}
+
+// 频道下拉（含内容统计）；单个模式下再取该小说已加入的频道
 async function loadChannels(novelId) {
   joinLoading.value = true;
   try {
     const [list, joined] = await Promise.all([
       adminApi.get('/subscribe-channels'),
-      adminApi.get(`/subscribe-channels/novels/${novelId}`)
+      novelId ? adminApi.get(`/subscribe-channels/novels/${novelId}`) : Promise.resolve([])
     ]);
     channels.value = list || [];
     joinedChannelIds.value = joined || [];
@@ -467,12 +513,31 @@ async function loadChannels(novelId) {
 }
 
 async function joinChannel(channel) {
-  await adminApi.post(`/subscribe-channels/${channel.id}/novels`, {
-    novelId: currentNovel.value.id,
-    operatorId: 1
-  });
-  ElMessage.success(`《${currentNovel.value.title}》已加入「${channel.name}」`);
-  await loadChannels(currentNovel.value.id);
+  joiningChannelId.value = channel.id;
+  try {
+    if (joinMode.value === 'batch') {
+      const novelIds = selectedNovels.value.map((n) => n.id);
+      const r = await adminApi.post(`/subscribe-channels/${channel.id}/novels/batch`, {
+        novelIds,
+        operatorId: 1
+      });
+      batchResult.value =
+        `「${channel.name}」新增 ${r.added} 本` +
+        (r.skipped ? `，已在频道 ${r.skipped} 本` : '') +
+        (r.notFound ? `，小说不存在 ${r.notFound} 本` : '');
+      ElMessage.success(batchResult.value);
+      await loadChannels(null);
+    } else {
+      await adminApi.post(`/subscribe-channels/${channel.id}/novels`, {
+        novelId: currentNovel.value.id,
+        operatorId: 1
+      });
+      ElMessage.success(`《${currentNovel.value.title}》已加入「${channel.name}」`);
+      await loadChannels(currentNovel.value.id);
+    }
+  } finally {
+    joiningChannelId.value = null;
+  }
 }
 
 async function removeFromChannel(channel) {
@@ -501,6 +566,9 @@ onMounted(load);
 .join-row:last-of-type { border-bottom: none; }
 .join-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; }
 .join-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.join-count { color: #98a5b5; font-size: 12px; flex-shrink: 0; }
+.join-titles { color: #55657a; font-size: 13px; line-height: 1.7; max-height: 66px; overflow: auto; display: block; }
+.join-result { color: #1f6f64; font-size: 13px; line-height: 1.7; }
 .join-empty { margin: 12px 0; text-align: center; color: #98a5b5; font-size: 12px; }
 .article-view { display: flex; flex-direction: column; gap: 14px; min-height: 60vh; }
 .av-head { display: flex; gap: 16px; }

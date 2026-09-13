@@ -98,6 +98,12 @@
 - [ ] D5 文章列表查看文章（`ArticleView` 操作列加「查看」→ 后台内抽屉：封面/元信息/简介 + 目录 + 正文预览，
       目录走新增的 `GET /admin/novels/{id}/chapter-list`（只取章节元信息，不带正文，避免数千章书籍 MB 级响应），
       正文按需 `GET /admin/novels/chapters/{id}/content`；不跳 H5 前台）
+- [ ] D6 批量加入频道（`ArticleView` 加多选列 + 「批量加入频道」→ `POST /admin/subscribe-channels/{id}/novels/batch`，
+      整批幂等，返回 新增/已在频道/不存在 数量；单次上限 200）
+- [ ] D7 频道详情（`SubscribeChannelView` 操作列「查看频道详情」→ `/admin/subscribe-channels/:id`）：
+      频道基本信息 + 内容统计（小说/图文视频）+「频道小说」与「图文视频」两个 tab（含移出小说、内容预览），
+      数据走 `GET /admin/subscribe-channels/{id}/detail` · `/{id}/novels` · `/{id}/posts`；
+      频道列表接口顺带返回 `novelCount`/`mediaCount`（FR-17 内容数量）
 
 ### E. 精品内容机制（M2）
 
