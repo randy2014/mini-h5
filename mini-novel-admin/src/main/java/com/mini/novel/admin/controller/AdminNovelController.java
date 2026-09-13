@@ -36,10 +36,15 @@ public class AdminNovelController {
         this.chapterMapper = chapterMapper;
     }
 
+    /**
+     * VIP 文章管理列表：只返回**尚未加入任何订阅频道**的小说（已入频道的在
+     * 「订阅频道管理 → 查看频道详情」中查看/移出，移出后会重新出现在这里）。
+     */
     @GetMapping
     public Result<List<Novel>> list(@RequestParam(required = false) String keyword,
                                     @RequestParam(required = false) Integer status) {
         LambdaQueryWrapper<Novel> wrapper = new LambdaQueryWrapper<Novel>()
+                .notExists("SELECT 1 FROM subscribe_channel_novel l WHERE l.novel_id = novel.id")
                 .orderByDesc(Novel::getUpdatedAt)
                 .last("LIMIT 200");
         if (StringUtils.hasText(keyword)) {

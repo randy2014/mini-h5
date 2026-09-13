@@ -89,6 +89,9 @@
 
 ### D. 后台 UI（M1 · Admin）
 
+- [ ] D0 菜单「文章管理」更名 **VIP文章管理**（`AdminLayout` / 路由标题），且列表只显示
+      **未加入任何订阅频道**的小说（`GET /admin/novels` 加 `NOT EXISTS subscribe_channel_novel`）；
+      已入频道的文章在「订阅频道管理 → 查看频道详情」查看/移出，移出后自动回到本列表
 - [ ] D1 订阅频道管理页 `SubscribeChannelView`（新增/改名/发布/下架）
 - [ ] D2 快乐币管理页 `CoinView`（查用户 + 充值弹窗 + 充值记录）
 - [ ] D3 小说内容查看（`ArticleView` 章节抽屉加「查看正文」→ 读 `chapter_content`）

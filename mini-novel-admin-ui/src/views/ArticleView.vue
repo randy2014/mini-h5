@@ -1,6 +1,10 @@
 <template>
   <section>
     <el-card shadow="never">
+      <div class="scope-tip">
+        <span>列表中只显示<strong>尚未加入订阅频道</strong>的文章；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出（移出后会重新出现在这里）。</span>
+        <el-button link type="primary" @click="$router.push('/admin/subscribe-channels')">去订阅频道管理</el-button>
+      </div>
       <div class="toolbar">
         <el-input v-model="query.keyword" placeholder="搜索标题/作者" clearable @keyup.enter="load" />
         <el-select v-model="query.status" placeholder="状态" clearable>
@@ -16,7 +20,7 @@
           批量加入频道{{ selectedNovels.length ? `（${selectedNovels.length}）` : '' }}
         </el-button>
       </div>
-      <el-table :data="rows" v-loading="loading" row-key="id" @selection-change="onSelectionChange">
+      <el-table ref="tableRef" :data="rows" v-loading="loading" row-key="id" @selection-change="onSelectionChange">
         <el-table-column type="selection" width="46" />
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="title" label="标题" min-width="220" />
@@ -126,7 +130,7 @@
         <el-form-item :label="joinMode === 'batch' ? '已选小说' : '小说'">
           <span v-if="joinMode === 'single'">{{ currentNovel?.title }}</span>
           <span v-else class="join-titles">
-            共 {{ selectedNovels.length }} 本：{{ selectedNovels.map((n) => n.title).join('、') }}
+            共 {{ batchNovels.length }} 本：{{ batchNovels.map((n) => n.title).join('、') }}
           </span>
         </el-form-item>
         <el-form-item label="频道">
@@ -277,6 +281,9 @@ const joinMode = ref('single');
 const batchResult = ref('');
 const currentNovel = ref(null);
 const selectedNovels = ref([]);
+const tableRef = ref(null);
+// 批量弹窗的选中快照：加入成功后列表会刷新（已入频道的行消失），快照用于继续加入其它频道
+const batchNovels = ref([]);
 const contentVisible = ref(false);
 const chapterContent = ref('');
 
@@ -491,6 +498,7 @@ function openBatchJoin() {
   currentNovel.value = null;
   joinMode.value = 'batch';
   batchResult.value = '';
+  batchNovels.value = [...selectedNovels.value];
   channels.value = [];
   joinedChannelIds.value = [];
   joinVisible.value = true;
@@ -516,7 +524,7 @@ async function joinChannel(channel) {
   joiningChannelId.value = channel.id;
   try {
     if (joinMode.value === 'batch') {
-      const novelIds = selectedNovels.value.map((n) => n.id);
+      const novelIds = batchNovels.value.map((n) => n.id);
       const r = await adminApi.post(`/subscribe-channels/${channel.id}/novels/batch`, {
         novelIds,
         operatorId: 1
@@ -526,14 +534,16 @@ async function joinChannel(channel) {
         (r.skipped ? `，已在频道 ${r.skipped} 本` : '') +
         (r.notFound ? `，小说不存在 ${r.notFound} 本` : '');
       ElMessage.success(batchResult.value);
-      await loadChannels(null);
+      await Promise.all([load(), loadChannels(null)]);
+      tableRef.value?.clearSelection();
     } else {
       await adminApi.post(`/subscribe-channels/${channel.id}/novels`, {
         novelId: currentNovel.value.id,
         operatorId: 1
       });
       ElMessage.success(`《${currentNovel.value.title}》已加入「${channel.name}」`);
-      await loadChannels(currentNovel.value.id);
+      // 加入后该文章不再属于本列表（已入频道），刷新后从列表消失
+      await Promise.all([load(), loadChannels(currentNovel.value.id)]);
     }
   } finally {
     joiningChannelId.value = null;
@@ -548,7 +558,8 @@ async function removeFromChannel(channel) {
   }
   await adminApi.delete(`/subscribe-channels/${channel.id}/novels/${currentNovel.value.id}`);
   ElMessage.success('已移出频道');
-  await loadChannels(currentNovel.value.id);
+  // 移出后该文章重新回到本列表
+  await Promise.all([load(), loadChannels(currentNovel.value.id)]);
 }
 
 async function openContent(row) {
@@ -561,6 +572,12 @@ onMounted(load);
 </script>
 
 <style scoped>
+.scope-tip {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 8px 12px; border-radius: 8px;
+  background: #f2f7f5; color: #55657a; font-size: 13px; line-height: 1.6;
+}
+.scope-tip strong { color: #1f6f64; }
 .join-list { width: 100%; max-height: 320px; overflow: auto; }
 .join-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px dashed #eef1f5; }
 .join-row:last-of-type { border-bottom: none; }

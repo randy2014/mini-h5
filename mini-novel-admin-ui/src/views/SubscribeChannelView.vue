@@ -115,4 +115,5 @@ onMounted(load);
 
 <style scoped>
 .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+.muted { color: #98a5b5; font-size: 12px; }
 </style>

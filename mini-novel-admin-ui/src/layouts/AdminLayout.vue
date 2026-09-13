@@ -4,7 +4,7 @@
       <div class="brand">Mini Novel</div>
       <el-menu router :default-active="activeMenu" background-color="#154f4b" text-color="#cfe0da" active-text-color="#ffffff">
         <el-menu-item index="/admin/dashboard">首页</el-menu-item>
-        <el-menu-item index="/admin/articles">文章管理</el-menu-item>
+        <el-menu-item index="/admin/articles">VIP文章管理</el-menu-item>
         <el-menu-item index="/admin/categories">分类管理</el-menu-item>
         <el-menu-item index="/admin/vip-categories">VIP 分类管理</el-menu-item>
         <el-menu-item index="/admin/media-pool">🖼 多媒体池子</el-menu-item>

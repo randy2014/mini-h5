@@ -40,7 +40,7 @@
               @clear="searchNovels"
             />
             <el-button type="primary" @click="searchNovels">查询</el-button>
-            <el-button @click="$router.push('/admin/articles')">去文章管理加入小说</el-button>
+            <el-button @click="$router.push('/admin/articles')">去VIP文章管理加入小说</el-button>
           </div>
           <el-table :data="novels" v-loading="novelLoading" row-key="id">
             <el-table-column prop="id" label="ID" width="80" />
