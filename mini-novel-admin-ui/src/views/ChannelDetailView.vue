@@ -64,8 +64,9 @@
             <el-table-column label="加入时间" width="170">
               <template #default="{ row }">{{ formatDateTime(row.joinedAt) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="110" fixed="right">
+            <el-table-column label="操作" width="150" fixed="right">
               <template #default="{ row }">
+                <el-button link type="primary" @click="openNovel(row)">查看内容</el-button>
                 <el-button link type="danger" @click="removeNovel(row)">移出频道</el-button>
               </template>
             </el-table-column>
@@ -98,7 +99,10 @@
                   <el-tag v-if="countOf(item, 'IMAGE')" size="small" effect="plain">图 {{ countOf(item, 'IMAGE') }}</el-tag>
                   <el-tag v-if="countOf(item, 'VIDEO')" size="small" effect="plain">视频 {{ countOf(item, 'VIDEO') }}</el-tag>
                 </div>
-                <div class="cd-post-time">{{ formatDateTime(item.post.publishedAt) }}</div>
+                <div class="cd-post-time">
+                  <span>{{ formatDateTime(item.post.publishedAt) }}</span>
+                  <el-button link type="primary" @click.stop="openPreview(item)">查看内容</el-button>
+                </div>
               </div>
             </div>
             <p v-if="!posts.length && !postLoading" class="cd-empty">
@@ -120,9 +124,15 @@
     <el-dialog v-model="previewVisible" :title="preview?.post?.title || '内容预览'" width="760px">
       <div class="cd-preview">
         <template v-for="a in preview?.assets || []" :key="a.id">
-          <video v-if="a.fileType === 'VIDEO'" :src="assetUrl(a, 'main')" controls preload="metadata" class="cd-preview-video" />
-          <el-image v-else :src="assetUrl(a, 'main')" fit="contain" class="cd-preview-image" preview-teleported
-                    :preview-src-list="previewImages" />
+          <div class="cd-preview-item">
+            <video v-if="a.fileType === 'VIDEO'" :src="assetUrl(a, 'main')" controls preload="metadata" class="cd-preview-video" />
+            <el-image v-else :src="assetUrl(a, 'main')" fit="contain" class="cd-preview-image" preview-teleported
+                      :preview-src-list="previewImages" />
+            <div class="cd-preview-meta">
+              <span class="muted">{{ a.fileType === 'VIDEO' ? '视频' : '图片' }} #{{ a.id }} · {{ fileInfo(a) }}</span>
+              <el-button link type="primary" @click="openAssetInNewTab(a)">新窗口打开原文件</el-button>
+            </div>
+          </div>
         </template>
         <p v-if="!(preview?.assets || []).length" class="cd-empty">该内容没有素材</p>
       </div>
@@ -131,6 +141,9 @@
         <el-button @click="previewVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 频道内小说的正文查看：与 VIP文章管理 共用同一抽屉 -->
+    <ArticleViewerDrawer v-model="novelViewVisible" :novel="viewingNovel" />
   </section>
 </template>
 
@@ -140,6 +153,7 @@ import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi } from '../services/http';
 import { formatDateTime } from '../utils/date';
+import ArticleViewerDrawer from '../components/ArticleViewerDrawer.vue';
 
 const route = useRoute();
 const channelId = route.params.id;
@@ -162,6 +176,8 @@ const postTotal = ref(0);
 
 const previewVisible = ref(false);
 const preview = ref(null);
+const novelViewVisible = ref(false);
+const viewingNovel = ref(null);
 
 const previewImages = computed(() =>
   (preview.value?.assets || []).filter((a) => a.fileType === 'IMAGE').map((a) => assetUrl(a, 'main'))
@@ -201,6 +217,31 @@ function countOf(item, fileType) {
 function openPreview(item) {
   preview.value = item;
   previewVisible.value = true;
+}
+
+// 小说正文查看（元信息 + 目录 + 章节正文），复用 VIP文章管理 的抽屉组件
+function openNovel(row) {
+  viewingNovel.value = row;
+  novelViewVisible.value = true;
+}
+
+// 素材文件信息：分辨率/时长/大小，便于运营确认文件本身
+function fileInfo(asset) {
+  const parts = [];
+  if (asset.width && asset.height) {
+    parts.push(`${asset.width}×${asset.height}`);
+  }
+  if (asset.durationMs) {
+    parts.push(`${Math.round(asset.durationMs / 1000)}s`);
+  }
+  if (asset.sizeBytes) {
+    parts.push(`${(asset.sizeBytes / 1024 / 1024).toFixed(2)}MB`);
+  }
+  return parts.join(' · ') || '-';
+}
+
+function openAssetInNewTab(asset) {
+  window.open(assetUrl(asset, 'main'), '_blank', 'noopener');
 }
 
 async function loadChannel() {
@@ -277,9 +318,11 @@ onMounted(async () => {
 .cd-post-body { padding: 10px 12px; }
 .cd-post-title { font-size: 14px; color: #1f2d3d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-post-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 6px; }
-.cd-post-time { font-size: 12px; color: #98a5b5; }
+.cd-post-time { font-size: 12px; color: #98a5b5; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .cd-empty { margin: 20px 0; text-align: center; color: #98a5b5; font-size: 13px; grid-column: 1 / -1; }
-.cd-preview { display: flex; flex-direction: column; gap: 12px; max-height: 62vh; overflow: auto; }
+.cd-preview { display: flex; flex-direction: column; gap: 14px; max-height: 62vh; overflow: auto; }
+.cd-preview-item { display: flex; flex-direction: column; gap: 6px; }
+.cd-preview-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cd-preview-image { width: 100%; max-height: 420px; }
 .cd-preview-video { width: 100%; max-height: 420px; background: #000; }
 .muted { color: #98a5b5; font-size: 12px; margin-right: 10px; }

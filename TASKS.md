@@ -104,9 +104,12 @@
 - [ ] D6 批量加入频道（`ArticleView` 加多选列 + 「批量加入频道」→ `POST /admin/subscribe-channels/{id}/novels/batch`，
       整批幂等，返回 新增/已在频道/不存在 数量；单次上限 200）
 - [ ] D7 频道详情（`SubscribeChannelView` 操作列「查看频道详情」→ `/admin/subscribe-channels/:id`）：
-      频道基本信息 + 内容统计（小说/图文视频）+「频道小说」与「图文视频」两个 tab（含移出小说、内容预览），
+      频道基本信息 + 内容统计（小说/图文视频）+「频道小说」与「图文视频」两个 tab，
       数据走 `GET /admin/subscribe-channels/{id}/detail` · `/{id}/novels` · `/{id}/posts`；
       频道列表接口顺带返回 `novelCount`/`mediaCount`（FR-17 内容数量）
+- [ ] D8 频道详情内查看内容（频道小说的正文/目录沿用 `components/ArticleViewerDrawer.vue`——与 VIP文章管理
+      共用同一抽屉，抽取自 ArticleView；图文视频点「查看内容」弹层看图片/视频 + 素材信息（尺寸/时长/大小）
+      + 「新窗口打开原文件」；小说行操作列加「查看内容」/「移出频道」）
 
 ### E. 精品内容机制（M2）
 
