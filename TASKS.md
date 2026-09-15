@@ -86,6 +86,10 @@
 - [ ] C5 「我的」页面追加「我的快乐币」入口（金色高亮 + 余额）
 - [ ] C6 我的快乐币详情页（余额卡 + 充值/扣费履历，+/- 颜色区分）
 - [ ] C7 订阅到期倒计时（≤3 天显示"剩余 X 天"，C 端本地计算，不建表）
+- [ ] C8 H5 VIP 专区书单**排除已加入「已发布」订阅频道的小说**（`GET /api/vip/books` 与 `/api/vip/categories`
+      的公共查询加 `NOT EXISTS subscribe_channel_novel JOIN subscribe_channel ... status='PUBLISHED'`）；
+      **频道下架后自动回到 VIP 专区**。搜索口径保持现状不动（已发布频道内容仍可能被搜到；
+      普通 VIP 无订阅时搜不到 VIP 书，含下架回归的那些 —— 属已知并接受的取舍）
 
 ### D. 后台 UI（M1 · Admin）
 

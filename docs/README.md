@@ -18,6 +18,7 @@
 | 9 月事故根因 + 部署后核对清单 | [`incident-log-202609.md`](incident-log-202609.md) |
 | 订阅频道（付费阅读俱乐部）要做什么 | [`../TASKS.md`](../TASKS.md) |
 | 多媒体池子的需求与设计 | [`media-pool-requirements.md`](media-pool-requirements.md) · [`media-pool-design.md`](media-pool-design.md) |
+| **H5 各状态下哪些功能可用/不可用、如何提示** | [`h5-permission-todo.md`](h5-permission-todo.md)（18 项待办）· [`h5-permission-matrix.md`](h5-permission-matrix.md)（叙述版）· [`h5-permission-matrix.xlsx`](h5-permission-matrix.xlsx)（可编辑矩阵） |
 | 早期主线的待办与路线（爬虫 + H5 体验） | [`../TODO.md`](../TODO.md) · [`../ROADMAP.md`](../ROADMAP.md) |
 | 授权源爬虫的作业规范与复盘（DSH 技能） | [`../.agents/skills/authorized-adult-content-crawler/SKILL.md`](../.agents/skills/authorized-adult-content-crawler/SKILL.md) |
 
@@ -40,6 +41,9 @@
 | `docs/incident-log-202609.md` | 现役 | 9 月事故记录 + 部署后运维核对清单 |
 | `docs/media-pool-requirements.md` | 现役 | 多媒体池子需求说明书（已上线） |
 | `docs/media-pool-design.md` | 现役 | 多媒体池子技术设计 + 实施与验收记录 |
+| `docs/h5-permission-todo.md` | 现役 | **H5 权限待办（18 项，一页）** —— 从矩阵 48 项明细汇总而来，分 4 阶段；日常只看这一份 |
+| `docs/h5-permission-matrix.md` | 现役 | H5 全局权限：状态模型、功能×状态矩阵、提示规范、错误码映射、现状差距与后端契约诉求 |
+| `docs/h5-permission-matrix.xlsx` | 现役 | 上表的可编辑工作簿（11 表：首表「待办任务」18 项 + 「任务明细」48 项；冻结首行 + 自动筛选）；生成脚本 `gen_h5_permission_matrix.py` |
 | `.agents/skills/authorized-adult-content-crawler/` | 工具文档 | DSH 技能：授权源爬虫作业规范与 Xbookcn 复盘 |
 
 ## 三、两条主线的口径
