@@ -31,10 +31,20 @@ serially and runs health checks):
 COMPOSE_PARALLEL_LIMIT=1 docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --build
 ```
 
-Public ports:
+Public access:
 
-- H5: `5173`
-- Admin UI: `5180`
-- Backend API: `8080`
+- Everything is served through the single entry point `mini-novel-gateway` on ports `80`/`443` (no port in the URL):
+  - H5: `https://xs2026.site/h5/home`
+  - Admin UI: `https://xs2026.site/admin/login`
+  - API: `https://xs2026.site/api/home`
+  - `http://` is 301-redirected to `https://xs2026.site` (same path).
+
+The gateway needs a certificate directory (`TLS_CERT_DIR`, default `/opt/mini-h5-certs`) containing `fullchain.pem`
+(leaf + intermediate) and an unencrypted `privkey.pem` (mode 600). Keep it outside the rsync target so deployments never
+delete it; see `../DEPLOYMENT.md` → *TLS Certificate*.
+
+Container ports `5173` (H5), `5180` (admin) and `8080` (backend) are bound to `127.0.0.1` and are **not** reachable from
+the internet; they exist for the gateway and for deploy health checks. API docs (`/swagger-ui.html`) are therefore
+internal-only — reach them through an SSH tunnel.
 
 MySQL, Redis and crawler service are not exposed publicly in the production compose file.

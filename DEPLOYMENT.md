@@ -20,15 +20,47 @@ Do not use the VPS as the normal place to build application code manually. Manua
 - Host: `64.90.19.6`
 - SSH port: `52527`
 - Deploy path: `/opt/mini-h5`
-- H5: `http://64.90.19.6:5173/h5/home`
-- Admin: `http://64.90.19.6:5180/admin/login`
-- API: `http://64.90.19.6:8080/api/home`
-- API docs: `http://64.90.19.6:8080/swagger-ui.html`
+- Public entry (only ports `80`/`443`, no port in the URL): `mini-novel-gateway`
+  - H5: `https://xs2026.site/h5/home` (root `/` redirects there)
+  - Admin: `https://xs2026.site/admin/login`
+  - API: `https://xs2026.site/api/home`
+  - Health: `https://xs2026.site/healthz`
+  - `http://` requests are answered with `301` to `https://xs2026.site` (same path preserved)
+- Internal only (bound to `127.0.0.1`, reachable through an SSH tunnel):
+  - Backend API: `http://127.0.0.1:8080/api/home`
+  - API docs: `http://127.0.0.1:8080/swagger-ui.html` (`ssh -L 8080:127.0.0.1:8080 -p 52527 root@64.90.19.6`)
+  - H5 container: `http://127.0.0.1:5173` · Admin container: `http://127.0.0.1:5180`
 
 The earlier host `43.161.222.78:2222` is the old server and is no longer used. Production memory was upgraded to
 7.9G after the 2026-09-01 OOM incident.
 
 Secrets and passwords must stay in GitHub Secrets or local environment files. Do not commit them.
+
+## TLS Certificate
+
+TLS is terminated by `mini-novel-gateway`. The certificate lives on the VPS at `/opt/mini-h5-certs/`, which is
+**outside** the rsync target so `rsync --delete` can never remove it, and it is never committed to the repository:
+
+```text
+/opt/mini-h5-certs/fullchain.pem   644  站点证书 + 中间证书（链必须完整）
+/opt/mini-h5-certs/privkey.pem     600  未加密私钥（带 passphrase 的私钥 nginx 无法启动）
+```
+
+- Current certificate: DigiCert *Encryption Everywhere DV*, `CN=xs2026.site`, SAN = `xs2026.site`, `www.xs2026.site`,
+  RSA 2048, **valid 2026-09-15 → 2026-12-14** (~90 days). Renew before it expires.
+- Renewal: overwrite the two files (keep them PEM, keep the chain order leaf → intermediate) and run
+  `cd /opt/mini-h5 && docker compose -f deploy/docker-compose.prod.yml --env-file .env restart mini-novel-gateway`.
+- Verify from the VPS (no `-k`, so the chain and hostname are really validated):
+
+  ```bash
+  curl -fsS --resolve xs2026.site:443:127.0.0.1 https://xs2026.site/h5/home -o /dev/null -w '%{http_code}\n'
+  curl -fsS --resolve xs2026.site:443:127.0.0.1 https://xs2026.site/admin/login -o /dev/null -w '%{http_code}\n'
+  ```
+
+- `deploy.sh` performs the same HTTPS checks after every deployment, so an expired or incomplete chain fails the
+  deploy instead of silently serving a broken site.
+- Never publish the private key: do not paste it into chat, tickets, or the repository. If it leaks, reissue the
+  certificate immediately.
 
 ## GitHub Actions Secrets
 
@@ -79,12 +111,18 @@ Services:
 - `mini-novel-mysql`: MySQL 8.4, host-bound to `127.0.0.1:${MYSQL_HOST_PORT:-3306}`, started with
   `--mysql-native-password=ON --disable-log-bin`.
 - `mini-novel-redis`: Redis 7.4.
-- `mini-novel-app`: Spring Boot backend, published on `${APP_PORT:-8080}`, volumes
+- `mini-novel-app`: Spring Boot backend, bound to `127.0.0.1:${APP_PORT:-8080}` (internal only), volumes
   `mini-novel-cover-cache:/var/cache/covers` and `mini-novel-media:/data/media`.
-- `mini-novel-h5`: H5 frontend, published on `${H5_PORT:-5173}`.
+- `mini-novel-h5`: H5 frontend, bound to `127.0.0.1:${H5_PORT:-5173}` (internal only).
 - `mini-novel-crawler-service`: crawler runtime, internal port `8090`, not publicly published, gated by
   `CRAWLER_SCHEDULE_ENABLED`.
-- `mini-novel-admin-ui`: admin frontend, published on `${ADMIN_PORT:-5180}`.
+- `mini-novel-admin-ui`: admin frontend, bound to `127.0.0.1:${ADMIN_PORT:-5180}` (internal only).
+- `mini-novel-gateway`: `nginx:1.27-alpine` entry point published on `0.0.0.0:${GATEWAY_PORT:-80}` and
+  `0.0.0.0:${HTTPS_PORT:-443}`; config is `deploy/gateway/nginx.conf` (read-only) plus the certificate directory
+  `TLS_CERT_DIR` (default `/opt/mini-h5-certs`) mounted read-only at `/etc/nginx/certs`. Port `80` only answers `/healthz`
+  and 301-redirects everything else to `https://xs2026.site`; port `443` serves H5 on `/`, and `/admin/`, `/admin-api/`,
+  `/crawler-api/` on the admin UI. It uses Docker DNS (`resolver 127.0.0.11`) with variable `proxy_pass`, so it
+  re-resolves upstream IPs after container recreation instead of caching a stale IP.
 
 ## Deploy Script
 
@@ -105,11 +143,14 @@ It performs:
 4. Build and start application services **serially** (`COMPOSE_PARALLEL_LIMIT=1 compose up -d --build`) to avoid
    concurrent multi-image builds exhausting VPS memory.
 5. Restart `mini-novel-h5` and `mini-novel-admin-ui` so nginx re-resolves the backend container's new IP
-   (otherwise the frontends return 502 after a backend rebuild).
+   (otherwise the frontends return 502 after a backend rebuild). The gateway does not need a restart: its
+   `resolver` + variable `proxy_pass` re-resolves upstreams on its own.
 6. Verify:
    - `http://127.0.0.1:${APP_PORT}/api/home`
    - `http://127.0.0.1:${H5_PORT}/h5/home`
    - `http://127.0.0.1:${ADMIN_PORT}/admin/login`
+   - `http://127.0.0.1:${GATEWAY_PORT}/healthz`
+   - `https://xs2026.site/h5/home` and `https://xs2026.site/admin/login` (with `--resolve`, certificate validated)
 
 ## Schema Changes
 

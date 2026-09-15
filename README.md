@@ -73,15 +73,23 @@ cd mini-novel-admin-ui && npm install && npm run dev
 
 ## 生产入口
 
+域名 `xs2026.site` 已指向生产主机，对外只暴露 **80 / 443**（容器 `mini-novel-gateway` 统一入口），访问不带端口；
+`http://` 一律 301 跳到 `https://xs2026.site` 并保留原路径。
+
 | 入口 | 地址 |
 |---|---|
-| H5 阅读端 | `http://64.90.19.6:5173/h5/home` |
-| 管理后台 | `http://64.90.19.6:5180/admin/login` |
-| 后端 API | `http://64.90.19.6:8080/api/home` |
-| 接口文档 | `http://64.90.19.6:8080/swagger-ui.html` |
-| 域名 | `xs2026.site` |
+| H5 阅读端 | `https://xs2026.site/h5/home`（根路径 `https://xs2026.site/` 自动跳转） |
+| 管理后台 | `https://xs2026.site/admin/login` |
+| 后端 API | `https://xs2026.site/api/home` |
+| 备选域名 | `https://www.xs2026.site/h5/home`（证书 SAN 同时覆盖 www） |
+| 网关健康检查 | `https://xs2026.site/healthz` |
+| 接口文档 | 仅内网：VPS 上 `http://127.0.0.1:8080/swagger-ui.html`，或本地 `ssh -L 8080:127.0.0.1:8080 -p 52527 root@64.90.19.6` 后访问 `http://localhost:8080/swagger-ui.html` |
 
-MySQL、Redis 与爬虫服务不对公网暴露：MySQL 绑定 `127.0.0.1:3306`，GUI 工具需走 SSH 隧道（见 `DEPLOYMENT.md`）。
+HTTPS 证书（DigiCert DV，含中间证书的 `fullchain.pem` + 未加密 `privkey.pem`）放在 VPS 的 `/opt/mini-h5-certs/`，
+**不在仓库里**，也不在 CI 同步目录内；续期只需替换这两个文件并 `docker compose restart mini-novel-gateway`（见 `DEPLOYMENT.md`）。
+
+MySQL、Redis、爬虫服务与前端/后端容器端口都不对公网暴露：MySQL 绑定 `127.0.0.1:3306`（GUI 工具走 SSH 隧道），
+H5 `5173`、后台 `5180`、后端 `8080` 只绑定 `127.0.0.1`，外部流量一律经网关 80/443 进入（见 `DEPLOYMENT.md`）。
 
 ## 部署
 

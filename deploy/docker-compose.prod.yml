@@ -49,8 +49,9 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       SPRING_DATA_REDIS_HOST: mini-novel-redis
       SPRING_DATA_REDIS_PORT: 6379
+    # 只绑回环：对外统一由 mini-novel-gateway:80 提供入口
     ports:
-      - "0.0.0.0:${APP_PORT:-8080}:8080"
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
     volumes:
       - mini-novel-cover-cache:/var/cache/covers
       - mini-novel-media:/data/media
@@ -64,7 +65,7 @@ services:
     depends_on:
       - mini-novel-app
     ports:
-      - "0.0.0.0:${H5_PORT:-5173}:80"
+      - "127.0.0.1:${H5_PORT:-5173}:80"
 
   mini-novel-crawler-service:
     build:
@@ -97,7 +98,23 @@ services:
       - mini-novel-app
       - mini-novel-crawler-service
     ports:
-      - "0.0.0.0:${ADMIN_PORT:-5180}:80"
+      - "127.0.0.1:${ADMIN_PORT:-5180}:80"
+
+  # 统一入口网关：对外只暴露 80/443，隐藏 H5/后台/后端端口
+  mini-novel-gateway:
+    image: nginx:1.27-alpine
+    container_name: mini-novel-gateway
+    restart: unless-stopped
+    depends_on:
+      - mini-novel-h5
+      - mini-novel-admin-ui
+    ports:
+      - "0.0.0.0:${GATEWAY_PORT:-80}:80"
+      - "0.0.0.0:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # 证书目录在同步目录之外，由运维手工维护（fullchain.pem + privkey.pem）
+      - ${TLS_CERT_DIR:-/opt/mini-h5-certs}:/etc/nginx/certs:ro
 
 volumes:
   mini-novel-mysql-data:

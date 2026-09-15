@@ -41,6 +41,15 @@ jobs:
           npm test
           npm run build
 
+      # H5 权限层单测 + 源码校验（SFC 编译 / 本地 import 解析 / 路由 require 取值 / pinia 集成冒烟）
+      # 放在部署之前：失败即阻断部署，不会把坏代码推到 VPS
+      - name: Test H5
+        working-directory: mini-novel-h5
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run verify
+
       - name: Check deploy secrets
         id: deploy-secrets
         run: |
@@ -97,6 +106,9 @@ jobs:
           MYSQL_DATABASE=mini_novel
           MYSQL_USERNAME=root
           MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
+          GATEWAY_PORT=80
+          HTTPS_PORT=443
+          TLS_CERT_DIR=/opt/mini-h5-certs
           APP_PORT=8080
           H5_PORT=5173
           ADMIN_PORT=5180

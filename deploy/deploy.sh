@@ -16,6 +16,8 @@ set +a
 APP_PORT="${APP_PORT:-8080}"
 H5_PORT="${H5_PORT:-5173}"
 ADMIN_PORT="${ADMIN_PORT:-5180}"
+GATEWAY_PORT="${GATEWAY_PORT:-80}"
+HTTPS_PORT="${HTTPS_PORT:-443}"
 
 compose() {
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
@@ -52,10 +54,11 @@ run_migration() {
 wait_for_http() {
   name="$1"
   url="$2"
+  extra="${3:-}"
   echo "Checking $name: $url"
   i=0
   while [ "$i" -lt 30 ]; do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    if curl -fsS $extra "$url" >/dev/null 2>&1; then
       echo "$name is reachable."
       return 0
     fi
@@ -97,5 +100,11 @@ compose ps
 
 wait_for_http "H5" "http://127.0.0.1:${H5_PORT}/h5/home"
 wait_for_http "Admin UI" "http://127.0.0.1:${ADMIN_PORT}/admin/login"
+
+# 对外入口：域名访问不带端口（http 只做 301 跳转，业务走 https）
+# --resolve 让证书真的按 xs2026.site 校验，证书过期/链不全会在这里直接失败
+wait_for_http "Gateway HTTP entry" "http://127.0.0.1:${GATEWAY_PORT}/healthz"
+wait_for_http "Gateway HTTPS H5" "https://xs2026.site/h5/home" "--resolve xs2026.site:${HTTPS_PORT}:127.0.0.1"
+wait_for_http "Gateway HTTPS Admin" "https://xs2026.site/admin/login" "--resolve xs2026.site:${HTTPS_PORT}:127.0.0.1"
 
 echo "Deployment completed."

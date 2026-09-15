@@ -17,10 +17,13 @@
 | 域名 | `xs2026.site` |
 | 生产主机 | `64.90.19.6`（Ubuntu 24.04），SSH 端口 `52527`，部署路径 `/opt/mini-h5` |
 | 旧主机（已停用） | `43.161.222.78`，SSH `2222` |
-| H5 阅读端 | `http://64.90.19.6:5173/h5/home` |
-| 管理后台 | `http://64.90.19.6:5180/admin/login` |
-| 后端 API | `http://64.90.19.6:8080/api/home` |
-| 接口文档 | `http://64.90.19.6:8080/swagger-ui.html` |
+| H5 阅读端 | `https://xs2026.site/h5/home` |
+| 管理后台 | `https://xs2026.site/admin/login` |
+| 后端 API | `https://xs2026.site/api/home` |
+| 备选域名 | `https://www.xs2026.site/h5/home`（证书 SAN 覆盖 www） |
+| 接口文档 | 仅内网 `http://127.0.0.1:8080/swagger-ui.html`（走 SSH 隧道） |
+| 对外端口 | 只开放 `80` / `443`（`mini-novel-gateway` 统一入口，URL 不带端口，http 301 跳 https） |
+| TLS 证书 | DigiCert DV，`/opt/mini-h5-certs/{fullchain.pem,privkey.pem}`（在同步目录外），有效期至 2026-12-14 |
 | 生产版本 | VPS 上 `/opt/mini-h5/.env` 的 `DEPLOY_SHA`（仓库最后一个代码提交为 `1e0f693`） |
 | 生产机器规格（现状） | 内存升级至 7.9G（2026-09-01 事故后）；磁盘约 29G，媒体上线后使用率上升 |
 
@@ -147,15 +150,16 @@
   并把守卫字符串里的 DDL 也折进结构；`ADD COLUMN` 全部补齐了幂等守卫（原先 12 处依赖标记表或干脆无守卫）。
 - 本地开发示例数据（示例小说《长夜书灯》、demo 用户、示例书源）已从脚本中剔除，不再污染生产初始化。
 
-### 3.5 生产拓扑（6 容器）
+### 3.5 生产拓扑（7 容器）
 
 | 容器 | 端口 | 说明 |
 |---|---|---|
+| `mini-novel-gateway` | **`0.0.0.0:80` / `0.0.0.0:443`** | 唯一对外入口（nginx，终止 TLS），`/` → H5，`/admin/`、`/admin-api/`、`/crawler-api/` → 后台，80 只做 301 跳转 |
 | `mini-novel-mysql` | `127.0.0.1:3306` | MySQL 8.4，`--mysql-native-password=ON --disable-log-bin`，仅本机可连 |
 | `mini-novel-redis` | 内网 6379 | 缓存 |
-| `mini-novel-app` | `8080` | 后端，挂 `mini-novel-cover-cache` 与 `mini-novel-media:/data/media` |
-| `mini-novel-h5` | `5173` | H5 静态站 + nginx 反代 |
-| `mini-novel-admin-ui` | `5180` | 后台静态站 + nginx 反代 |
+| `mini-novel-app` | `127.0.0.1:8080` | 后端，挂 `mini-novel-cover-cache` 与 `mini-novel-media:/data/media` |
+| `mini-novel-h5` | `127.0.0.1:5173` | H5 静态站 + nginx 反代 |
+| `mini-novel-admin-ui` | `127.0.0.1:5180` | 后台静态站 + nginx 反代 |
 | `mini-novel-crawler-service` | 内网 8090 | 爬虫运行时，受 `CRAWLER_SCHEDULE_ENABLED` 总开关控制 |
 
 ---

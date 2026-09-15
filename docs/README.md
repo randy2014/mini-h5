@@ -11,6 +11,7 @@
 | 项目是什么、模块怎么分、怎么本地跑 | [`../README.md`](../README.md) |
 | 当前架构、库表、产品范围、爬虫方向 | [`../PROJECT_CONTEXT.md`](../PROJECT_CONTEXT.md) |
 | 怎么部署、需要哪些 Secrets、迁移与应急清理 | [`../DEPLOYMENT.md`](../DEPLOYMENT.md) · [`../deploy/README.md`](../deploy/README.md) |
+| **域名怎么配的、访问地址、HTTPS 证书怎么续期** | [`domain-tls-setup-202609.md`](domain-tls-setup-202609.md) |
 | 爬虫怎么设计：源策略、数据流、去重、完整性、调度 | [`../CRAWLER_DESIGN.md`](../CRAWLER_DESIGN.md) |
 | 为什么这样做（避免重复争论） | [`../DECISIONS.md`](../DECISIONS.md) |
 | 踩过的坑与处理方式 | [`../LESSONS_LEARNED.md`](../LESSONS_LEARNED.md)（早期）· [`incident-log-202609.md`](incident-log-202609.md)（9 月） |
@@ -40,6 +41,7 @@
 | `docs/ops-handbook.md` | 历史快照 | 2026-08-24 ~ 08-31 记录，常用命令仍可用；服务器/内存/磁盘数据以 `incident-log-202609.md` 为准 |
 | `docs/incident-log-202609.md` | 现役 | 9 月事故记录 + 部署后运维核对清单 |
 | `docs/media-pool-requirements.md` | 现役 | 多媒体池子需求说明书（已上线） |
+| `docs/domain-tls-setup-202609.md` | 现役 | **2026-09-15 域名入口与 HTTPS 配置记录**：访问地址、网关架构、变更清单、证书信息与续期步骤、验收结果、回滚与排查 |
 | `docs/media-pool-design.md` | 现役 | 多媒体池子技术设计 + 实施与验收记录 |
 | `docs/h5-permission-todo.md` | 现役 | **H5 权限待办（18 项，一页）** —— 从矩阵 48 项明细汇总而来，分 4 阶段；日常只看这一份 |
 | `docs/h5-permission-matrix.md` | 现役 | H5 全局权限：状态模型、功能×状态矩阵、提示规范、错误码映射、现状差距与后端契约诉求 |

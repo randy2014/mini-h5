@@ -48,13 +48,22 @@ is the **old server** and is no longer current.
 
 - Domain: `xs2026.site`
 
-- H5: `http://64.90.19.6:5173/h5/home`
-- Admin UI: `http://64.90.19.6:5180/admin/login`
-- Backend API: `http://64.90.19.6:8080/api/home`
-- API docs: `http://64.90.19.6:8080/swagger-ui.html`
+Public entry is ports `80`/`443` only (container `mini-novel-gateway`, TLS terminated there); URLs never carry a port and
+plain HTTP is 301-redirected to HTTPS:
+
+- H5: `https://xs2026.site/h5/home` (root `/` redirects there)
+- Admin UI: `https://xs2026.site/admin/login`
+- Backend API: `https://xs2026.site/api/home`
+- www: `https://www.xs2026.site/h5/home` (certificate SAN covers both names)
+- API docs: internal only, `http://127.0.0.1:8080/swagger-ui.html` through an SSH tunnel
+
+TLS material lives at `/opt/mini-h5-certs/{fullchain.pem,privkey.pem}` on the VPS — outside the rsync target, never in
+the repository.
 
 Crawler service listens on internal port `8090` only and is not published.
 MySQL is bound to `127.0.0.1:3306` on the VPS. Use an SSH tunnel for GUI tools such as Navicat.
+The H5 (`5173`), admin (`5180`) and backend (`8080`) container ports are bound to `127.0.0.1` and are no longer
+reachable from the internet.
 See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the current host/port facts.
 
 ## Databases

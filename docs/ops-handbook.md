@@ -19,23 +19,38 @@
 | 数据库 | MySQL 8.4（容器 mini-novel-mysql），密码 ******** |
 | 缓存 | Redis 7.4（容器 mini-novel-redis） |
 
-### 服务清单（6 个容器）
+### 服务清单（7 个容器）
 
 | 服务 | 容器名 | 端口 | 说明 |
 |------|--------|------|------|
+| 入口网关 | mini-novel-gateway | **0.0.0.0:80 / 443** | 唯一对外入口，终止 TLS：`/` → H5，`/admin/`、`/admin-api/`、`/crawler-api/` → 后台；80 只做 301 跳转 |
 | MySQL | mini-novel-mysql | 127.0.0.1:3306（内网） | 数据库，仅本机可连 |
 | Redis | mini-novel-redis | 内网 6379 | 缓存 |
-| 后端 API | mini-novel-app | **8080** | Spring Boot 主服务 |
-| H5 前端 | mini-novel-h5 | **5173** | 用户端 H5 |
-| 管理后台 | mini-novel-admin-ui | **5180** | 后台管理（/admin/login） |
+| 后端 API | mini-novel-app | 127.0.0.1:8080（内网） | Spring Boot 主服务 |
+| H5 前端 | mini-novel-h5 | 127.0.0.1:5173（内网） | 用户端 H5 |
+| 管理后台 | mini-novel-admin-ui | 127.0.0.1:5180（内网） | 后台管理（/admin/login） |
 | 爬虫服务 | mini-novel-crawler-service | 内网 8090 | 数据采集/清洗 |
 
 ### 访问入口
 
-- 管理后台：http://64.90.19.6:5180/admin/login
-- H5 前端：http://64.90.19.6:5173/h5/home
-- 后端 API：http://64.90.19.6:8080/api/home
-- Swagger：http://64.90.19.6:8080/swagger-ui.html
+域名 `xs2026.site` 指向生产主机，对外只开放 80 / 443，URL 不带端口，`http://` 一律 301 跳 `https://`：
+
+- H5 前端：https://xs2026.site/h5/home （根路径 `/` 自动跳转）
+- 管理后台：https://xs2026.site/admin/login
+- 后端 API：https://xs2026.site/api/home
+- 备选域名：https://www.xs2026.site/h5/home
+- Swagger：仅内网 http://127.0.0.1:8080/swagger-ui.html（本地 `ssh -L 8080:127.0.0.1:8080 -p 52527 root@64.90.19.6` 后访问 http://localhost:8080/swagger-ui.html）
+- 网关健康检查：https://xs2026.site/healthz
+
+### HTTPS 证书（DigiCert DV，2026-09-15 → 2026-12-14）
+
+证书放在 VPS `/opt/mini-h5-certs/`（CI 同步目录之外，部署不会覆盖）：`fullchain.pem`（644，叶子 + 中间证书）
+与 `privkey.pem`（600，未加密私钥）。续期只需覆盖这两个文件后重启网关：
+
+```bash
+cd /opt/mini-h5 && docker compose -f deploy/docker-compose.prod.yml --env-file .env restart mini-novel-gateway
+curl -fsS --resolve xs2026.site:443:127.0.0.1 https://xs2026.site/h5/home -o /dev/null -w '%{http_code}\n'
+```
 
 ---
 
@@ -84,7 +99,7 @@
 
 ### 1. 管理后台白屏
 
-- **现象**：http://64.90.19.6:5180/ 白屏，JS/CSS 404
+- **现象**：后台首页白屏，JS/CSS 404
 - **根因**：admin-ui 的 vite 配置 `base: '/admin/'`，页面引用 `/admin/assets/...`，但 Dockerfile 把构建产物放在 nginx 根路径 → 资源全部 404 回退成 HTML
 - **修复**（GitHub 提交）：
   - `mini-novel-admin-ui/Dockerfile`：dist 拷贝到 `/usr/share/nginx/html/admin`
