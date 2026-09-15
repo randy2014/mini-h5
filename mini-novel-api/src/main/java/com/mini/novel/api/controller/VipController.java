@@ -10,6 +10,7 @@ import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.api.support.VipPublicationProgress;
 import com.mini.novel.book.entity.Novel;
 import com.mini.novel.book.entity.NovelVipCategoryMapping;
+import com.mini.novel.book.entity.SubscribeChannel;
 import com.mini.novel.book.entity.VipCategory;
 import com.mini.novel.book.mapper.NovelMapper;
 import com.mini.novel.book.mapper.NovelVipCategoryMappingMapper;
@@ -97,6 +98,12 @@ public class VipController {
         QueryWrapper<Novel> query = new QueryWrapper<Novel>()
                 .ne("status", 0)
                 .eq("vip_required", true)
+                // 已加入「已发布」订阅频道的小说不再出现在 VIP 专区，避免同一本书两处重复展示。
+                // 频道下架（OFFLINE）后会重新回到 VIP 专区；与后台「VIP 文章管理」口径一致。
+                .notExists("SELECT 1 FROM subscribe_channel_novel linked "
+                        + "JOIN subscribe_channel linked_channel ON linked_channel.id = linked.channel_id "
+                        + "WHERE linked.novel_id = novel.id AND linked_channel.status = '"
+                        + SubscribeChannel.STATUS_PUBLISHED + "'")
                 .exists("""
                         SELECT 1
                         FROM novel_source_mapping vip_mapping

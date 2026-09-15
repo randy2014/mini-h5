@@ -110,6 +110,22 @@ class VipControllerCategoryTest {
     }
 
     @Test
+    void vipBooksQueryExcludesNovelsMountedIntoPublishedChannelsOnly() {
+        String allSql = controller.vipBooksQuery("all", java.util.Set.of()).getSqlSegment();
+        String categorySql = controller.vipBooksQuery("7", java.util.Set.of(7L)).getSqlSegment();
+        // 大小写无关：避免对 SqlKeyword 渲染大小写的依赖（该用例会在镜像构建期执行）
+        String lower = allSql.toLowerCase(java.util.Locale.ROOT);
+        String categoryLower = categorySql.toLowerCase(java.util.Locale.ROOT);
+
+        // 只排除已加入「已发布」频道的小说：频道下架后应重新回到 VIP 专区
+        assertTrue(lower.contains("not exists"));
+        assertTrue(lower.contains("subscribe_channel_novel"));
+        assertTrue(lower.contains("subscribe_channel"));
+        assertTrue(lower.contains("published"));
+        assertTrue(categoryLower.contains("published"), "分类筛选路径同样要排除");
+    }
+
+    @Test
     void ordinaryUserCannotQueryVipMetadata() {
         when(vipAccessService.hasActiveVip(1L)).thenReturn(false);
 
