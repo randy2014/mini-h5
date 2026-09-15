@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
-import { fetchProfile, login, logout } from '../services/user';
-import { clearAuthenticationStorage, TOKEN_KEY, TOKEN_NAME_KEY, USER_ID_KEY } from '../services/authStorage';
+import { fetchProfile, login, logout } from '../services/user.js';
+import { clearAuthenticationStorage, TOKEN_KEY, TOKEN_NAME_KEY, USER_ID_KEY } from '../services/authStorage.js';
 
 export const useUserStore = defineStore('user', {
   state: () => ({

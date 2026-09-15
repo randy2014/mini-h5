@@ -1,4 +1,4 @@
-import http from './http';
+import http from './http.js';
 
 // 订阅频道（沿用现有）
 export function fetchChannels() {
@@ -13,8 +13,8 @@ export function fetchChannelFeed(channelId, page = 1, pageSize = 20) {
   return http.get(`/subscribe/channels/${channelId}/feed`, { params: { page, pageSize } });
 }
 
-export function fetchFeedPostDetail(channelId, postId) {
-  return http.get(`/subscribe/channels/${channelId}/media/posts/${postId}`);
+export function fetchFeedPostDetail(channelId, postId, config = {}) {
+  return http.get(`/subscribe/channels/${channelId}/media/posts/${postId}`, config);
 }
 
 export function subscribeChannel(channelId, periodType = 'MONTH') {

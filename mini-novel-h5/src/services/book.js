@@ -32,14 +32,14 @@ export function fetchChapters(bookId, page = 1, size = 80) {
   return http.get(`/novels/${bookId}/chapters`, { params: { page, size } });
 }
 
-export function fetchChapter(chapterId) {
-  return http.get(`/novels/chapters/${chapterId}`);
+export function fetchChapter(chapterId, config = {}) {
+  return http.get(`/novels/chapters/${chapterId}`, config);
 }
 
-export function fetchPreviousChapter(chapterId) {
-  return http.get(`/novels/chapters/${chapterId}/previous`);
+export function fetchPreviousChapter(chapterId, config = {}) {
+  return http.get(`/novels/chapters/${chapterId}/previous`, config);
 }
 
-export function fetchNextChapter(chapterId) {
-  return http.get(`/novels/chapters/${chapterId}/next`);
+export function fetchNextChapter(chapterId, config = {}) {
+  return http.get(`/novels/chapters/${chapterId}/next`, config);
 }

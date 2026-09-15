@@ -144,15 +144,16 @@
 import { computed, onMounted, ref } from 'vue';
 import { showConfirmDialog, showToast } from 'vant';
 import BookCard from '../components/BookCard.vue';
+import { usePermissionStore } from '../permission';
 import { fetchVipBooks, fetchVipCategories, fetchVipStatus } from '../services/vip';
 import { canRequestVipContent, shouldCheckVipStatus } from '../services/vipAccess';
 import { clearVipReadBooks, vipReadIds } from '../services/vipReadStatus';
 import { fetchMySubscribes } from '../services/subscribe';
 import { useUserStore } from '../stores/user';
 
-const key = 'mini_novel_vip_adult_confirmed';
 const adult = ref(false);
-const confirmed = ref(localStorage.getItem(key) === 'yes');
+const permissionStore = usePermissionStore();
+const confirmed = computed(() => permissionStore.adultConfirmed);
 const loading = ref(false);
 const books = ref([]);
 const page = ref(1);
@@ -167,14 +168,15 @@ const categoryError = ref(false);
 const hiddenReadCount = ref(0);
 const readStateVersion = ref(0);
 const status = ref({ active: false, vipExpireTime: null });
-const isAuthenticated = Boolean(localStorage.getItem('mini_novel_auth_token'));
-const statusLoading = ref(shouldCheckVipStatus(isAuthenticated));
+const userStore = useUserStore();
+// 登录态唯一来源是 store：此前直接读 localStorage，与书架页口径不一致
+const isAuthenticated = computed(() => userStore.isAuthenticated);
+const statusLoading = ref(shouldCheckVipStatus(userStore.isAuthenticated));
 const statusError = ref(false);
 const pageSize = 20;
 const MAX_FREE_PAGES = 3;
 const hasSubscription = ref(false);
 const isTrial = ref(false);
-const userStore = useUserStore();
 let requestVersion = 0;
 
 const loginTarget = { path: '/h5/login', query: { redirect: '/h5/vip' } };
@@ -208,7 +210,7 @@ async function loadStatus() {
 }
 
 async function loadCategories() {
-  if (!canRequestVipContent(isAuthenticated, status.value)) return;
+  if (!canRequestVipContent(isAuthenticated.value, status.value)) return;
   categoryError.value = false;
   try {
     const result = await fetchVipCategories();
@@ -224,7 +226,7 @@ async function loadCategories() {
 }
 
 async function loadNextPage() {
-  if (!canRequestVipContent(isAuthenticated, status.value)) {
+  if (!canRequestVipContent(isAuthenticated.value, status.value)) {
     loading.value = false;
     return;
   }
@@ -309,8 +311,7 @@ function retryBooks() {
 }
 
 function confirm() {
-  localStorage.setItem(key, 'yes');
-  confirmed.value = true;
+  permissionStore.confirmAdult();
   loadSubscriptionState();
   loadCategories();
 }
@@ -358,9 +359,9 @@ async function clearLocalReadBooks() {
 }
 
 onMounted(async () => {
-  if (!shouldCheckVipStatus(isAuthenticated)) return;
+  if (!shouldCheckVipStatus(isAuthenticated.value)) return;
   await loadStatus();
-  if (canRequestVipContent(isAuthenticated, status.value)) {
+  if (canRequestVipContent(isAuthenticated.value, status.value)) {
     loadSubscriptionState();
     if (confirmed.value) loadCategories();
   }

@@ -1,4 +1,4 @@
-import http from './http';
+import http from './http.js';
 
 export function login(payload) {
   return http.post('/auth/login', payload);

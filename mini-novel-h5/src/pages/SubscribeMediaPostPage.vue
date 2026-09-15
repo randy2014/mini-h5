@@ -6,7 +6,12 @@
     <div v-else-if="error" class="error-box">
       <div class="lg">🔒</div>
       <p>{{ error }}</p>
-      <van-button round color="#1f6f64" @click="$router.back()">返回</van-button>
+      <div class="error-actions">
+        <van-button v-if="gateAction" round color="#1f6f64" :to="gateAction.to">
+          {{ gateAction.label }}
+        </van-button>
+        <van-button round plain @click="$router.back()">返回</van-button>
+      </div>
     </div>
 
     <template v-else-if="detail">
@@ -55,6 +60,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { showToast } from 'vant';
+import { classifyApiError, promptFor } from '../permission';
 import { fetchFeedPostDetail, mediaFileUrl } from '../services/subscribe';
 
 const route = useRoute();
@@ -63,9 +69,12 @@ const postId = Number(route.params.postId);
 
 const loading = ref(true);
 const error = ref('');
+const gatePrompt = ref(null);
 const detail = ref(null);
 const previewVisible = ref(false);
 const previewIndex = ref(0);
+
+const gateAction = computed(() => gatePrompt.value?.action || null);
 
 const videoReady = ref(false);
 const videoError = ref('');
@@ -107,9 +116,11 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    detail.value = await fetchFeedPostDetail(channelId, postId);
+    // silent：本页用自己的错误区块表达门禁原因，避免再叠一层 toast
+    detail.value = await fetchFeedPostDetail(channelId, postId, { silent: true });
   } catch (e) {
-    error.value = e.message || '内容不存在或未订阅';
+    gatePrompt.value = promptFor(classifyApiError(e, { scope: 'CHANNEL' }).gate, { message: e.message });
+    error.value = gatePrompt.value.text;
   } finally {
     loading.value = false;
   }
@@ -123,7 +134,8 @@ onMounted(load);
 .center-loading { display: flex; justify-content: center; padding: 60px 0; }
 .error-box { text-align: center; padding: 60px 30px; color: #8a92a3; }
 .error-box .lg { font-size: 44px; }
-.error-box p { margin: 12px 0 18px; font-size: 13px; }
+.error-box p { margin: 12px 0 18px; font-size: 13px; line-height: 1.7; }
+.error-actions { display: flex; justify-content: center; gap: 10px; }
 .post-title { padding: 14px 14px 2px; font-size: 17px; font-weight: 700; color: #1d2a39; line-height: 1.45; }
 .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin: 10px 12px 0; background: #fff; border-radius: 12px; overflow: hidden; }
 .gallery .gi { position: relative; overflow: hidden; aspect-ratio: 1; }

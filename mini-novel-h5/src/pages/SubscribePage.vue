@@ -2,14 +2,21 @@
   <section class="page with-tab subscribe-page">
     <van-nav-bar title="订阅频道" />
 
-    <div v-if="!isVip && loaded" class="no-perm">
+    <div v-if="pageGate && loaded" class="no-perm">
       <div class="lock">🔒</div>
-      <h3>暂无权限查看该频道内容</h3>
-      <p>订阅频道为会员专享内容，<br />获得邀请码开通 VIP 后即可进入</p>
-      <van-button round color="#1f6f64" to="/h5/vip">了解如何获得资格</van-button>
+      <h3>{{ pageGate.title }}</h3>
+      <p>{{ pageGate.text }}</p>
+      <van-button
+        v-if="pageGate.action"
+        round
+        color="#1f6f64"
+        :to="pageGate.action.to"
+      >
+        {{ pageGate.action.label }}
+      </van-button>
     </div>
 
-    <template v-else-if="isVip">
+    <template v-else-if="canBrowse">
       <div v-if="trialActive" class="trial-banner">VIP权益-试用期内 · 全频道开放(试用到期日：{{ trialEndDate }})</div>
 
       <div v-if="!trialActive && unsubscribedCount > 0" class="all-btn" @click="onSubscribeAll">
@@ -57,14 +64,25 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
-import { useUserStore } from '../stores/user';
+import { useCapability } from '../permission';
 import { fetchChannels, subscribeAll, subscribeChannel } from '../services/subscribe';
 
 const router = useRouter();
-const userStore = useUserStore();
+const { subscribeGate, promptFor, permissionStore } = useCapability();
 const channels = ref([]);
 const loaded = ref(false);
-const isVip = computed(() => userStore.isVip);
+
+/**
+ * 页面门禁（L0）：
+ *   S1 匿名        → 登录引导（此前与非VIP 共用一套「开通 VIP」文案，引导错了动作）
+ *   S2 非VIP       → VIP 资格引导（/ VIP 已到期）
+ *   S3 试用中 / S4 S5 → 无门禁，正常浏览
+ */
+const pageGate = computed(() => {
+  const reason = subscribeGate();
+  return reason ? promptFor(reason) : null;
+});
+const canBrowse = computed(() => !pageGate.value);
 
 const trialActive = computed(() => channels.value.some((c) => c.trial));
 const unsubscribedCount = computed(() => channels.value.filter((c) => !c.subscribed && !c.trial).length);
@@ -92,7 +110,7 @@ async function onSubscribe(c) {
   try {
     await subscribeChannel(c.id, 'MONTH');
     showToast('订阅成功');
-    await load();
+    await refreshAfterSubscribe();
   } catch {
     // toast handled by interceptor
   }
@@ -102,10 +120,16 @@ async function onSubscribeAll() {
   try {
     await subscribeAll('MONTH');
     showToast('一键订阅成功');
-    await load();
+    await refreshAfterSubscribe();
   } catch {
     // toast handled by interceptor
   }
+}
+
+/** 订阅成功后同步刷新权限快照，避免 60 秒缓存内「已订阅但判定为不可访问」 */
+async function refreshAfterSubscribe() {
+  await permissionStore.load({ force: true });
+  await load();
 }
 
 async function load() {
@@ -117,10 +141,9 @@ async function load() {
 }
 
 onMounted(async () => {
-  if (userStore.isAuthenticated) {
-    await userStore.loadProfile();
-  }
-  if (userStore.isVip) {
+  // 权限快照是唯一判据（登录态 / VIP / 试用 / 订阅 / 余额），页面不再自己拼条件
+  await permissionStore.load();
+  if (canBrowse.value) {
     await load();
   } else {
     loaded.value = true;

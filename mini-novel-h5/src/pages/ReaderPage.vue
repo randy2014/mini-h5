@@ -12,14 +12,18 @@
     />
 
     <van-loading v-if="loading" class="center-loading" />
+    <div v-else-if="loadError" class="reader-error">
+      <p>{{ loadError }}</p>
+      <van-button size="small" round plain color="#1f6f64" @click="loadChapter">重试</van-button>
+    </div>
     <article v-else class="reader-content" :style="readerStyle">
       <p>第 {{ chapter.chapterNo }} 章</p>
       <h1>{{ chapter.title }}</h1>
       <div>{{ formatTextLineBreaks(chapter.content) }}</div>
     </article>
 
-    <div v-if="!loading" class="reader-progress-pill">{{ readingProgressText }}</div>
-    <div v-if="!loading" class="reader-progress-track">
+    <div v-if="!loading && !loadError" class="reader-progress-pill">{{ readingProgressText }}</div>
+    <div v-if="!loading && !loadError" class="reader-progress-track">
       <span :style="{ width: `${readingPercent}%` }"></span>
     </div>
 
@@ -75,6 +79,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } from '../services/book';
+import { GATE, classifyApiError, promptFor } from '../permission';
 import { markVipBookRead } from '../services/vipReadStatus';
 import { formatTextLineBreaks } from '../utils/text';
 
@@ -82,6 +87,7 @@ const CATALOG_PAGE_SIZE = 50;
 const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
+const loadError = ref('');
 const nextLoading = ref(false);
 const prevLoading = ref(false);
 const catalogLoading = ref(false);
@@ -127,23 +133,50 @@ watch(settings, saveSettings);
 async function loadChapter() {
   saveScrollPosition();
   loading.value = true;
+  loadError.value = '';
   try {
-    chapter.value = await fetchChapter(route.params.id);
+    // silent：提示由本页按门禁原因统一给出，避免「拦截器 toast + 页内弹窗」重复打扰
+    chapter.value = await fetchChapter(route.params.id, { silent: true });
     saveProgress(chapter.value);
     saveVipReadStatus(chapter.value);
     loadTotalChapters();
     await nextTick();
     restoreScrollPosition();
   } catch (error) {
-    await showConfirmDialog({
-      title: '需要 VIP',
-      message: error.message || '该章节需要开通 VIP 后阅读',
-      confirmButtonText: '去开通',
-      cancelButtonText: '返回'
-    }).then(() => router.push('/h5/vip')).catch(() => router.back());
+    await handleLoadError(error);
   } finally {
     loading.value = false;
   }
+}
+
+/**
+ * 只把「确实是权限问题」判成权限问题：
+ * 之前任何异常都弹「需要 VIP」，网络失败与 404 会被误报成权限不足。
+ */
+async function handleLoadError(error) {
+  const result = classifyApiError(error, { scope: 'READER' });
+  const prompt = promptFor(result.gate, { message: result.message });
+
+  if (result.gate === GATE.NEED_VIP || result.gate === GATE.VIP_EXPIRED) {
+    await showConfirmDialog({
+      title: prompt.title,
+      message: result.message || prompt.text,
+      confirmButtonText: prompt.action?.label || '去开通',
+      cancelButtonText: '返回'
+    })
+      .then(() => router.push(prompt.action?.to || '/h5/vip'))
+      .catch(() => router.back());
+    return;
+  }
+
+  if (result.gate === GATE.NEED_LOGIN) {
+    router.push(prompt.action?.to || { path: '/h5/login', query: { redirect: route.fullPath } });
+    return;
+  }
+
+  // 非权限问题：留在页面上给重试入口，不留白屏
+  loadError.value = prompt.text;
+  showToast(prompt.toast);
 }
 
 async function loadTotalChapters() {
@@ -169,7 +202,7 @@ function toggleControls() {
 async function readPrevious() {
   prevLoading.value = true;
   try {
-    const previous = await fetchPreviousChapter(route.params.id);
+    const previous = await fetchPreviousChapter(route.params.id, { silent: true });
     router.push(`/h5/read/${previous.id}?bookId=${previous.novelId}`);
   } catch (error) {
     showToast(error.message || '已经是第一章');
@@ -181,7 +214,7 @@ async function readPrevious() {
 async function readNext() {
   nextLoading.value = true;
   try {
-    const next = await fetchNextChapter(route.params.id);
+    const next = await fetchNextChapter(route.params.id, { silent: true });
     router.push(`/h5/read/${next.id}?bookId=${next.novelId}`);
   } catch (error) {
     showToast(error.message || '已经是最后一章');
@@ -329,4 +362,6 @@ function restoreScrollPosition() {
 
 <style scoped>
 .catalog-load-error { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 0; color:var(--danger); font-size:13px; }
+.reader-error { display:flex; flex-direction:column; align-items:center; gap:14px; padding:72px 24px; text-align:center; }
+.reader-error p { margin:0; color:var(--muted); font-size:14px; line-height:1.7; }
 </style>
