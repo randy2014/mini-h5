@@ -68,9 +68,10 @@
                 <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="100">
+            <el-table-column label="操作" width="130">
               <template #default="{ row }">
                 <el-button link type="primary" @click="editSource(row)">编辑</el-button>
+                <el-button link type="danger" @click="deleteSource(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -641,6 +642,25 @@ async function saveSource() {
 function editSource(row) {
   assignForm(sourceForm, { ...defaultSource(), ...row });
   activeTab.value = 'sources';
+}
+
+async function deleteSource(row) {
+  await ElMessageBox.confirm(`确认删除采集源「${row.name}」（${row.sourceCode}）？将同时删除其关联的榜单源、调度计划与账号凭据。`, '删除采集源', {
+    confirmButtonText: '确认删除',
+    cancelButtonText: '取消',
+    type: 'warning'
+  });
+  try {
+    await crawlerApi.delete(`/config/sources/${row.id}`);
+  } catch (e) {
+    ElMessage.error(e?.message || '删除失败');
+    return;
+  }
+  ElMessage.success('采集源已删除');
+  if (sourceForm.id === row.id) {
+    assignForm(sourceForm, defaultSource());
+  }
+  await Promise.all([loadSources(), loadCredentials(), loadRanks(), loadSchedules()]);
 }
 
 async function saveCredential() {

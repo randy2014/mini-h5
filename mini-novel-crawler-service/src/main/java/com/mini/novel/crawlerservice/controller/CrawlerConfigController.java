@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -139,6 +140,22 @@ public class CrawlerConfigController {
         source.updatedAt = LocalDateTime.now();
         sourceMapper.updateById(source);
         return Result.ok(sourceMapper.selectById(id));
+    }
+
+    @DeleteMapping("/sources/{id}")
+    public Result<Void> deleteSource(@PathVariable Long id) {
+        CrawlerSourceConfig source = sourceMapper.selectById(id);
+        if (source == null) {
+            return new Result<>(404, "采集源不存在。", null);
+        }
+        if (hasRunningTaskForSource(id)) {
+            return new Result<>(409, "该采集源存在正在执行的任务，请先停止任务后再删除。", null);
+        }
+        rankSourceMapper.delete(new QueryWrapper<CrawlRankSource>().eq("source_id", id));
+        scheduleMapper.delete(new QueryWrapper<CrawlSchedule>().eq("source_id", id));
+        credentialMapper.delete(new QueryWrapper<CrawlSourceCredential>().eq("source_id", id));
+        sourceMapper.deleteById(id);
+        return Result.ok();
     }
 
     @GetMapping("/rank-sources")
