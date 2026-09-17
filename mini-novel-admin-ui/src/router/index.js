@@ -11,7 +11,8 @@ const routes = [
     redirect: '/admin/dashboard',
     children: [
       { path: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: '首页' } },
-      { path: 'articles', component: () => import('../views/ArticleView.vue'), meta: { title: 'VIP文章管理' } },
+      { path: 'articles', component: () => import('../views/ArticleView.vue'), meta: { title: 'VIP文章管理', mode: 'vip' } },
+      { path: 'free-articles', component: () => import('../views/ArticleView.vue'), meta: { title: '免费文章管理', mode: 'free' } },
       { path: 'categories', component: () => import('../views/CategoryView.vue'), meta: { title: '分类管理' } },
       { path: 'vip-categories', component: () => import('../views/VipCategoryView.vue'), meta: { title: 'VIP 分类管理' } },
       { path: 'users', component: () => import('../views/UserView.vue'), meta: { title: '用户管理' } },

@@ -2,7 +2,8 @@
   <section>
     <el-card shadow="never">
       <div class="scope-tip">
-        <span>列表中只显示<strong>尚未加入订阅频道</strong>的文章；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出（移出后会重新出现在这里）。</span>
+        <span v-if="isFree">列表中只显示来自<strong>铅笔小说（23qb.net）</strong>的免费文章，且<strong>尚未加入订阅频道</strong>；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出。</span>
+        <span v-else>列表中只显示<strong>尚未加入订阅频道</strong>的文章；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出（移出后会重新出现在这里）。</span>
         <el-button link type="primary" @click="$router.push('/admin/subscribe-channels')">去订阅频道管理</el-button>
       </div>
       <div class="toolbar">
@@ -14,8 +15,8 @@
           <el-option label="草稿" :value="3" />
         </el-select>
         <el-button type="primary" @click="load">查询</el-button>
-        <el-button @click="openEdit()">新增文章</el-button>
-        <el-button type="success" @click="openImport">TXT 导入</el-button>
+        <el-button v-if="!isFree" @click="openEdit()">新增文章</el-button>
+        <el-button v-if="!isFree" type="success" @click="openImport">TXT 导入</el-button>
         <el-button type="warning" :disabled="!selectedNovels.length" @click="openBatchJoin">
           批量加入频道{{ selectedNovels.length ? `（${selectedNovels.length}）` : '' }}
         </el-button>
@@ -180,7 +181,8 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi } from '../services/http';
 import { formatDateTime } from '../utils/date';
@@ -193,6 +195,8 @@ const chapters = ref([]);
 const editVisible = ref(false);
 const importVisible = ref(false);
 const chapterVisible = ref(false);
+const route = useRoute();
+const isFree = computed(() => route.meta.mode === 'free');
 const query = reactive({ keyword: '', status: null });
 const form = reactive({});
 const importForm = reactive(defaultImportForm());
@@ -240,7 +244,8 @@ function openView(row) {
 async function load() {
   loading.value = true;
   try {
-    rows.value = await adminApi.get('/novels', { params: query });
+    const url = isFree.value ? '/novels/free' : '/novels';
+    rows.value = await adminApi.get(url, { params: query });
   } finally {
     loading.value = false;
   }
@@ -394,6 +399,9 @@ async function openContent(row) {
   chapterContent.value = chapter.content || '';
   contentVisible.value = true;
 }
+
+// VIP / 免费 模式切换时重新加载（同一组件复用时 onMounted 不会再次触发）
+watch(isFree, () => load());
 
 onMounted(load);
 </script>
