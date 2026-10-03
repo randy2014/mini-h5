@@ -206,6 +206,53 @@ public class ContentReviewController {
         return Result.ok(response);
     }
 
+    @PostMapping("/approve-all")
+    public Result<Map<String, Object>> approveAll(@RequestHeader(value = "X-Admin-Token", required = false) String token,
+                                                   @RequestHeader(value = "X-Operator-Id", defaultValue = "0") Long operatorId,
+                                                   @RequestParam(required = false) String sourceCode,
+                                                   @RequestBody Decision request) {
+        requireAdmin(token);
+        if (request == null || !"APPROVE".equals(request.decision)) {
+            throw new IllegalArgumentException("One-click review only supports the APPROVE decision.");
+        }
+        if (!StringUtils.hasText(request.remark)) throw new IllegalArgumentException("Review remark is required.");
+        if (operatorId == null || operatorId <= 0) throw new SecurityException("A valid administrator operator id is required.");
+        String source = validateSource(sourceCode);
+        List<Long> ids = pendingReviewableIds(source);
+        if (ids.isEmpty()) throw new IllegalArgumentException("There are no reviewable pending chapters to approve.");
+        List<Map<String, Object>> failures = new ArrayList<>();
+        int success = 0;
+        for (Long chapterRawId : ids) {
+            try {
+                transactionTemplate.execute(status ->
+                        applyChapterDecision(chapterRawId, source, request, operatorId, "ONE_CLICK_APPROVE_"));
+                success++;
+            } catch (RuntimeException error) {
+                failures.add(Map.of("chapterRawId", chapterRawId, "reason", safeFailureReason(error)));
+            }
+        }
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("requestedCount", ids.size());
+        response.put("successCount", success);
+        response.put("failureCount", ids.size() - success);
+        response.put("failures", failures.size() > 200 ? new ArrayList<>(failures.subList(0, 200)) : failures);
+        return Result.ok(response);
+    }
+
+    private List<Long> pendingReviewableIds(String sourceCode) {
+        String sql = """
+            SELECT c.id
+            FROM mini_novel_crawler.crawl_chapter_raw c
+            JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
+            JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
+            WHERE c.content_status='PENDING_REVIEW' %s
+            ORDER BY c.id
+            """;
+        return StringUtils.hasText(sourceCode)
+                ? jdbc.query(sql.formatted("AND b.source_code=?"), (rs, row) -> rs.getLong(1), sourceCode)
+                : jdbc.query(sql.formatted(""), (rs, row) -> rs.getLong(1));
+    }
+
     private Map<String, Object> applyChapterDecision(Long chapterRawId, String sourceCode, Decision request,
                                                       Long operatorId, String actionPrefix) {
         Map<String, Object> chapter = chapterForUpdate(chapterRawId, sourceCode);

@@ -16,6 +16,7 @@
         <el-alert title="统一审核流：所有源爬取到的章节正文都会进入此队列，审核通过后进入小说库。" type="info" :closable="false" />
       </div>
       <div class="actions">
+        <el-button type="primary" :disabled="!summary.reviewableTotal || oneClickLoading || batchLoading" :loading="oneClickLoading" @click="approveAll">一键审核（通过全部待审正文 {{ summary.reviewableTotal || 0 }} 条）</el-button>
         <el-button type="success" :disabled="!selectedBooks.length || batchLoading" :loading="batchLoading" @click="batchBookRows('APPROVE')">批量批准当前页（{{ selectedBooks.length }} 本）</el-button>
         <el-button type="danger" :disabled="!selectedBooks.length || batchLoading" :loading="batchLoading" @click="batchBookRows('REJECT')">批量拒绝当前页（{{ selectedBooks.length }} 本）</el-button>
         <el-button :disabled="!books.some(isBookReviewable) || batchLoading" @click="selectCurrentBookPage">全选当前页可审核书目</el-button>
@@ -86,6 +87,7 @@ const chapterPageSize = 20
 const loading = ref(false)
 const chapterLoading = ref(false)
 const batchLoading = ref(false)
+const oneClickLoading = ref(false)
 const drawer = ref(false)
 const current = ref(null)
 const chapterTable = ref(null)
@@ -154,6 +156,30 @@ async function batchDecision(decision) {
     } else ElMessage.success(`批量审核完成：成功 ${result.successCount} 条`)
     await refresh()
   } finally { batchLoading.value = false }
+}
+async function approveAll() {
+  const scope = sourceCode.value ? `来源「${sourceCode.value}」` : '全部来源'
+  const count = summary.value.reviewableTotal || 0
+  try {
+    await ElMessageBox.confirm(
+      `将一键审核通过 ${scope} 下全部 ${count} 条待审正文，批准后立即发布到小说库。此操作不可逆，是否继续？`,
+      '一键审核确认',
+      { type: 'warning', confirmButtonText: '一键通过', cancelButtonText: '取消' }
+    )
+  } catch { return }
+  const remark = await ask('APPROVE', `${scope} 全部 ${count} 条待审正文`)
+  if (remark === null) return
+  oneClickLoading.value = true
+  try {
+    const result = await crawlerApi.post('/content-review/approve-all', { decision: 'APPROVE', remark }, { params: { sourceCode: sourceCode.value } })
+    if (result.failureCount) {
+      const failures = (result.failures || []).map(item => `#${item.chapterRawId}: ${item.reason}`).join('\n')
+      await ElMessageBox.alert(`一键审核完成：成功通过 ${result.successCount} 条，失败 ${result.failureCount} 条。\n${failures}`, '一键审核部分完成', { type: 'warning' })
+    } else {
+      ElMessage.success(`一键审核完成：成功通过 ${result.successCount} 条待审正文`)
+    }
+    await refresh()
+  } finally { oneClickLoading.value = false }
 }
 async function batchBookRows(decision) {
   const ids = [...new Set(selectedBooks.value.flatMap(row => row.reviewableChapterIds || []))]
