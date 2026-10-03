@@ -19,9 +19,7 @@
     <div class="list">
       <div v-for="item in visible" :key="item.kind + '-' + item.id" class="feed-card" @click="open(item)">
         <div class="fc-cover-wrap">
-          <div v-if="coverFailed(item)" class="fc-cover" :class="coverClass(item)">{{ coverText(item) }}</div>
-          <img v-else-if="coverSrc(item)" :src="coverSrc(item)" class="fc-cover-img" @error="markCoverFailed(item)" />
-          <div v-else class="fc-cover" :class="coverClass(item)">{{ coverText(item) }}</div>
+          <img :src="coverSrc(item) || fallbackCover" :alt="item.title" class="fc-cover-img" @error="handleImgError" />
         </div>
         <div class="fc-body">
           <div class="fc-topline">
@@ -53,6 +51,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { fetchChannelFeed, mediaFileUrl, subscribeChannel } from '../services/subscribe';
 import { markSubscribeRead, subscribeReadIds } from '../services/subscribeReadStatus';
+import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 
 const route = useRoute();
 const router = useRouter();
@@ -99,18 +98,7 @@ function subline(item) {
   return mediaDesc(item);
 }
 
-function coverText(item) {
-  if (item.kind === 'NOVEL') return item.title.slice(0, 6);
-  if (item.kind === 'VIDEO') return '▶';
-  return item.title.slice(0, 4);
-}
-
-function coverClass(item) {
-  const n = item.id || 0;
-  if (item.kind === 'NOVEL') return ['g1', 'g2', 'g3', 'g4', 'g5', 'g6'][n % 6];
-  if (item.kind === 'VIDEO') return 'media-video';
-  return ['mg1', 'mg2', 'mg3', 'mg4'][n % 4];
-}
+const fallbackCover = FALLBACK_COVER;
 
 function coverSrc(item) {
   if (item.kind === 'NOVEL') {
@@ -120,14 +108,6 @@ function coverSrc(item) {
     return mediaFileUrl(channelId, item.coverAssetId, item.coverKind === 'poster' ? 'poster' : 'thumb');
   }
   return '';
-}
-
-function coverFailed(item) {
-  return item._coverFailed === true;
-}
-
-function markCoverFailed(item) {
-  item._coverFailed = true;
 }
 
 function fmtDur(ms) {
@@ -205,7 +185,6 @@ onMounted(load);
 .feed-card:active { transform: scale(.99); }
 .fc-cover-wrap { width: 78px; }
 .fc-cover-img { width: 78px; aspect-ratio: 5 / 7; border-radius: 6px; object-fit: cover; display: block; background: #d9dfdc; }
-.fc-cover { width: 78px; aspect-ratio: 5 / 7; border-radius: 6px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.3; }
 .fc-body { min-width: 0; display: flex; flex-direction: column; }
 .fc-topline { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .type-chip { display: inline-flex; align-items: center; width: fit-content; padding: 2px 7px; border-radius: 999px; font-size: 11px; line-height: 1.25; }
@@ -219,15 +198,4 @@ onMounted(load);
 .more { text-align: center; color: #1f6f64; font-size: 13px; padding: 12px; }
 .footbar { position: fixed; left: 0; right: 0; bottom: 52px; background: #fff; border-top: 1px solid #e9ecf2; padding: 11px 14px; display: flex; align-items: center; gap: 10px; }
 .footbar .hint { flex: 1; font-size: 11px; color: #8a92a3; line-height: 1.6; }
-.g1 { background: linear-gradient(135deg, #6a5acd, #8e7cc3); }
-.g2 { background: linear-gradient(135deg, #2f80ed, #56a0f5); }
-.g3 { background: linear-gradient(135deg, #e67e22, #f39c12); }
-.g4 { background: linear-gradient(135deg, #16a085, #2ecc71); }
-.g5 { background: linear-gradient(135deg, #c0392b, #e74c3c); }
-.g6 { background: linear-gradient(135deg, #34495e, #5d6d7e); }
-.mg1 { background: linear-gradient(135deg, #b5432f, #e07b39); }
-.mg2 { background: linear-gradient(135deg, #236a5c, #2f9e8f); }
-.mg3 { background: linear-gradient(135deg, #4a3fa8, #7a6fe0); }
-.mg4 { background: linear-gradient(135deg, #c9a10f, #e6c53f); }
-.media-video { background: linear-gradient(135deg, #20313f, #3a5568); }
 </style>
