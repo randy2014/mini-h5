@@ -27,8 +27,6 @@ public class AdminNovelController {
     private static final Pattern CHAPTER_TITLE_PATTERN = Pattern.compile(
             "(?m)^\\s*(第[一二三四五六七八九十百千万零〇0-9]+[章节回卷].{0,80}|Chapter\\s+\\d+.{0,80})\\s*$");
     private static final int MIN_IMPORT_CONTENT_LENGTH = 120;
-    /** 免费公开采集源（铅笔小说），该源内容在「免费文章管理」中单独展示，VIP 文章管理列表排除。 */
-    private static final String FREE_SOURCE_CODE = "23qb_public";
 
     private final NovelMapper novelMapper;
     private final ChapterMapper chapterMapper;
@@ -39,17 +37,16 @@ public class AdminNovelController {
     }
 
     /**
-     * VIP 文章管理列表：只返回**尚未加入任何订阅频道**且**非免费采集源（排除 23qb_public）**的小说。
-     * 免费采集源（铅笔小说）内容在「免费文章管理」中单独展示；已入频道的在
-     * 「订阅频道管理 → 查看频道详情」中查看/移出，移出后会重新出现在这里。
+     * VIP 文章管理列表：只返回**尚未加入任何订阅频道**且**整本 VIP（vip_required=1）**的小说。
+     * 免费文章（vip_required=0，含铅笔小说等公开源与手动导入）在「免费文章管理」中单独展示；
+     * 已入频道的在「订阅频道管理 → 查看频道详情」中查看/移出，移出后会重新出现在对应列表。
      */
     @GetMapping
     public Result<List<Novel>> list(@RequestParam(required = false) String keyword,
                                     @RequestParam(required = false) Integer status) {
         LambdaQueryWrapper<Novel> wrapper = new LambdaQueryWrapper<Novel>()
+                .eq(Novel::getVipRequired, true)
                 .notExists("SELECT 1 FROM subscribe_channel_novel l WHERE l.novel_id = novel.id")
-                .notExists("SELECT 1 FROM novel_source_mapping m WHERE m.novel_id = novel.id AND m.source_code = '"
-                        + FREE_SOURCE_CODE + "'")
                 .orderByDesc(Novel::getUpdatedAt)
                 .last("LIMIT 200");
         if (StringUtils.hasText(keyword)) {
@@ -62,14 +59,13 @@ public class AdminNovelController {
     }
 
     /**
-     * 免费文章管理列表：只返回来自铅笔小说（23qb_public）免费采集源、且尚未加入任何订阅频道的小说。
+     * 免费文章管理列表：只返回**整本免费（vip_required=0）**、且尚未加入任何订阅频道的小说。
      */
     @GetMapping("/free")
     public Result<List<Novel>> freeList(@RequestParam(required = false) String keyword,
                                         @RequestParam(required = false) Integer status) {
         LambdaQueryWrapper<Novel> wrapper = new LambdaQueryWrapper<Novel>()
-                .exists("SELECT 1 FROM novel_source_mapping m WHERE m.novel_id = novel.id AND m.source_code = '"
-                        + FREE_SOURCE_CODE + "'")
+                .eq(Novel::getVipRequired, false)
                 .notExists("SELECT 1 FROM subscribe_channel_novel l WHERE l.novel_id = novel.id")
                 .orderByDesc(Novel::getUpdatedAt)
                 .last("LIMIT 200");

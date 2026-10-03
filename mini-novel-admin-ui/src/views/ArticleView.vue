@@ -2,8 +2,8 @@
   <section>
     <el-card shadow="never">
       <div class="scope-tip">
-        <span v-if="isFree">列表中只显示来自<strong>铅笔小说（23qb.net）</strong>的免费文章，且<strong>尚未加入订阅频道</strong>；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出。</span>
-        <span v-else>列表中只显示<strong>尚未加入订阅频道</strong>的文章；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出（移出后会重新出现在这里）。</span>
+        <span v-if="isFree">列表中只显示<strong>免费文章</strong>（整本非 VIP，含铅笔小说等公开源与手动导入），且<strong>尚未加入订阅频道</strong>；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出。</span>
+        <span v-else>列表中只显示<strong>VIP 文章</strong>且<strong>尚未加入订阅频道</strong>；已加入的文章请到「订阅频道管理 → 查看频道详情」查看或移出（移出后会重新出现在这里）。</span>
         <el-button link type="primary" @click="$router.push('/admin/subscribe-channels')">去订阅频道管理</el-button>
       </div>
       <div class="toolbar">
