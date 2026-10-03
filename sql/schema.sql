@@ -2136,10 +2136,34 @@ ALTER TABLE `media_asset` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '�
 UPDATE `media_post` SET `type` = CASE `type` WHEN 'IMAGE' THEN 1 WHEN 'VIDEO' THEN 2 WHEN 'MIXED' THEN 3 END WHERE `type` IN ('IMAGE','VIDEO','MIXED');
 ALTER TABLE `media_post` MODIFY `type` TINYINT NOT NULL DEFAULT 1 COMMENT '内容类型枚举：1=图文，2=视频，3=图文+视频（自动判定，无纯文本帖）';
 
-ALTER TABLE `media_post` DROP CHECK `chk_media_post_status`;
+-- 旧版 media_post.status 的字符串枚举 CHECK 约束（若存在）需先删除，否则 UPDATE 会因约束校验失败；
+-- 改完数据与列类型后再按整数枚举重建（若不存在）。二者都用 information_schema 守卫，保证幂等。
+SET @has_mp_chk := (
+  SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'media_post'
+    AND CONSTRAINT_NAME = 'chk_media_post_status'
+    AND CONSTRAINT_TYPE = 'CHECK'
+);
+SET @drop_mp_chk := IF(@has_mp_chk > 0, 'ALTER TABLE media_post DROP CHECK chk_media_post_status', 'SELECT 1');
+PREPARE drop_mp_chk_stmt FROM @drop_mp_chk;
+EXECUTE drop_mp_chk_stmt;
+DEALLOCATE PREPARE drop_mp_chk_stmt;
+
 UPDATE `media_post` SET `status` = CASE `status` WHEN 'DRAFT' THEN 1 WHEN 'PUBLISHED' THEN 2 END WHERE `status` IN ('DRAFT','PUBLISHED');
 ALTER TABLE `media_post` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=草稿，2=已发布';
-ALTER TABLE `media_post` ADD CONSTRAINT `chk_media_post_status` CHECK (`status` IN (1,2));
+
+SET @has_mp_chk2 := (
+  SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'media_post'
+    AND CONSTRAINT_NAME = 'chk_media_post_status'
+    AND CONSTRAINT_TYPE = 'CHECK'
+);
+SET @add_mp_chk := IF(@has_mp_chk2 = 0, 'ALTER TABLE media_post ADD CONSTRAINT chk_media_post_status CHECK (status IN (1,2))', 'SELECT 1');
+PREPARE add_mp_chk_stmt FROM @add_mp_chk;
+EXECUTE add_mp_chk_stmt;
+DEALLOCATE PREPARE add_mp_chk_stmt;
 
 USE `mini_novel_crawler`;
 
