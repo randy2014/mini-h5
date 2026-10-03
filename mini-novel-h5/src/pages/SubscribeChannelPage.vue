@@ -215,7 +215,7 @@ onMounted(load);
 .type-chip.t-image { background: #e7f6f0; color: #1f7a5c; }
 .type-chip.t-video { background: #eaf2ff; color: #2f6fd8; }
 .type-chip.t-mixed { background: #f6eefe; color: #7a3fe0; }
-.ba { font-size: 10px; color: #98a5b5; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.ba { font-size: 10px; color: #98a5b5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .go { color: #c4ccd6; font-size: 16px; align-self: center; }
 .empty-list { text-align: center; color: #a6adb9; font-size: 13px; padding: 40px 0; }
 .more { text-align: center; color: #1f6f64; font-size: 13px; padding: 12px; }
