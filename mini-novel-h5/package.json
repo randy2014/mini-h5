@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test src/permission src/services",
+    "test": "node --test",
     "verify": "node scripts/verify-src.mjs && node scripts/smoke-permission.mjs"
   },
   "dependencies": {
