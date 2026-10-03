@@ -26,6 +26,7 @@ import com.mini.novel.crawler.mapper.CrawlMergeTaskMapper;
 import com.mini.novel.crawler.service.CrawlerMergeService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -76,7 +77,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     @Override
     public void mergePending() {
         List<CrawlMergeTask> tasks = mergeTaskMapper.selectList(new QueryWrapper<CrawlMergeTask>()
-                .eq("status", "PENDING")
+                .eq("status", 1)
                 .orderByAsc("id")
                 .last("LIMIT 10"));
         for (CrawlMergeTask task : tasks) {
@@ -108,21 +109,21 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         }
         List<CrawlChapterRaw> chapters = loadMergeChapters(book);
         if (chapters.isEmpty()) {
-            item.matchStatus = "PENDING_REVIEW";
+            item.matchStatus = 5;
             item.message = "未发现章节目录，等待重新采集或手动补充。";
             item.updatedAt = LocalDateTime.now();
             mergeItemMapper.updateById(item);
             return;
         }
-        item.matchStatus = "RETRYING";
+        item.matchStatus = 2;
         item.message = "人工触发重新清洗。";
         item.updatedAt = LocalDateTime.now();
         mergeItemMapper.updateById(item);
         MergeOutcome outcome = mergeBook(task, book, chapters);
         syncRetriedItemStatus(mergeItemId, outcome);
         refreshTaskCounters(task.id);
-        if (outcome == MergeOutcome.MERGED && !"MERGED".equals(task.status) && !"PARTIAL_MERGED".equals(task.status)) {
-            task.status = "PARTIAL_MERGED";
+        if (outcome == MergeOutcome.MERGED && !Objects.equals(3, task.status) && !Objects.equals(4, task.status)) {
+            task.status = 4;
             task.message = "人工重新清洗已有内容入库，请继续处理剩余待审核记录。";
             task.updatedAt = LocalDateTime.now();
             mergeTaskMapper.updateById(task);
@@ -137,7 +138,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
-        item.matchStatus = "IGNORED";
+        item.matchStatus = 7;
         item.message = limit(StringUtils.hasText(reason) ? reason : "人工忽略该待审核采集结果。", 1000);
         item.updatedAt = now;
         mergeItemMapper.updateById(item);
@@ -149,8 +150,8 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                     .eq("source_book_id", book.sourceBookId)
                     .last("LIMIT 1"));
             if (mapping != null) {
-                mapping.matchStatus = "IGNORED";
-                mapping.contentStatus = "IGNORED";
+                mapping.matchStatus = 7;
+                mapping.contentStatus = 6;
                 mapping.updatedAt = now;
                 novelSourceMappingMapper.updateById(mapping);
             }
@@ -160,12 +161,12 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
 
     @Transactional
     public void mergeTask(CrawlMergeTask task) {
-        if (task == null || (!"PENDING".equals(task.status) && !"FAILED".equals(task.status))) {
+        if (task == null || (!Objects.equals(1, task.status) && !Objects.equals(6, task.status))) {
             return;
         }
 
         LocalDateTime now = LocalDateTime.now();
-        task.status = "MERGING";
+        task.status = 2;
         task.startedAt = task.startedAt == null ? now : task.startedAt;
         task.updatedAt = now;
         task.message = "清洗入库执行中：正在进行小说去重、正文质量校验和章节写入。";
@@ -184,7 +185,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             }
             List<CrawlBookRaw> books = bookRawMapper.selectList(bookWrapper);
             for (CrawlBookRaw book : books) {
-                if (book.contentStatus != null && "PENDING_REVIEW".equals(book.contentStatus)) {
+                if (book.contentStatus != null && Objects.equals(4, book.contentStatus)) {
                     continue;
                 }
                 List<CrawlChapterRaw> chapters = loadMergeChapters(book);
@@ -202,15 +203,15 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
                 }
             }
             if (merged > 0) {
-                task.status = failed == 0 ? "MERGED" : "PARTIAL_MERGED";
+                task.status = failed == 0 ? 3 : 4;
             } else if (pending > 0 && failed == 0) {
-                task.status = "PENDING_REVIEW";
+                task.status = 5;
             } else {
-                task.status = "FAILED";
+                task.status = 6;
             }
             task.message = "清洗入库完成：处理 " + total + " 本，入库 " + merged + " 本，待审核 " + pending + " 本，失败 " + failed + " 本。";
         } catch (Exception ex) {
-            task.status = "FAILED";
+            task.status = 6;
             task.message = "清洗入库失败：" + ex.getMessage();
         } finally {
             task.totalCount = total;
@@ -236,7 +237,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     private MergeOutcome mergeBook(CrawlMergeTask task, CrawlBookRaw book, List<CrawlChapterRaw> chapters) {
         LocalDateTime now = LocalDateTime.now();
         if (isReviewOnlySource(book)) {
-            upsertMergeItem(task, book, null, null, "PENDING_REVIEW",
+            upsertMergeItem(task, book, null, null, 5,
                     "Book is queued for manual content review; skipped by the clean-merge path.");
             return MergeOutcome.PENDING_REVIEW;
         }
@@ -282,7 +283,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             }
             try {
                 Chapter chapter = upsertChapter(novel, rawChapter, content.content, now);
-                upsertChapterMapping(novelMapping, rawChapter, chapter.getId(), "MERGED", now);
+                upsertChapterMapping(novelMapping, rawChapter, chapter.getId(), 2, now);
                 mergedChapters++;
             } catch (Exception ex) {
                 purgeRawChapter(rawChapter.id);
@@ -291,13 +292,13 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         }
 
         refreshNovelLatestChapter(novel);
-        String status;
+        Integer status;
         String message;
         MergeOutcome outcome;
         if (mergedChapters > 0) {
-            status = pendingChapters == 0 && failedChapters == 0 ? "MERGED" : "PARTIAL_MERGED";
+            status = pendingChapters == 0 && failedChapters == 0 ? 3 : 4;
             message = "正文入库 " + mergedChapters + " 章，待审核 " + pendingChapters + " 章，失败 " + failedChapters + " 章。";
-            novelMapping.contentStatus = "CONTENT_READY";
+            novelMapping.contentStatus = 3;
             outcome = MergeOutcome.MERGED;
         } else if (pendingChapters > 0) {
             purgeRawBook(book.id);
@@ -344,7 +345,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
             identity.canonicalAuthor = limit(StringUtils.hasText(book.author) ? book.author : "未知作者", 64);
             identity.normalizedTitle = normalizedTitle;
             identity.normalizedAuthor = normalizedAuthor;
-            identity.matchStatus = "ACTIVE";
+            identity.matchStatus = 1;
             identity.confidenceScore = 100;
             identity.createdAt = now;
             identity.updatedAt = now;
@@ -369,8 +370,8 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         mapping.sourceUrl = limit(book.sourceUrl, 512);
         mapping.sourceTitle = limit(book.title, 128);
         mapping.sourceAuthor = limit(StringUtils.hasText(book.author) ? book.author : "未知作者", 64);
-        mapping.contentStatus = StringUtils.hasText(book.contentStatus) ? book.contentStatus : "META_ONLY";
-        mapping.matchStatus = "MATCHED";
+        mapping.contentStatus = book.contentStatus != null ? book.contentStatus : 1;
+        mapping.matchStatus = 2;
         mapping.confidenceScore = 100;
         mapping.lastCrawledAt = book.crawledAt;
         mapping.updatedAt = now;
@@ -400,7 +401,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         novel.setCoverUrl(limit(book.coverUrl, 512));
         novel.setIntro(book.intro);
         novel.setCategoryId(resolveCategoryId(book.categoryName, now));
-        novel.setStatus("COMPLETED".equals(book.bookStatus) ? 2 : 1);
+        novel.setStatus(Objects.equals(3, book.bookStatus) ? 2 : 1);
         novel.setVipRequired(false);
         novel.setFreeChapterCount(999999);
         novel.setWordCount(resolveWordCount(book.wordCount, estimatedWordCount, novel.getWordCount()));
@@ -483,7 +484,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
     }
 
     private void upsertChapterMapping(NovelSourceMapping novelMapping, CrawlChapterRaw rawChapter, Long chapterId,
-                                      String status, LocalDateTime now) {
+                                      Integer status, LocalDateTime now) {
         ChapterSourceMapping mapping = chapterSourceMappingMapper.selectOne(new QueryWrapper<ChapterSourceMapping>()
                 .eq("novel_mapping_id", novelMapping.id)
                 .eq("source_chapter_id", rawChapter.sourceChapterId)
@@ -511,17 +512,17 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
 
     private void syncRetriedItemStatus(Long mergeItemId, MergeOutcome outcome) {
         CrawlMergeItem item = mergeItemMapper.selectById(mergeItemId);
-        if (item == null || !"RETRYING".equals(item.matchStatus)) {
+        if (item == null || !Objects.equals(2, item.matchStatus)) {
             return;
         }
         if (outcome == MergeOutcome.MERGED) {
-            item.matchStatus = "MERGED";
+            item.matchStatus = 3;
             item.message = "人工重新清洗后正文已入库。";
         } else if (outcome == MergeOutcome.PENDING_REVIEW) {
-            item.matchStatus = "PENDING_REVIEW";
+            item.matchStatus = 5;
             item.message = "重新清洗后仍未发现达标正文，等待补正文或人工审核。";
         } else {
-            item.matchStatus = "FAILED";
+            item.matchStatus = 6;
             item.message = "人工重新清洗失败，请检查原始章节和正文内容。";
         }
         item.updatedAt = LocalDateTime.now();
@@ -555,11 +556,11 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         int pending = 0;
         int failed = 0;
         for (CrawlMergeItem item : items) {
-            if ("MERGED".equals(item.matchStatus) || "PARTIAL_MERGED".equals(item.matchStatus)) {
+            if (Objects.equals(3, item.matchStatus) || Objects.equals(4, item.matchStatus)) {
                 merged++;
-            } else if ("PENDING_REVIEW".equals(item.matchStatus) || "RETRYING".equals(item.matchStatus)) {
+            } else if (Objects.equals(5, item.matchStatus) || Objects.equals(2, item.matchStatus)) {
                 pending++;
-            } else if ("FAILED".equals(item.matchStatus)) {
+            } else if (Objects.equals(6, item.matchStatus)) {
                 failed++;
             }
         }
@@ -568,20 +569,20 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         task.pendingReviewCount = pending;
         task.failedCount = failed;
         if (pending == 0 && failed == 0 && merged > 0) {
-            task.status = "MERGED";
+            task.status = 3;
         } else if (pending > 0 && merged > 0) {
-            task.status = "PARTIAL_MERGED";
+            task.status = 4;
         } else if (pending > 0) {
-            task.status = "PENDING_REVIEW";
+            task.status = 5;
         } else if (failed > 0) {
-            task.status = "FAILED";
+            task.status = 6;
         }
         task.updatedAt = LocalDateTime.now();
         mergeTaskMapper.updateById(task);
     }
 
     private void upsertMergeItem(CrawlMergeTask task, CrawlBookRaw book, NovelIdentity identity, Novel novel,
-                                 String status, String message) {
+                                 Integer status, String message) {
         CrawlMergeItem item = mergeItemMapper.selectOne(new QueryWrapper<CrawlMergeItem>()
                 .eq("merge_task_id", task.id)
                 .eq("book_raw_id", book.id)
@@ -610,7 +611,7 @@ public class CrawlerMergeServiceImpl implements CrawlerMergeService {
         if (book == null) {
             return false;
         }
-        return book.contentStatus != null && "PENDING_REVIEW".equals(book.contentStatus);
+        return book.contentStatus != null && Objects.equals(4, book.contentStatus);
     }
 
     private ContentQuality evaluateContent(String content) {

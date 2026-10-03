@@ -11,15 +11,15 @@ public class CrawlSourceCredential {
     public Long id;
     public Long sourceId;
     public String name;
-    public String authMode;
+    public Integer authMode;
     public String username;
     public String passwordCipher;
     public String cookieText;
     public String headersJson;
     public String loginUrl;
-    public String status;
+    public Integer status;
     public Boolean enabled;
-    public String lastCheckStatus;
+    public Integer lastCheckStatus;
     public LocalDateTime lastCheckAt;
     public String remark;
     public LocalDateTime createdAt;

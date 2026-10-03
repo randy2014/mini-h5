@@ -10,7 +10,7 @@ public class CrawlMergeTask {
     @TableId(type = IdType.AUTO)
     public Long id;
     public Long crawlTaskId;
-    public String status;
+    public Integer status;
     public Integer totalCount;
     public Integer mergedCount;
     public Integer pendingReviewCount;

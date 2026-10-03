@@ -12,7 +12,7 @@ public class VipInvitationCode {
     private Long id;
     private Long ownerUserId;
     private String code;
-    private String status;
+    private Integer status;
     private Integer totalQuota;
     private Integer usedQuota;
     private Integer remainingQuota;
@@ -36,8 +36,8 @@ public class VipInvitationCode {
     public void setOwnerUserId(Long ownerUserId) { this.ownerUserId = ownerUserId; }
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public Integer getStatus() { return status; }
+    public void setStatus(Integer status) { this.status = status; }
     public Integer getTotalQuota() { return totalQuota; }
     public void setTotalQuota(Integer totalQuota) { this.totalQuota = totalQuota; }
     public Integer getUsedQuota() { return usedQuota; }

@@ -81,13 +81,13 @@ const videoError = ref('');
 
 const typeLabel = computed(() => {
   if (!detail.value) return '图文/视频';
-  return detail.value.type === 'VIDEO' ? '视频详情'
-    : detail.value.type === 'MIXED' ? '图文+视频'
+  return detail.value.type === 2 ? '视频详情'
+    : detail.value.type === 3 ? '图文+视频'
     : '图文详情';
 });
 
-const images = computed(() => (detail.value?.assets || []).filter((a) => a.fileType === 'IMAGE'));
-const video = computed(() => (detail.value?.assets || []).find((a) => a.fileType === 'VIDEO'));
+const images = computed(() => (detail.value?.assets || []).filter((a) => a.fileType === 1));
+const video = computed(() => (detail.value?.assets || []).find((a) => a.fileType === 2));
 const previewImages = computed(() => images.value.map((a) => imgUrl(a)));
 
 function imgUrl(asset) {

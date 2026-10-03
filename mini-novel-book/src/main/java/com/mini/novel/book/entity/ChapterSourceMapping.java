@@ -19,7 +19,7 @@ public class ChapterSourceMapping {
     @TableField("is_vip")
     public Boolean vip;
     public String contentHash;
-    public String contentStatus;
+    public Integer contentStatus;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 }

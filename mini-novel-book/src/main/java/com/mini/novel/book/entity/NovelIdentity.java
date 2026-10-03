@@ -14,7 +14,7 @@ public class NovelIdentity {
     public String normalizedTitle;
     public String normalizedAuthor;
     public Long novelId;
-    public String matchStatus;
+    public Integer matchStatus;
     public Integer confidenceScore;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;

@@ -13,7 +13,7 @@ public class VipInvitationRecord {
     private String codeSnapshot;
     private Long inviterUserId;
     private Long inviteeUserId;
-    private String status;
+    private Integer status;
     private LocalDateTime activatedAt;
     private String remark;
     private LocalDateTime createdAt;
@@ -29,8 +29,8 @@ public class VipInvitationRecord {
     public void setInviterUserId(Long inviterUserId) { this.inviterUserId = inviterUserId; }
     public Long getInviteeUserId() { return inviteeUserId; }
     public void setInviteeUserId(Long inviteeUserId) { this.inviteeUserId = inviteeUserId; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public Integer getStatus() { return status; }
+    public void setStatus(Integer status) { this.status = status; }
     public LocalDateTime getActivatedAt() { return activatedAt; }
     public void setActivatedAt(LocalDateTime activatedAt) { this.activatedAt = activatedAt; }
     public String getRemark() { return remark; }

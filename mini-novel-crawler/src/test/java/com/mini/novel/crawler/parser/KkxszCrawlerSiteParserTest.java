@@ -105,8 +105,8 @@ class KkxszCrawlerSiteParserTest {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "kkxsz_public";
         source.baseUrl = "https://www.kkxsz.com";
-        source.sourceType = "PUBLIC";
-        source.authMode = "NONE";
+        source.sourceType = 1;
+        source.authMode = 1;
         source.ruleConfigJson = "{}";
         return source;
     }

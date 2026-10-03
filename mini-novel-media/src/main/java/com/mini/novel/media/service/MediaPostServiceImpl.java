@@ -94,14 +94,14 @@ public class MediaPostServiceImpl implements MediaPostService {
         if (assets.isEmpty()) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "内容至少需要一个图片或视频素材");
         }
-        long videoCount = assets.stream().filter(a -> MediaAsset.TYPE_VIDEO.equals(a.getFileType())).count();
+        long videoCount = assets.stream().filter(a -> Objects.equals(MediaAsset.TYPE_VIDEO, a.getFileType())).count();
         if (videoCount > 1) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "每条内容最多 1 个视频");
         }
-        boolean allReady = assets.stream().allMatch(a -> MediaAsset.STATUS_READY.equals(a.getStatus()));
+        boolean allReady = assets.stream().allMatch(a -> Objects.equals(MediaAsset.STATUS_READY, a.getStatus()));
         if (!allReady) {
             MediaAsset pending = assets.stream()
-                    .filter(a -> !MediaAsset.STATUS_READY.equals(a.getStatus())).findFirst().orElse(null);
+                    .filter(a -> !Objects.equals(MediaAsset.STATUS_READY, a.getStatus())).findFirst().orElse(null);
             String why = pending == null ? "" : "（" + pending.getOriginalName() + " 转码中或失败）";
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "素材未就绪，暂不能发布" + why);
         }
@@ -118,7 +118,7 @@ public class MediaPostServiceImpl implements MediaPostService {
     @Transactional
     public MediaPost unpublish(Long postId) {
         MediaPost post = require(postId);
-        if (!MediaPost.STATUS_PUBLISHED.equals(post.getStatus())) {
+        if (!Objects.equals(MediaPost.STATUS_PUBLISHED, post.getStatus())) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "仅已发布内容可下架");
         }
         post.setStatus(MediaPost.STATUS_DRAFT);
@@ -203,12 +203,12 @@ public class MediaPostServiceImpl implements MediaPostService {
     }
 
     @Override
-    public Page<MediaAsset> pageAssets(String type, String status, String keyword, long page, long pageSize) {
+    public Page<MediaAsset> pageAssets(Integer type, Integer status, String keyword, long page, long pageSize) {
         LambdaQueryWrapper<MediaAsset> w = new LambdaQueryWrapper<>();
-        if (StringUtils.hasText(type)) {
+        if (type != null) {
             w.eq(MediaAsset::getFileType, type);
         }
-        if (StringUtils.hasText(status)) {
+        if (status != null) {
             w.eq(MediaAsset::getStatus, status);
         }
         if (StringUtils.hasText(keyword)) {
@@ -271,7 +271,7 @@ public class MediaPostServiceImpl implements MediaPostService {
             if (asset == null) {
                 throw new BusinessException(ErrorCode.BUSINESS_ERROR, "素材不存在: " + assetId);
             }
-            if (!MediaAsset.STATUS_READY.equals(asset.getStatus())) {
+            if (!Objects.equals(MediaAsset.STATUS_READY, asset.getStatus())) {
                 throw new BusinessException(ErrorCode.BUSINESS_ERROR,
                         "素材未就绪不能加入内容（" + asset.getOriginalName() + " 转码中或失败）");
             }
@@ -295,9 +295,9 @@ public class MediaPostServiceImpl implements MediaPostService {
 
     private void syncTypeAndCover(Long postId) {
         List<MediaAsset> assets = orderedAssets(postId);
-        boolean hasImage = assets.stream().anyMatch(a -> MediaAsset.TYPE_IMAGE.equals(a.getFileType()));
-        boolean hasVideo = assets.stream().anyMatch(a -> MediaAsset.TYPE_VIDEO.equals(a.getFileType()));
-        String type = MediaPost.TYPE_IMAGE;
+        boolean hasImage = assets.stream().anyMatch(a -> Objects.equals(MediaAsset.TYPE_IMAGE, a.getFileType()));
+        boolean hasVideo = assets.stream().anyMatch(a -> Objects.equals(MediaAsset.TYPE_VIDEO, a.getFileType()));
+        Integer type = MediaPost.TYPE_IMAGE;
         if (hasVideo && hasImage) {
             type = MediaPost.TYPE_MIXED;
         } else if (hasVideo) {
@@ -306,7 +306,7 @@ public class MediaPostServiceImpl implements MediaPostService {
         Long coverAssetId = null;
         if (hasVideo) {
             coverAssetId = assets.stream()
-                    .filter(a -> MediaAsset.TYPE_VIDEO.equals(a.getFileType())).findFirst().map(MediaAsset::getId).orElse(null);
+                    .filter(a -> Objects.equals(MediaAsset.TYPE_VIDEO, a.getFileType())).findFirst().map(MediaAsset::getId).orElse(null);
         } else if (!assets.isEmpty()) {
             coverAssetId = assets.get(0).getId();
         }
@@ -372,7 +372,7 @@ public class MediaPostServiceImpl implements MediaPostService {
     }
 
     private void requireDraft(MediaPost post) {
-        if (!MediaPost.STATUS_DRAFT.equals(post.getStatus())) {
+        if (!Objects.equals(MediaPost.STATUS_DRAFT, post.getStatus())) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR,
                     "仅草稿可操作：已发布内容请先下架回到草稿");
         }

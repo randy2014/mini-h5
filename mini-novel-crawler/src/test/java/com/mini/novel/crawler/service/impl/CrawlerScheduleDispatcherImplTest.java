@@ -49,8 +49,8 @@ class CrawlerScheduleDispatcherImplTest {
         String currentMinute = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
         CrawlSchedule h528 = schedule(21L, 101L, currentMinute);
         CrawlSchedule novel69h = schedule(22L, 102L, currentMinute);
-        CrawlerSourceConfig h528Source = source(101L, "h528_authorized", "AUTHORIZED_VIP", true);
-        CrawlerSourceConfig novel69hSource = source(102L, "novel69h_authorized", "AUTHORIZED_VIP", true);
+        CrawlerSourceConfig h528Source = source(101L, "h528_authorized", 2, true);
+        CrawlerSourceConfig novel69hSource = source(102L, "novel69h_authorized", 2, true);
         CrawlRankSource h528Rank = rank(201L, 101L, "H528_AUTHORIZED_POSTS");
         CrawlRankSource novel69hRank = rank(202L, 102L, "CATEGORY_AUTHORIZED");
 
@@ -71,7 +71,7 @@ class CrawlerScheduleDispatcherImplTest {
                 .containsExactly(101L, 102L);
         assertThat(taskCaptor.getAllValues())
                 .extracting(task -> task.taskType)
-                .containsExactly("AUTHORIZED_VIP", "AUTHORIZED_VIP");
+                .containsExactly(4, 4);
         verify(mergeTaskMapper, never()).insert(any(CrawlMergeTask.class));
         verify(scheduleMapper, org.mockito.Mockito.times(2)).updateById(any(CrawlSchedule.class));
     }
@@ -83,7 +83,7 @@ class CrawlerScheduleDispatcherImplTest {
 
         when(scheduleMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(schedule));
         when(taskRecordMapper.selectCount(any(QueryWrapper.class))).thenReturn(0L);
-        when(sourceMapper.selectById(101L)).thenReturn(source(101L, "h528_authorized", "AUTHORIZED_VIP", false));
+        when(sourceMapper.selectById(101L)).thenReturn(source(101L, "h528_authorized", 2, false));
 
         dispatcher.dispatchDueSchedules();
 
@@ -97,8 +97,8 @@ class CrawlerScheduleDispatcherImplTest {
         CrawlTaskRecord novel69hTask = pendingTask(302L, 102L, 202L);
 
         when(taskRecordMapper.selectList(any(QueryWrapper.class))).thenReturn(new ArrayList<>(List.of(h528Task, novel69hTask)));
-        when(sourceMapper.selectById(101L)).thenReturn(source(101L, "h528_authorized", "AUTHORIZED_VIP", true));
-        when(sourceMapper.selectById(102L)).thenReturn(source(102L, "novel69h_authorized", "AUTHORIZED_VIP", true));
+        when(sourceMapper.selectById(101L)).thenReturn(source(101L, "h528_authorized", 2, true));
+        when(sourceMapper.selectById(102L)).thenReturn(source(102L, "novel69h_authorized", 2, true));
         when(rankSourceMapper.selectById(201L)).thenReturn(rank(201L, 101L, "H528_AUTHORIZED_POSTS"));
         when(rankSourceMapper.selectById(202L)).thenReturn(rank(202L, 102L, "CATEGORY_AUTHORIZED"));
         when(taskRecordMapper.selectCount(any(QueryWrapper.class))).thenReturn(0L);
@@ -121,7 +121,7 @@ class CrawlerScheduleDispatcherImplTest {
         return schedule;
     }
 
-    private CrawlerSourceConfig source(Long id, String code, String type, boolean enabled) {
+    private CrawlerSourceConfig source(Long id, String code, Integer type, boolean enabled) {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.id = id;
         source.sourceCode = code;
@@ -147,8 +147,8 @@ class CrawlerScheduleDispatcherImplTest {
         task.id = id;
         task.sourceId = sourceId;
         task.rankSourceId = rankSourceId;
-        task.taskType = "AUTHORIZED_VIP";
-        task.status = "PENDING";
+        task.taskType = 4;
+        task.status = 1;
         return task;
     }
 }

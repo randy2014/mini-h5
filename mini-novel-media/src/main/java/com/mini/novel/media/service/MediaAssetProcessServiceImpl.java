@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -57,7 +58,7 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
             String md5 = md5(bytes);
             // md5 去重：命中 READY 直接复用
             MediaAsset existing = findByMd5(md5);
-            if (existing != null && MediaAsset.STATUS_READY.equals(existing.getStatus())) {
+            if (existing != null && Objects.equals(MediaAsset.STATUS_READY, existing.getStatus())) {
                 return existing;
             }
             String uuid = storage.newId();
@@ -96,7 +97,7 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
         try {
             String md5 = md5OfFile(tmp); // 流式计算，避免大视频全量读入内存
             MediaAsset existing = findByMd5(md5);
-            if (existing != null && MediaAsset.STATUS_READY.equals(existing.getStatus())) {
+            if (existing != null && Objects.equals(MediaAsset.STATUS_READY, existing.getStatus())) {
                 Files.deleteIfExists(tmp);
                 return existing;
             }
@@ -169,7 +170,7 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
         if (asset == null) {
             return null;
         }
-        if (!MediaAsset.TYPE_VIDEO.equals(asset.getFileType())) {
+        if (!Objects.equals(MediaAsset.TYPE_VIDEO, asset.getFileType())) {
             return asset;
         }
         asset.setStatus(MediaAsset.STATUS_PROCESSING);

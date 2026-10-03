@@ -41,6 +41,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jsoup.Jsoup;
 import org.jsoup.Connection;
@@ -116,12 +117,12 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     @Override
     public void execute(Long taskId) {
         CrawlTaskRecord task = taskMapper.selectById(taskId);
-        if (task == null || !"PENDING".equals(task.status)) {
+        if (task == null || !Objects.equals(1, task.status)) {
             return;
         }
 
         LocalDateTime now = LocalDateTime.now();
-        task.status = "RUNNING";
+        task.status = 2;
         task.startedAt = now;
         task.updatedAt = now;
         task.message = "Crawler is reading rank pages, book details, catalogs and public chapter content.";
@@ -191,14 +192,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
             }
 
             if (total == 0) {
-                task.status = "NO_DATA";
+                task.status = 6;
                 task.message = "Crawler finished, but no book was parsed. Check rank URL or source rules.";
             } else {
-                task.status = failed == 0 ? "SUCCESS" : "PARTIAL_SUCCESS";
+                task.status = failed == 0 ? 3 : 5;
                 task.message = publicCrawlerMessage(source, total, success, failed);
             }
         } catch (Exception ex) {
-            task.status = "FAILED";
+            task.status = 4;
             task.message = "Crawler failed: " + ex.getMessage();
         } finally {
             task.totalCount = total;
@@ -313,7 +314,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         List<CrawlTaskRecord> tasks = taskMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", source.id)
-                .in("status", List.of("SUCCESS", "PARTIAL_SUCCESS", "RUNNING"))
+                .in("status", List.of(3, 5, 2))
                 .orderByDesc("id")
                 .last("LIMIT 1"));
         return tasks.isEmpty() ? "" : tasks.get(0).message;
@@ -329,7 +330,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         List<CrawlTaskRecord> previousTasks = taskMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", task.sourceId)
-                .in("status", List.of("SUCCESS", "PARTIAL_SUCCESS"))
+                .in("status", List.of(3, 5))
                 .lt("id", task.id)
                 .orderByDesc("id")
                 .last("LIMIT 20"));
@@ -371,7 +372,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         Long pendingReview = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
                 .eq("book_raw_id", bookRawId)
-                .eq("content_status", "PENDING_REVIEW"));
+                .eq("content_status", 4));
         return pendingReview == null ? 0L : pendingReview;
     }
 
@@ -479,7 +480,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private void applyCredentialHeaders(Connection connection, CrawlerSourceConfig source) {
-        if (source == null || source.id == null || !"COOKIE".equalsIgnoreCase(source.authMode)) {
+        if (source == null || source.id == null || !Objects.equals(3, source.authMode)) {
             return;
         }
         CrawlSourceCredential credential = credentialMapper.selectOne(new QueryWrapper<CrawlSourceCredential>()
@@ -551,7 +552,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         book.wordCount = snapshot.wordCount();
         book.heatScore = 0L;
         book.rankType = rank.rankType;
-        book.contentStatus = StringUtils.hasText(snapshot.chapterId()) ? "CATALOG_READY" : "META_ONLY";
+        book.contentStatus = StringUtils.hasText(snapshot.chapterId()) ? 2 : 1;
         book.rawJson = "{\"rankName\":\"" + json(rank.rankName) + "\",\"rankUrl\":\"" + json(rank.rankUrl) + "\"}";
         book.crawledAt = now;
         book.updatedAt = now;
@@ -608,7 +609,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         CrawlBookRaw book = bookRawMapper.selectOne(new QueryWrapper<CrawlBookRaw>()
                 .eq("source_code", source.sourceCode)
                 .eq("source_url", limit(seed.url(), 512))
-                .eq("book_status", "COMPLETED")
+                .eq("book_status", 3)
                 .last("LIMIT 1"));
         return isCompletedBookReady(book) ? book : null;
     }
@@ -652,7 +653,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         NovelSourceMapping mapping = novelSourceMappingMapper.selectOne(new QueryWrapper<NovelSourceMapping>()
                 .eq("source_code", sourceCode)
                 .eq("source_book_id", sourceBookId)
-                .eq("content_status", "CONTENT_READY")
+                .eq("content_status", 3)
                 .last("LIMIT 1"));
         return mapping != null && mapping.novelId != null ? mapping : null;
     }
@@ -664,7 +665,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         ChapterSourceMapping chapterMapping = chapterSourceMappingMapper.selectOne(new QueryWrapper<ChapterSourceMapping>()
                 .eq("novel_mapping_id", mapping.id)
                 .eq("source_chapter_id", sourceChapterId)
-                .eq("content_status", "MERGED")
+                .eq("content_status", 2)
                 .last("LIMIT 1"));
         if (chapterMapping == null || chapterMapping.chapterId == null) {
             return false;
@@ -674,7 +675,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
     }
 
     private boolean isCompletedBookReady(CrawlBookRaw book) {
-        return book != null && "COMPLETED".equals(book.bookStatus) && isBookFullyContentReady(book);
+        return book != null && Objects.equals(3, book.bookStatus) && isBookFullyContentReady(book);
     }
 
     private boolean isBookFullyContentReady(CrawlBookRaw book) {
@@ -688,7 +689,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         Long readyChapterCount = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
                 .eq("book_raw_id", book.id)
-                .eq("content_status", "CONTENT_READY"));
+                .eq("content_status", 3));
         if (!chapterCount.equals(readyChapterCount)) {
             return false;
         }
@@ -698,15 +699,15 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         return chapterCount.equals(readyContentCount);
     }
 
-    private String normalizeBookStatus(String status) {
+    private int normalizeBookStatus(String status) {
         if (!StringUtils.hasText(status)) {
-            return "UNKNOWN";
+            return 1;
         }
         String value = status.trim().toUpperCase();
         return switch (value) {
-            case "COMPLETED", "FINISHED" -> "COMPLETED";
-            case "SERIALIZING", "ONGOING" -> "SERIALIZING";
-            default -> "UNKNOWN";
+            case "COMPLETED", "FINISHED" -> 3;
+            case "SERIALIZING", "ONGOING" -> 2;
+            default -> 1;
         };
     }
 
@@ -750,7 +751,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
                 readyCount++;
             }
         }
-        book.contentStatus = readyCount > 0 ? (reviewSource ? "PENDING_REVIEW" : "CONTENT_READY") : "CATALOG_READY";
+        book.contentStatus = readyCount > 0 ? (reviewSource ? 4 : 3) : 2;
         bookRawMapper.updateById(book);
         return completed;
     }
@@ -759,7 +760,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (chapter == null || chapter.id == null) {
             return false;
         }
-        if ("CONTENT_READY".equals(chapter.contentStatus) || "PENDING_REVIEW".equals(chapter.contentStatus)) {
+        if (Objects.equals(3, chapter.contentStatus) || Objects.equals(4, chapter.contentStatus)) {
             return true;
         }
         return contentRawMapper.selectCount(new QueryWrapper<CrawlContentRaw>()
@@ -793,8 +794,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         }
         if (hasExistingContent(chapter)) {
             // 公开源免审核：历史遗留的 PENDING_REVIEW 章节有正文时直接晋升为 CONTENT_READY
-            if (!isReviewRequiredSource(source) && "PENDING_REVIEW".equals(chapter.contentStatus)) {
-                chapter.contentStatus = "CONTENT_READY";
+            if (!isReviewRequiredSource(source) && Objects.equals(4, chapter.contentStatus)) {
+                chapter.contentStatus = 3;
                 chapter.updatedAt = LocalDateTime.now();
                 chapterRawMapper.updateById(chapter);
             }
@@ -829,8 +830,8 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         if (chapter.priceCoin == null) {
             chapter.priceCoin = 0;
         }
-        if (!StringUtils.hasText(chapter.contentStatus)) {
-            chapter.contentStatus = "ENTRY_READY";
+        if (chapter.contentStatus == null) {
+            chapter.contentStatus = 2;
         }
         chapter.crawledAt = now;
         chapter.updatedAt = now;
@@ -842,7 +843,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         boolean reviewSource = isReviewRequiredSource(source);
         if (StringUtils.hasText(content)) {
             chapter.contentHash = sha256(content);
-            chapter.contentStatus = reviewSource ? "PENDING_REVIEW" : "CONTENT_READY";
+            chapter.contentStatus = reviewSource ? 4 : 3;
             book.contentStatus = chapter.contentStatus;
             bookRawMapper.updateById(book);
         }
@@ -858,14 +859,14 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
 
     /** 授权 VIP 源内容需人工审核；公开源内容直接发布入库。 */
     private boolean isReviewRequiredSource(CrawlerSourceConfig source) {
-        return source != null && "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType);
+        return source != null && Objects.equals(2, source.sourceType);
     }
 
-    private boolean isContentReadyForSource(String contentStatus, boolean reviewSource) {
+    private boolean isContentReadyForSource(Integer contentStatus, boolean reviewSource) {
         if (reviewSource) {
-            return "PENDING_REVIEW".equals(contentStatus);
+            return Objects.equals(4, contentStatus);
         }
-        return "CONTENT_READY".equals(contentStatus);
+        return Objects.equals(3, contentStatus);
     }
 
     private boolean hasExistingContent(CrawlChapterRaw chapter) {
@@ -1093,7 +1094,7 @@ public class CrawlerExecutionServiceImpl implements CrawlerExecutionService {
         raw.content = content;
         raw.contentHash = sha256(content);
         raw.contentLength = content.length();
-        raw.storageMode = "MYSQL_LONGTEXT";
+        raw.storageMode = 1;
         if (raw.id == null) {
             contentRawMapper.insert(raw);
         } else {

@@ -18,7 +18,7 @@ public class CrawlChapterRaw {
     @TableField("is_vip")
     public Boolean vip;
     public Integer priceCoin;
-    public String contentStatus;
+    public Integer contentStatus;
     public String contentHash;
     public LocalDateTime crawledAt;
     public LocalDateTime createdAt;

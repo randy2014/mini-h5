@@ -13,9 +13,9 @@ public class CrawlTaskRecord {
     public Long sourceId;
     public Long rankSourceId;
     public Long credentialId;
-    public String taskType;
-    public String triggerType;
-    public String status;
+    public Integer taskType;
+    public Integer triggerType;
+    public Integer status;
     public String targetUrl;
     public Integer totalCount;
     public Integer successCount;

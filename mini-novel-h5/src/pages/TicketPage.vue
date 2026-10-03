@@ -55,8 +55,8 @@
         <div class="replies">
           <div class="reply-title">回复</div>
           <div v-for="r in replies" :key="r.id" class="reply">
-            <span :class="r.replierType === 'ADMIN' ? 'admin' : 'user'">
-              {{ r.replierType === 'ADMIN' ? '客服' : '我' }}
+            <span :class="r.replierType === 2 ? 'admin' : 'user'">
+              {{ r.replierType === 2 ? '客服' : '我' }}
             </span>
             <p>{{ r.content }}</p>
           </div>

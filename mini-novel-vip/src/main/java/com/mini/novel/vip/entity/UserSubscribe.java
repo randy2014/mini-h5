@@ -7,23 +7,23 @@ import java.time.LocalDateTime;
 
 @TableName("user_subscribe")
 public class UserSubscribe {
-    public static final String STATUS_ACTIVE = "ACTIVE";
-    public static final String STATUS_EXPIRED = "EXPIRED";
-    public static final String STATUS_CANCELLED = "CANCELLED";
+    public static final int STATUS_ACTIVE = 1;
+    public static final int STATUS_EXPIRED = 2;
+    public static final int STATUS_CANCELLED = 3;
 
-    public static final String PERIOD_WEEK = "WEEK";
-    public static final String PERIOD_MONTH = "MONTH";
-    public static final String PERIOD_QUARTER = "QUARTER";
-    public static final String PERIOD_YEAR = "YEAR";
+    public static final int PERIOD_WEEK = 1;
+    public static final int PERIOD_MONTH = 2;
+    public static final int PERIOD_QUARTER = 3;
+    public static final int PERIOD_YEAR = 4;
 
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
     private Long channelId;
-    private String periodType;
+    private Integer periodType;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
-    private String status;
+    private Integer status;
     private Long costCoins;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -34,14 +34,14 @@ public class UserSubscribe {
     public void setUserId(Long userId) { this.userId = userId; }
     public Long getChannelId() { return channelId; }
     public void setChannelId(Long channelId) { this.channelId = channelId; }
-    public String getPeriodType() { return periodType; }
-    public void setPeriodType(String periodType) { this.periodType = periodType; }
+    public Integer getPeriodType() { return periodType; }
+    public void setPeriodType(Integer periodType) { this.periodType = periodType; }
     public LocalDateTime getStartTime() { return startTime; }
     public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }
     public LocalDateTime getEndTime() { return endTime; }
     public void setEndTime(LocalDateTime endTime) { this.endTime = endTime; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public Integer getStatus() { return status; }
+    public void setStatus(Integer status) { this.status = status; }
     public Long getCostCoins() { return costCoins; }
     public void setCostCoins(Long costCoins) { this.costCoins = costCoins; }
     public LocalDateTime getCreatedAt() { return createdAt; }

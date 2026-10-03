@@ -87,16 +87,16 @@ class VipInvitationLoginServiceTest {
     static VipInvitationCode[] invalidCodes() {
         return new VipInvitationCode[]{
                 null,
-                code("DISABLED", 1, LocalDateTime.now().plusDays(1)),
-                code("ENABLED", 1, LocalDateTime.now().minusSeconds(1)),
-                code("ENABLED", 0, LocalDateTime.now().plusDays(1))
+                code(2, 1, LocalDateTime.now().plusDays(1)),
+                code(1, 1, LocalDateTime.now().minusSeconds(1)),
+                code(1, 0, LocalDateTime.now().plusDays(1))
         };
     }
 
     @Test
     void validInvitationGrantsVipOnceAndAuditsFingerprint() {
         stubNewUser(21L);
-        VipInvitationCode code = code("ENABLED", 2, LocalDateTime.now().plusDays(1));
+        VipInvitationCode code = code(1, 2, LocalDateTime.now().plusDays(1));
         code.setId(31L);
         code.setOwnerUserId(99L);
         code.setCode("SECRET-CODE");
@@ -104,7 +104,7 @@ class VipInvitationLoginServiceTest {
                 .thenReturn((VipInvitationRecord) null)
                 .thenReturn(null);
         when(codeMapper.selectByCodeForUpdate("SECRET-CODE")).thenReturn(code);
-        when(codeMapper.selectCurrentByOwner(21L)).thenReturn(null, code("ENABLED", 3, null));
+        when(codeMapper.selectCurrentByOwner(21L)).thenReturn(null, code(1, 3, null));
         when(appUserMapper.selectById(21L)).thenAnswer(ignored -> vipUser(21L));
 
         VipInvitationService.LoginResult result = service.loginOrCreate("13800000002", PASSWORD, "SECRET-CODE");
@@ -128,7 +128,7 @@ class VipInvitationLoginServiceTest {
         VipInvitationRecord existing = new VipInvitationRecord();
         existing.setInviteeUserId(22L);
         when(recordMapper.selectByInviteeForUpdate(22L)).thenReturn(existing);
-        when(codeMapper.selectCurrentByOwner(22L)).thenReturn(code("ENABLED", 3, null));
+        when(codeMapper.selectCurrentByOwner(22L)).thenReturn(code(1, 3, null));
         when(appUserMapper.selectById(22L)).thenAnswer(ignored -> vipUser(22L));
 
         VipInvitationService.LoginResult result = service.loginOrCreate("13800000003", PASSWORD, "PROMO");
@@ -145,8 +145,8 @@ class VipInvitationLoginServiceTest {
         VipInvitationRecord committedByFirstRequest = new VipInvitationRecord();
         committedByFirstRequest.setInviteeUserId(24L);
         when(recordMapper.selectByInviteeForUpdate(24L)).thenReturn(null, committedByFirstRequest);
-        when(codeMapper.selectByCodeForUpdate("PROMO")).thenReturn(code("ENABLED", 1, null));
-        when(codeMapper.selectCurrentByOwner(24L)).thenReturn(null, code("ENABLED", 3, null));
+        when(codeMapper.selectByCodeForUpdate("PROMO")).thenReturn(code(1, 1, null));
+        when(codeMapper.selectCurrentByOwner(24L)).thenReturn(null, code(1, 3, null));
         when(appUserMapper.selectById(24L)).thenAnswer(ignored -> vipUser(24L));
 
         VipInvitationService.LoginResult result = service.loginOrCreate("13800000005", PASSWORD, "PROMO");
@@ -160,7 +160,7 @@ class VipInvitationLoginServiceTest {
     void existingVipIsNeverDowngradedOrCharged() {
         AppUser existing = vipUser(23L);
         when(appUserMapper.selectByMobileForUpdate("13800000004")).thenReturn(existing);
-        when(codeMapper.selectCurrentByOwner(23L)).thenReturn(code("ENABLED", 3, null));
+        when(codeMapper.selectCurrentByOwner(23L)).thenReturn(code(1, 3, null));
         when(codeMapper.selectByCodeForUpdate("INVALID")).thenReturn(null);
 
         VipInvitationService.LoginResult result = service.loginOrCreate("13800000004", PASSWORD, "INVALID");
@@ -207,7 +207,7 @@ class VipInvitationLoginServiceTest {
         when(codeMapper.selectCurrentByOwner(anyLong())).thenReturn(null);
     }
 
-    private static VipInvitationCode code(String status, int remaining, LocalDateTime expiresAt) {
+    private static VipInvitationCode code(Integer status, int remaining, LocalDateTime expiresAt) {
         VipInvitationCode code = new VipInvitationCode();
         code.setStatus(status);
         code.setRemainingQuota(remaining);

@@ -42,7 +42,7 @@ public interface MediaPostService {
     void deleteAsset(Long assetId);
 
     /** 查询素材（admin 素材库/去重用）。 */
-    Page<MediaAsset> pageAssets(String type, String status, String keyword, long page, long pageSize);
+    Page<MediaAsset> pageAssets(Integer type, Integer status, String keyword, long page, long pageSize);
 
     /** 按 id 查素材（不存在抛业务异常），供流式/详情使用。 */
     MediaAsset requireAsset(Long assetId);

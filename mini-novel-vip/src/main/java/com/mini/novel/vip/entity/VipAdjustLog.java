@@ -10,11 +10,11 @@ public class VipAdjustLog {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
-    private String action;
+    private Integer action;
     private LocalDateTime beforeExpireTime;
     private LocalDateTime afterExpireTime;
-    private String beforeStatus;
-    private String afterStatus;
+    private Integer beforeStatus;
+    private Integer afterStatus;
     private Integer days;
     private String reason;
     private Long operatorId;
@@ -24,16 +24,16 @@ public class VipAdjustLog {
     public void setId(Long id) { this.id = id; }
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
-    public String getAction() { return action; }
-    public void setAction(String action) { this.action = action; }
+    public Integer getAction() { return action; }
+    public void setAction(Integer action) { this.action = action; }
     public LocalDateTime getBeforeExpireTime() { return beforeExpireTime; }
     public void setBeforeExpireTime(LocalDateTime beforeExpireTime) { this.beforeExpireTime = beforeExpireTime; }
     public LocalDateTime getAfterExpireTime() { return afterExpireTime; }
     public void setAfterExpireTime(LocalDateTime afterExpireTime) { this.afterExpireTime = afterExpireTime; }
-    public String getBeforeStatus() { return beforeStatus; }
-    public void setBeforeStatus(String beforeStatus) { this.beforeStatus = beforeStatus; }
-    public String getAfterStatus() { return afterStatus; }
-    public void setAfterStatus(String afterStatus) { this.afterStatus = afterStatus; }
+    public Integer getBeforeStatus() { return beforeStatus; }
+    public void setBeforeStatus(Integer beforeStatus) { this.beforeStatus = beforeStatus; }
+    public Integer getAfterStatus() { return afterStatus; }
+    public void setAfterStatus(Integer afterStatus) { this.afterStatus = afterStatus; }
     public Integer getDays() { return days; }
     public void setDays(Integer days) { this.days = days; }
     public String getReason() { return reason; }

@@ -10,8 +10,8 @@
       <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'OPEN' ? 'warning' : 'success'">
-            {{ row.status === 'OPEN' ? '处理中' : '已关闭' }}
+          <el-tag :type="row.status === 1 ? 'warning' : 'success'">
+            {{ row.status === 1 ? '处理中' : '已关闭' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -30,8 +30,8 @@
       <div class="detail-content">{{ current?.content }}</div>
       <el-divider>回复记录</el-divider>
       <div v-for="r in replies" :key="r.id" class="reply">
-        <span :class="r.replierType === 'ADMIN' ? 'admin' : 'user'">
-          {{ r.replierType === 'ADMIN' ? '客服' : '用户' }}
+        <span :class="r.replierType === 2 ? 'admin' : 'user'">
+          {{ r.replierType === 2 ? '客服' : '用户' }}
         </span>
         <p>{{ r.content }}</p>
       </div>

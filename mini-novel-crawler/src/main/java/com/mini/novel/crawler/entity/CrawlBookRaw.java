@@ -18,11 +18,11 @@ public class CrawlBookRaw {
     public String intro;
     public String coverUrl;
     public String categoryName;
-    public String bookStatus;
+    public Integer bookStatus;
     public Long wordCount;
     public Long heatScore;
     public String rankType;
-    public String contentStatus;
+    public Integer contentStatus;
     public String rawJson;
     public LocalDateTime crawledAt;
     public LocalDateTime createdAt;

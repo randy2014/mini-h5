@@ -141,8 +141,8 @@ class H528CrawlerSiteParserTest {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "h528_authorized";
         source.baseUrl = "http://www.h528.com";
-        source.sourceType = "AUTHORIZED_VIP";
-        source.authMode = "NONE";
+        source.sourceType = 2;
+        source.authMode = 1;
         source.ruleConfigJson = rules;
         return source;
     }

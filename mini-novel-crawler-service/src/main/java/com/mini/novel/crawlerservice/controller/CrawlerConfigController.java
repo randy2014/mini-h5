@@ -217,7 +217,7 @@ public class CrawlerConfigController {
         if (!isPrimarySource(source)) {
             return new Result<>(400, "Only 23qb_public is enabled as the stable crawler source.", null);
         }
-        List<CrawlTaskRecord> createdTasks = createRankTasks(schedule, rankSourceId, rankType, maxBooks, "MANUAL");
+        List<CrawlTaskRecord> createdTasks = createRankTasks(schedule, rankSourceId, rankType, maxBooks, 1);
         if (createdTasks.isEmpty()) {
             return new Result<>(409, "No rank task was created; matched ranks may already be pending or running.", null);
         }
@@ -244,11 +244,11 @@ public class CrawlerConfigController {
         if (task == null) {
             return new Result<>(404, "Crawler task does not exist.", null);
         }
-        if (!List.of("PENDING", "RUNNING").contains(task.status)) {
+        if (!List.of(1, 2).contains(task.status)) {
             return Result.ok(task);
         }
         LocalDateTime now = LocalDateTime.now();
-        task.status = "FAILED";
+        task.status = 4;
         task.finishedAt = now;
         task.updatedAt = now;
         task.message = (task.message == null ? "" : task.message)
@@ -274,7 +274,7 @@ public class CrawlerConfigController {
                     .eq("book_raw_id", book.id));
             Long readyChapterCount = chapterRawMapper.selectCount(new QueryWrapper<CrawlChapterRaw>()
                     .eq("book_raw_id", book.id)
-                    .eq("content_status", "CONTENT_READY"));
+                    .eq("content_status", 3));
             Long contentCount = contentRawMapper.selectCount(new QueryWrapper<CrawlContentRaw>()
                     .inSql("chapter_raw_id", "SELECT id FROM mini_novel_crawler.crawl_chapter_raw WHERE book_raw_id = " + book.id)
                     .gt("content_length", 0));
@@ -322,9 +322,9 @@ public class CrawlerConfigController {
     }
 
     @GetMapping("/merge-items")
-    public Result<List<Map<String, Object>>> mergeItems(@RequestParam(required = false) String status) {
+    public Result<List<Map<String, Object>>> mergeItems(@RequestParam(required = false) Integer status) {
         QueryWrapper<CrawlMergeItem> wrapper = new QueryWrapper<CrawlMergeItem>().orderByDesc("id").last("LIMIT 300");
-        if (StringUtils.hasText(status)) {
+        if (status != null) {
             wrapper.eq("match_status", status);
         }
         List<CrawlMergeItem> items = mergeItemMapper.selectList(wrapper);
@@ -375,11 +375,11 @@ public class CrawlerConfigController {
         if (!StringUtils.hasText(source.sourceCode)) {
             source.sourceCode = "custom_" + System.currentTimeMillis();
         }
-        if (!StringUtils.hasText(source.sourceType)) {
-            source.sourceType = "PUBLIC";
+        if (source.sourceType == null) {
+            source.sourceType = 1;
         }
-        if (!StringUtils.hasText(source.authMode)) {
-            source.authMode = "NONE";
+        if (source.authMode == null) {
+            source.authMode = 1;
         }
         if (source.enabled == null) {
             source.enabled = true;
@@ -396,7 +396,7 @@ public class CrawlerConfigController {
     }
 
     private List<CrawlTaskRecord> createRankTasks(CrawlSchedule schedule, Long rankSourceId, String rankType,
-                                                  Integer maxBooks, String triggerType) {
+                                                  Integer maxBooks, Integer triggerType) {
         List<CrawlRankSource> ranks = runnableRanks(schedule.sourceId, rankSourceId, rankType);
         LocalDateTime now = LocalDateTime.now();
         List<CrawlTaskRecord> createdTasks = new ArrayList<>();
@@ -409,9 +409,9 @@ public class CrawlerConfigController {
             task.sourceId = schedule.sourceId;
             task.rankSourceId = rank.id;
             task.credentialId = schedule.credentialId;
-            task.taskType = schedule.crawlVip != null && schedule.crawlVip ? "VIP_AND_PUBLIC" : "PUBLIC";
+            task.taskType = schedule.crawlVip != null && schedule.crawlVip ? 2 : 1;
             task.triggerType = triggerType;
-            task.status = "PENDING";
+            task.status = 1;
             task.targetUrl = taskTargetUrl(rank, maxBooks);
             task.totalCount = 0;
             task.successCount = 0;
@@ -425,7 +425,7 @@ public class CrawlerConfigController {
             if (schedule.autoMerge == null || schedule.autoMerge) {
                 CrawlMergeTask mergeTask = new CrawlMergeTask();
                 mergeTask.crawlTaskId = task.id;
-                mergeTask.status = "PENDING";
+                mergeTask.status = 1;
                 mergeTask.totalCount = 0;
                 mergeTask.mergedCount = 0;
                 mergeTask.pendingReviewCount = 0;
@@ -481,7 +481,7 @@ public class CrawlerConfigController {
         return taskRecordMapper.selectOne(new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", sourceId)
                 .eq("rank_source_id", rankSourceId)
-                .in("status", List.of("PENDING", "RUNNING"))
+                .in("status", List.of(1, 2))
                 .orderByDesc("id")
                 .last("LIMIT 1"));
     }
@@ -492,7 +492,7 @@ public class CrawlerConfigController {
         }
         Long count = taskRecordMapper.selectCount(new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", sourceId)
-                .eq("status", "RUNNING"));
+                .eq("status", 2));
         return count != null && count > 0;
     }
 
@@ -545,11 +545,11 @@ public class CrawlerConfigController {
         if (!StringUtils.hasText(credential.name)) {
             credential.name = "Crawler credential";
         }
-        if (!StringUtils.hasText(credential.authMode)) {
-            credential.authMode = "PASSWORD";
+        if (credential.authMode == null) {
+            credential.authMode = 1;
         }
-        if (!StringUtils.hasText(credential.status)) {
-            credential.status = "UNVERIFIED";
+        if (credential.status == null) {
+            credential.status = 1;
         }
         if (credential.enabled == null) {
             credential.enabled = true;

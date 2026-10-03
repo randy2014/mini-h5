@@ -21,16 +21,16 @@
             </el-form-item>
             <el-form-item label="源类型">
               <el-select v-model="sourceForm.sourceType">
-                <el-option label="公开内容" value="PUBLIC" />
-                <el-option label="授权 VIP" value="AUTHORIZED_VIP" />
-                <el-option label="手动导入" value="IMPORT" />
+                <el-option label="公开内容" :value="1" />
+                <el-option label="授权 VIP" :value="2" />
+                <el-option label="手动导入" :value="3" />
               </el-select>
             </el-form-item>
             <el-form-item label="认证方式">
               <el-select v-model="sourceForm.authMode">
-                <el-option label="无需认证" value="NONE" />
-                <el-option label="账号密码" value="PASSWORD" />
-                <el-option label="Cookie" value="COOKIE" />
+                <el-option label="无需认证" :value="1" />
+                <el-option label="账号密码" :value="2" />
+                <el-option label="Cookie" :value="3" />
               </el-select>
             </el-form-item>
             <el-form-item label="优先级">
@@ -60,8 +60,8 @@
             <el-table-column prop="sourceCode" label="编码" width="160" />
             <el-table-column prop="name" label="名称" min-width="160" />
             <el-table-column prop="baseUrl" label="域名" min-width="220" />
-            <el-table-column prop="sourceType" label="类型" width="130" />
-            <el-table-column prop="authMode" label="认证" width="110" />
+            <el-table-column label="类型" width="130"><template #default="{ row }">{{ sourceTypeText(row.sourceType) }}</template></el-table-column>
+            <el-table-column label="认证" width="110"><template #default="{ row }">{{ authModeText(row.authMode) }}</template></el-table-column>
             <el-table-column prop="priority" label="优先级" width="90" />
             <el-table-column label="状态" width="90">
               <template #default="{ row }">
@@ -98,8 +98,8 @@
             </el-form-item>
             <el-form-item label="认证方式">
               <el-select v-model="credentialForm.authMode">
-                <el-option label="账号密码" value="PASSWORD" />
-                <el-option label="Cookie" value="COOKIE" />
+                <el-option label="账号密码" :value="1" />
+                <el-option label="Cookie" :value="2" />
               </el-select>
             </el-form-item>
             <el-form-item label="用户名">
@@ -132,10 +132,10 @@
             <el-table-column prop="id" label="ID" width="72" />
             <el-table-column prop="sourceId" label="源 ID" width="90" />
             <el-table-column prop="name" label="名称" min-width="150" />
-            <el-table-column prop="authMode" label="认证方式" width="110" />
+            <el-table-column label="认证方式" width="110"><template #default="{ row }">{{ credentialAuthModeText(row.authMode) }}</template></el-table-column>
             <el-table-column label="Cookie配置" width="110"><template #default="{row}"><el-tag :type="row.credentialConfigured?'success':'info'">{{row.credentialConfigured?'已配置':'未配置'}}</el-tag></template></el-table-column>
             <el-table-column prop="username" label="用户名" width="160" />
-            <el-table-column prop="status" label="校验状态" width="120" />
+            <el-table-column label="校验状态" width="120"><template #default="{ row }">{{ credentialStatusText(row.status) }}</template></el-table-column>
             <el-table-column label="状态" width="90">
               <template #default="{ row }">
                 <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
@@ -304,9 +304,9 @@
             <el-table-column prop="scheduleId" label="计划 ID" width="90" />
             <el-table-column prop="sourceId" label="源 ID" width="90" />
             <el-table-column prop="credentialId" label="凭据 ID" width="90" />
-            <el-table-column prop="taskType" label="类型" width="130" />
+            <el-table-column label="类型" width="130"><template #default="{ row }">{{ taskTypeText(row.taskType) }}</template></el-table-column>
             <el-table-column label="状态" width="130">
-              <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
+              <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ taskStatusText(row.status) }}</el-tag></template>
             </el-table-column>
             <el-table-column label="进度" width="170">
               <template #default="{ row }">
@@ -321,8 +321,8 @@
             <el-table-column label="操作" width="190" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openTaskDetail(row)">详情</el-button>
-                <el-button link type="primary" :disabled="row.status === 'RUNNING'" @click="rerunTask(row)">继续执行</el-button>
-                <el-button link type="danger" :disabled="!['PENDING', 'RUNNING'].includes(row.status)" @click="interruptTask(row)">标记中断</el-button>
+                <el-button link type="primary" :disabled="row.status === 2" @click="rerunTask(row)">继续执行</el-button>
+                <el-button link type="danger" :disabled="![1, 2].includes(row.status)" @click="interruptTask(row)">标记中断</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -344,7 +344,7 @@
             <el-table-column prop="id" label="ID" width="72" />
             <el-table-column prop="crawlTaskId" label="采集任务 ID" width="110" />
             <el-table-column label="状态" width="130">
-              <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
+              <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ mergeStatusText(row.status) }}</el-tag></template>
             </el-table-column>
             <el-table-column prop="totalCount" label="总数" width="80" />
             <el-table-column prop="mergedCount" label="已入库" width="90" />
@@ -368,9 +368,9 @@
             <el-table-column prop="sourceCode" label="来源" width="130" />
             <el-table-column prop="title" label="书名" min-width="160" />
             <el-table-column prop="author" label="作者" width="120" />
-            <el-table-column prop="contentStatus" label="原始状态" width="120" />
+            <el-table-column label="原始状态" width="120"><template #default="{ row }">{{ contentStatusText(row.contentStatus) }}</template></el-table-column>
             <el-table-column label="审核状态" width="130">
-              <template #default="{ row }"><el-tag :type="statusType(row.matchStatus)">{{ row.matchStatus }}</el-tag></template>
+              <template #default="{ row }"><el-tag :type="statusType(row.matchStatus)">{{ matchStatusText(row.matchStatus) }}</el-tag></template>
             </el-table-column>
             <el-table-column prop="message" label="原因" min-width="240" />
             <el-table-column prop="sourceUrl" label="来源地址" min-width="260" show-overflow-tooltip />
@@ -397,8 +397,8 @@
         <el-table-column prop="id" label="Raw ID" width="90" />
         <el-table-column prop="title" label="书名" min-width="180" />
         <el-table-column prop="author" label="作者" width="120" />
-        <el-table-column prop="bookStatus" label="状态" width="110" />
-        <el-table-column prop="contentStatus" label="正文状态" width="130" />
+        <el-table-column label="状态" width="110"><template #default="{ row }">{{ bookStatusText(row.bookStatus) }}</template></el-table-column>
+        <el-table-column label="正文状态" width="130"><template #default="{ row }">{{ contentStatusText(row.contentStatus) }}</template></el-table-column>
         <el-table-column label="完整率" width="150">
           <template #default="{ row }">
             <el-progress :percentage="bookCompletePercent(row)" :status="row.gapCount > 0 ? 'warning' : undefined" />
@@ -454,8 +454,8 @@ function defaultSource() {
     sourceCode: 'qidian_public',
     name: '起点公开榜单',
     baseUrl: 'https://www.qidian.com',
-    sourceType: 'PUBLIC',
-    authMode: 'NONE',
+    sourceType: 1,
+    authMode: 1,
     ruleConfigJson: '',
     enabled: true,
     priority: 10,
@@ -468,13 +468,13 @@ function defaultCredential() {
     id: null,
     sourceId: null,
     name: '授权采集账号',
-    authMode: 'PASSWORD',
+    authMode: 1,
     username: '',
     passwordCipher: '',
     cookieText: '',
     headersJson: '',
     loginUrl: '',
-    status: 'UNVERIFIED',
+    status: 1,
     enabled: true,
     remark: ''
   };
@@ -514,11 +514,11 @@ function assignForm(target, value) {
 }
 
 function statusType(status) {
-  return status === 'MERGED' || status === 'SUCCESS' || status === 'DONE'
+  return status === 3
     ? 'success'
-    : status === 'FAILED'
+    : status === 4 || status === 6
       ? 'danger'
-      : status === 'RUNNING' || status === 'MERGING'
+      : status === 2 || status === 5
         ? 'warning'
     : 'info';
 }
@@ -531,10 +531,21 @@ function taskPercent(row) {
 }
 
 function progressStatus(status) {
-  if (status === 'SUCCESS' || status === 'MERGED') return 'success';
-  if (status === 'FAILED') return 'exception';
+  if (status === 3) return 'success';
+  if (status === 4 || status === 6) return 'exception';
   return undefined;
 }
+
+function sourceTypeText(v) { return { 1: '公开内容', 2: '授权VIP', 3: '手动导入' }[v] || v; }
+function authModeText(v) { return { 1: '无需认证', 2: '账号密码', 3: 'Cookie' }[v] || v; }
+function credentialAuthModeText(v) { return { 1: '账号密码', 2: 'Cookie' }[v] || v; }
+function credentialStatusText(v) { return { 1: '未校验', 2: '有效', 3: '无效', 4: '过期' }[v] || v; }
+function taskTypeText(v) { return { 1: '公开采集', 2: '公开+授权VIP', 3: '手动导入', 4: '授权VIP' }[v] || v; }
+function taskStatusText(v) { return { 1: '待执行', 2: '执行中', 3: '成功', 4: '失败', 5: '部分成功', 6: '无数据' }[v] || v; }
+function mergeStatusText(v) { return { 1: '待清洗', 2: '清洗中', 3: '全部入库', 4: '部分入库', 5: '待审核', 6: '失败' }[v] || v; }
+function matchStatusText(v) { return { 1: '待处理', 2: '重新清洗中', 3: '已入库', 4: '部分入库', 5: '待审核', 6: '失败', 7: '忽略' }[v] || v; }
+function bookStatusText(v) { return { 1: '未知', 2: '连载', 3: '完结' }[v] || v; }
+function contentStatusText(v) { return { 1: '仅元数据', 2: '目录已抓', 3: '正文已抓', 4: '待审核', 5: '已拒绝', 6: '可发布', 7: '失败' }[v] || v; }
 
 function bookCompletePercent(row) {
   const total = Number(row.chapterCount || 0);
@@ -619,7 +630,7 @@ async function loadMergeTasks() {
 async function loadMergeItems() {
   loading.mergeItems = true;
   try {
-    mergeItems.value = await crawlerApi.get('/config/merge-items?status=PENDING_REVIEW');
+    mergeItems.value = await crawlerApi.get('/config/merge-items?status=5');
   } finally {
     loading.mergeItems = false;
   }

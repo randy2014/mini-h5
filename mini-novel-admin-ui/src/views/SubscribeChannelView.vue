@@ -17,8 +17,8 @@
       <el-table-column prop="description" label="简介" show-overflow-tooltip />
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'PUBLISHED' ? 'success' : 'info'">
-            {{ row.status === 'PUBLISHED' ? '已发布' : '已下架' }}
+          <el-tag :type="row.status === 1 ? 'success' : 'info'">
+            {{ row.status === 1 ? '已发布' : '已下架' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -26,7 +26,7 @@
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">查看频道详情</el-button>
           <el-button link type="primary" @click="open(row)">编辑</el-button>
-          <el-button v-if="row.status !== 'PUBLISHED'" link type="success" @click="publish(row)">发布</el-button>
+          <el-button v-if="row.status !== 1" link type="success" @click="publish(row)">发布</el-button>
           <el-button v-else link type="warning" @click="offline(row)">下架</el-button>
         </template>
       </el-table-column>

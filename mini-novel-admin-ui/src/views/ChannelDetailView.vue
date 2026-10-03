@@ -5,8 +5,8 @@
         <div class="cd-title">
           <el-button @click="$router.push('/admin/subscribe-channels')">← 返回列表</el-button>
           <h3>{{ channel.name || '-' }}</h3>
-          <el-tag :type="channel.status === 'PUBLISHED' ? 'success' : 'info'">
-            {{ channel.status === 'PUBLISHED' ? '已发布' : '已下架' }}
+          <el-tag :type="channel.status === 1 ? 'success' : 'info'">
+            {{ channel.status === 1 ? '已发布' : '已下架' }}
           </el-tag>
         </div>
         <div class="cd-stats">
@@ -22,7 +22,7 @@
         <el-descriptions-item label="更新时间">{{ formatDateTime(channel.updatedAt) }}</el-descriptions-item>
         <el-descriptions-item label="简介" :span="4">{{ channel.description || '无简介' }}</el-descriptions-item>
       </el-descriptions>
-      <p v-if="channel.status !== 'PUBLISHED'" class="cd-warn">
+      <p v-if="channel.status !== 1" class="cd-warn">
         该频道当前未发布，会员端不可见；在「订阅频道管理」发布后，下方内容才会对会员展示。
       </p>
     </el-card>
@@ -106,8 +106,8 @@
                 <div class="cd-post-title">{{ item.post.title }}</div>
                 <div class="cd-post-tags">
                   <el-tag size="small" :type="typeTag(item.post.type)">{{ typeText(item.post.type) }}</el-tag>
-                  <el-tag v-if="countOf(item, 'IMAGE')" size="small" effect="plain">图 {{ countOf(item, 'IMAGE') }}</el-tag>
-                  <el-tag v-if="countOf(item, 'VIDEO')" size="small" effect="plain">视频 {{ countOf(item, 'VIDEO') }}</el-tag>
+                  <el-tag v-if="countOf(item, 1)" size="small" effect="plain">图 {{ countOf(item, 1) }}</el-tag>
+                  <el-tag v-if="countOf(item, 2)" size="small" effect="plain">视频 {{ countOf(item, 2) }}</el-tag>
                 </div>
                 <div class="cd-post-time">
                   <span>{{ formatDateTime(item.post.publishedAt) }}</span>
@@ -135,11 +135,11 @@
       <div class="cd-preview">
         <template v-for="a in preview?.assets || []" :key="a.id">
           <div class="cd-preview-item">
-            <video v-if="a.fileType === 'VIDEO'" :src="assetUrl(a, 'main')" controls preload="metadata" class="cd-preview-video" />
+            <video v-if="a.fileType === 2" :src="assetUrl(a, 'main')" controls preload="metadata" class="cd-preview-video" />
             <el-image v-else :src="assetUrl(a, 'main')" fit="contain" class="cd-preview-image" preview-teleported
                       :preview-src-list="previewImages" />
             <div class="cd-preview-meta">
-              <span class="muted">{{ a.fileType === 'VIDEO' ? '视频' : '图片' }} #{{ a.id }} · {{ fileInfo(a) }}</span>
+              <span class="muted">{{ a.fileType === 2 ? '视频' : '图片' }} #{{ a.id }} · {{ fileInfo(a) }}</span>
               <el-button link type="primary" @click="openAssetInNewTab(a)">新窗口打开原文件</el-button>
             </div>
           </div>
@@ -192,7 +192,7 @@ const novelViewVisible = ref(false);
 const viewingNovel = ref(null);
 
 const previewImages = computed(() =>
-  (preview.value?.assets || []).filter((a) => a.fileType === 'IMAGE').map((a) => assetUrl(a, 'main'))
+  (preview.value?.assets || []).filter((a) => a.fileType === 1).map((a) => assetUrl(a, 'main'))
 );
 
 function statusText(status) {
@@ -200,11 +200,11 @@ function statusText(status) {
 }
 
 function typeText(type) {
-  return ({ IMAGE: '图文', VIDEO: '视频', MIXED: '图文+视频' })[type] || '内容';
+  return ({ 1: '图文', 2: '视频', 3: '图文+视频' })[type] || '内容';
 }
 
 function typeTag(type) {
-  return ({ IMAGE: 'success', VIDEO: 'warning', MIXED: 'primary' })[type] || 'info';
+  return ({ 1: 'success', 2: 'warning', 3: 'primary' })[type] || 'info';
 }
 
 function assetUrl(asset, kind) {
@@ -219,7 +219,7 @@ function coverUrl(item) {
   if (!cover) {
     return '';
   }
-  return assetUrl(cover, cover.fileType === 'VIDEO' ? 'poster' : 'thumb');
+  return assetUrl(cover, cover.fileType === 2 ? 'poster' : 'thumb');
 }
 
 function countOf(item, fileType) {

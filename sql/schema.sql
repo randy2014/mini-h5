@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS `novel` (
   `cover_url` VARCHAR(512) NULL COMMENT '封面图片地址',
   `intro` TEXT NULL COMMENT '小说简介',
   `category_id` BIGINT NULL COMMENT '分类 ID，关联 category.id',
-  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '小说状态枚举：0=下架，1=连载，2=完结',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '小说状态枚举：0=下架，1=正常，2=完结，3=草稿，4=审核中',
   `vip_required` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否 VIP 小说：0=否，1=是；H5 用于区分 VIP 展示',
   `free_chapter_count` INT NOT NULL DEFAULT 0 COMMENT '免费章节数量，超过后可按 VIP 权限控制',
   `word_count` BIGINT NOT NULL DEFAULT 0 COMMENT '总字数，来自采集或人工维护',
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS `app_user` (
   `status` TINYINT NOT NULL DEFAULT 1 COMMENT '用户状态枚举：0=禁用，1=正常',
   `vip_status` TINYINT NOT NULL DEFAULT 0 COMMENT 'VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP',
   `vip_expire_time` DATETIME NULL COMMENT 'VIP 到期时间',
-  `vip_source` VARCHAR(32) NULL COMMENT 'VIP 来源：INVITATION/ADMIN/ORDER',
+  `vip_source` TINYINT NULL COMMENT 'VIP 来源枚举：1=邀请，2=后台，3=订单',
   `vip_activated_at` DATETIME NULL COMMENT 'VIP 最近激活时间',
   `vip_disabled_at` DATETIME NULL COMMENT 'VIP 最近停用/降级时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS `user_vip` (
   `end_time` DATETIME NOT NULL COMMENT 'VIP 结束时间',
   `status` TINYINT NOT NULL DEFAULT 1 COMMENT '权益状态枚举：0=失效，1=生效',
   `source_order_id` BIGINT NULL COMMENT '来源订单 ID，关联 vip_order.id',
-  `source_type` VARCHAR(32) NULL COMMENT '权益来源类型：INVITATION/ADMIN/ORDER',
+  `source_type` TINYINT NULL COMMENT '权益来源类型枚举：1=邀请，2=后台，3=订单',
   `source_ref_id` BIGINT NULL COMMENT '来源记录 ID，如邀请记录或订单 ID',
   `operator_id` BIGINT NULL COMMENT '后台操作人 ID',
   `remark` VARCHAR(255) NULL COMMENT '权益备注',
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS `vip_invitation_code` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `owner_user_id` BIGINT NOT NULL,
   `code` VARCHAR(32) NOT NULL,
-  `status` VARCHAR(32) NOT NULL DEFAULT 'ENABLED',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=启用，2=停用，3=已撤销，4=过期',
   `total_quota` INT NOT NULL DEFAULT 3,
   `used_quota` INT NOT NULL DEFAULT 0,
   `remaining_quota` INT NOT NULL DEFAULT 3,
@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS `vip_invitation_record` (
   `code_snapshot` VARCHAR(32) NOT NULL,
   `inviter_user_id` BIGINT NOT NULL,
   `invitee_user_id` BIGINT NOT NULL,
-  `status` VARCHAR(32) NOT NULL DEFAULT 'ACTIVATED',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=已激活',
   `activated_at` DATETIME,
   `remark` VARCHAR(255),
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS `vip_order` (
   `vip_plan_id` BIGINT NOT NULL COMMENT '套餐 ID，关联 vip_plan.id',
   `amount` DECIMAL(10,2) NOT NULL COMMENT '订单金额',
   `pay_status` TINYINT NOT NULL DEFAULT 0 COMMENT '支付状态枚举：0=待支付，1=已支付，2=已取消，3=已退款',
-  `pay_channel` VARCHAR(32) NULL COMMENT '支付渠道，如 wechat、alipay、manual',
+  `pay_channel` TINYINT NULL COMMENT '支付渠道枚举：1=微信，2=支付宝，3=人工',
   `paid_at` DATETIME NULL COMMENT '支付完成时间',
   `expire_at` DATETIME NULL COMMENT '订单过期时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -255,7 +255,7 @@ CREATE TABLE IF NOT EXISTS `crawl_task` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '旧版任务主键 ID',
   `source_id` BIGINT NOT NULL COMMENT '旧版采集源 ID',
   `novel_id` BIGINT NULL COMMENT '关联业务小说 ID',
-  `task_type` VARCHAR(32) NOT NULL COMMENT '任务类型，如 LIST、DETAIL、CHAPTER',
+  `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=列表，2=详情，3=章节，4=手动',
   `status` TINYINT NOT NULL DEFAULT 0 COMMENT '任务状态枚举：0=待执行，1=成功，2=失败',
   `message` VARCHAR(1024) NULL COMMENT '任务执行消息或失败原因',
   `retry_count` INT NOT NULL DEFAULT 0 COMMENT '重试次数',
@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS `novel_identity` (
   `normalized_title` VARCHAR(128) NOT NULL COMMENT '归一化书名，用于去重匹配',
   `normalized_author` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '归一化作者，用于去重匹配',
   `novel_id` BIGINT NULL COMMENT '已合并到的业务小说 ID，关联 novel.id',
-  `match_status` VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '身份状态枚举：ACTIVE=有效，MERGED=已合并，IGNORED=忽略',
+  `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '身份状态枚举：1=有效，2=已合并，3=忽略',
   `confidence_score` INT NOT NULL DEFAULT 100 COMMENT '匹配置信度，0-100',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -291,8 +291,8 @@ CREATE TABLE IF NOT EXISTS `novel_source_mapping` (
   `source_url` VARCHAR(512) NULL COMMENT '来源站点书籍地址',
   `source_title` VARCHAR(128) NOT NULL COMMENT '来源站点书名',
   `source_author` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '来源站点作者',
-  `content_status` VARCHAR(32) NOT NULL DEFAULT 'META_ONLY' COMMENT '内容状态枚举：META_ONLY=仅元数据，CATALOG_READY=目录已抓，CONTENT_READY=正文可用，PENDING_REVIEW=待审核，FAILED=失败，IGNORED=忽略',
-  `match_status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '匹配状态枚举：PENDING=待匹配，MATCHED=已匹配，MERGED=已入库，PARTIAL_MERGED=部分入库，PENDING_REVIEW=待审核，FAILED=失败，IGNORED=忽略',
+  `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文可用，4=待审核，5=失败，6=忽略',
+  `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '匹配状态枚举：1=待匹配，2=已匹配，3=已入库，4=部分入库，5=待审核，6=失败，7=忽略',
   `confidence_score` INT NOT NULL DEFAULT 0 COMMENT '来源匹配置信度，0-100',
   `last_crawled_at` DATETIME NULL COMMENT '最近采集时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -314,7 +314,7 @@ CREATE TABLE IF NOT EXISTS `chapter_source_mapping` (
   `chapter_no` INT NOT NULL COMMENT '来源章节序号',
   `is_vip` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否来源 VIP 章节：0=免费，1=VIP',
   `content_hash` CHAR(64) NULL COMMENT '来源正文哈希',
-  `content_status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '内容状态枚举：PENDING=待处理，MERGED=已入库，PENDING_REVIEW=待审核，FAILED=失败，IGNORED=忽略',
+  `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=待处理，2=已入库，3=待审核，4=失败，5=忽略',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY uk_source_chapter (novel_mapping_id, source_chapter_id),
@@ -368,7 +368,7 @@ CREATE TABLE IF NOT EXISTS `chapter_content` (
   `chapter_id` BIGINT NOT NULL COMMENT '章节 ID，关联 chapter.id，一章一条正文记录',
   `content` LONGTEXT NULL COMMENT '章节完整正文，MySQL LONGTEXT 最大约 4GB 字节',
   `content_hash` VARCHAR(64) NULL COMMENT '正文 SHA-256 或其他哈希，用于去重和变更检测',
-  `storage_type` VARCHAR(16) NOT NULL DEFAULT 'MYSQL' COMMENT '正文存储方式枚举：MYSQL=存 MySQL，FILE=文件/对象存储',
+  `storage_type` TINYINT NOT NULL DEFAULT 1 COMMENT '正文存储方式枚举：1=存 MySQL，2=文件/对象存储',
   `content_path` VARCHAR(512) NULL COMMENT '当 storage_type=FILE 时的文件或对象存储路径',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -389,11 +389,11 @@ CREATE TABLE IF NOT EXISTS `chapter_segment` (
 CREATE TABLE IF NOT EXISTS `vip_adjust_log` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '调整日志主键 ID',
   `user_id` BIGINT NOT NULL COMMENT '被调整用户 ID',
-  `action` VARCHAR(32) NOT NULL COMMENT '调整动作枚举：GRANT=开通/延长，REVOKE=取消，EXPIRE=置为过期，CORRECT=纠正',
+  `action` TINYINT NOT NULL COMMENT '调整动作枚举：1=开通/延长，2=降级，3=暂停，4=取消，5=恢复，6=设置',
   `before_expire_time` DATETIME NULL COMMENT '调整前 VIP 到期时间',
   `after_expire_time` DATETIME NULL COMMENT '调整后 VIP 到期时间',
-  `before_status` VARCHAR(32) NULL COMMENT '调整前状态',
-  `after_status` VARCHAR(32) NULL COMMENT '调整后状态',
+  `before_status` TINYINT NULL COMMENT '调整前 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP',
+  `after_status` TINYINT NULL COMMENT '调整后 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP',
   `days` INT NULL COMMENT '调整天数，正数延长，负数扣减',
   `reason` VARCHAR(255) NULL COMMENT '调整原因',
   `operator_id` BIGINT NULL COMMENT '后台操作人 ID',
@@ -406,7 +406,7 @@ CREATE TABLE IF NOT EXISTS `subscribe_channel` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(64) NOT NULL COMMENT '频道名称',
   `sort` INT NOT NULL DEFAULT 100 COMMENT '排序',
-  `status` VARCHAR(16) NOT NULL DEFAULT 'OFFLINE' COMMENT 'PUBLISHED=已发布 / OFFLINE=已下架',
+  `status` TINYINT NOT NULL DEFAULT 2 COMMENT '状态枚举：1=已发布，2=已下架',
   `cover` VARCHAR(512) DEFAULT NULL COMMENT '封面（非必填）',
   `description` VARCHAR(512) DEFAULT NULL COMMENT '简介（非必填）',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -438,7 +438,7 @@ CREATE TABLE IF NOT EXISTS `user_coin_log` (
   `user_id` BIGINT NOT NULL,
   `change_amount` BIGINT NOT NULL COMMENT '变动量（正=增加，负=扣减）',
   `balance_after` BIGINT NOT NULL COMMENT '变动后余额',
-  `biz_type` VARCHAR(32) NOT NULL COMMENT 'RECHARGE=后台充值 / SUBSCRIBE=订阅扣费 / REFUND=冲正 / GRANT=赠送',
+  `biz_type` TINYINT NOT NULL COMMENT '业务类型枚举：1=后台充值，2=订阅扣费，3=冲正，4=赠送',
   `biz_id` VARCHAR(64) DEFAULT NULL COMMENT '业务 id（如订阅记录 id）',
   `operator_id` BIGINT DEFAULT NULL COMMENT '操作人（后台充值）',
   `remark` VARCHAR(255) DEFAULT NULL COMMENT '备注',
@@ -451,10 +451,10 @@ CREATE TABLE IF NOT EXISTS `user_subscribe` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,
   `channel_id` BIGINT NOT NULL COMMENT '订阅频道 id',
-  `period_type` VARCHAR(16) NOT NULL COMMENT 'WEEK / MONTH / QUARTER / YEAR',
+  `period_type` TINYINT NOT NULL COMMENT '周期类型枚举：1=周，2=月，3=季，4=年',
   `start_time` DATETIME NOT NULL,
   `end_time` DATETIME NOT NULL,
-  `status` VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE / EXPIRED / CANCELLED',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=生效，2=过期，3=取消',
   `cost_coins` BIGINT NOT NULL DEFAULT 0 COMMENT '扣币数',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -469,7 +469,7 @@ CREATE TABLE IF NOT EXISTS `ticket` (
   `user_id` BIGINT NOT NULL COMMENT '提交人用户 id',
   `title` VARCHAR(100) NOT NULL COMMENT '标题',
   `content` VARCHAR(300) NOT NULL COMMENT '正文（标题+正文合计 ≤300 字）',
-  `status` VARCHAR(16) NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN=待处理 / CLOSED=已关闭',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=待处理，2=已关闭',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -480,7 +480,7 @@ CREATE TABLE IF NOT EXISTS `ticket_reply` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `ticket_id` BIGINT NOT NULL COMMENT '工单 id',
   `content` VARCHAR(1000) NOT NULL COMMENT '回复内容',
-  `replier_type` VARCHAR(16) NOT NULL COMMENT 'USER=用户 / ADMIN=管理员',
+  `replier_type` TINYINT NOT NULL COMMENT '回复人类型枚举：1=用户，2=管理员',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_ticket (ticket_id)
@@ -488,7 +488,7 @@ CREATE TABLE IF NOT EXISTS `ticket_reply` (
 
 CREATE TABLE IF NOT EXISTS `media_asset` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `file_type` VARCHAR(8) NOT NULL COMMENT 'IMAGE / VIDEO',
+  `file_type` TINYINT NOT NULL COMMENT '文件类型枚举：1=图片，2=视频',
   `original_name` VARCHAR(255) NOT NULL COMMENT '原始文件名',
   `md5` CHAR(32) NOT NULL COMMENT '文件 md5（去重）',
   `size_bytes` BIGINT NOT NULL COMMENT '原始上传大小',
@@ -498,7 +498,7 @@ CREATE TABLE IF NOT EXISTS `media_asset` (
   `main_path` VARCHAR(512) DEFAULT NULL COMMENT '成品相对路径(图片jpg/视频mp4；视频转码完成前为空)',
   `thumb_path` VARCHAR(512) DEFAULT NULL COMMENT '缩略图相对路径(图片必生成；视频转码完成后生成)',
   `poster_path` VARCHAR(512) DEFAULT NULL COMMENT '视频封面帧相对路径',
-  `status` VARCHAR(16) NOT NULL DEFAULT 'PROCESSING' COMMENT 'PROCESSING/READY/FAILED',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=处理中，2=就绪，3=失败',
   `fail_reason` VARCHAR(512) DEFAULT NULL COMMENT '失败原因',
   `operator_id` BIGINT DEFAULT NULL COMMENT '上传运营',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -513,9 +513,9 @@ CREATE TABLE IF NOT EXISTS `media_post` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `channel_id` BIGINT DEFAULT NULL COMMENT '挂载的订阅频道(草稿期可空/下架后保留)',
   `title` VARCHAR(120) NOT NULL COMMENT '标题(必填)',
-  `type` VARCHAR(8) NOT NULL DEFAULT 'IMAGE' COMMENT 'IMAGE/VIDEO/MIXED(自动判定,无纯文本帖)',
+  `type` TINYINT NOT NULL DEFAULT 1 COMMENT '内容类型枚举：1=图文，2=视频，3=图文+视频（自动判定，无纯文本帖）',
   `cover_asset_id` BIGINT DEFAULT NULL COMMENT '封面素材(默认视频封面帧或首图)',
-  `status` VARCHAR(16) NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT=草稿 / PUBLISHED=已发布',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=草稿，2=已发布',
   `operator_id` BIGINT DEFAULT NULL COMMENT '操作运营',
   `published_at` DATETIME DEFAULT NULL COMMENT '发布时间(倒序依据)',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -523,7 +523,7 @@ CREATE TABLE IF NOT EXISTS `media_post` (
   PRIMARY KEY (id),
   KEY idx_channel_status (channel_id, status, id),
   KEY idx_status (status, id),
-  CONSTRAINT chk_media_post_status CHECK (status IN ('DRAFT','PUBLISHED'))
+  CONSTRAINT chk_media_post_status CHECK (status IN (1,2))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订阅频道多媒体内容(草稿/已发布)';
 
 CREATE TABLE IF NOT EXISTS `media_post_asset` (
@@ -547,8 +547,8 @@ CREATE TABLE IF NOT EXISTS `crawl_source` (
   `source_code` VARCHAR(64) NOT NULL COMMENT '采集源编码，系统内唯一，如 qidian_public',
   `name` VARCHAR(64) NOT NULL COMMENT '采集源名称',
   `base_url` VARCHAR(512) NOT NULL COMMENT '采集源基础域名或入口地址',
-  `source_type` VARCHAR(32) NOT NULL DEFAULT 'PUBLIC' COMMENT '来源类型枚举：PUBLIC=公开网页，AUTHORIZED_VIP=授权 VIP，IMPORT=手动导入',
-  `auth_mode` VARCHAR(32) NOT NULL DEFAULT 'NONE' COMMENT '认证方式枚举：NONE=无需认证，PASSWORD=账号密码，COOKIE=Cookie',
+  `source_type` TINYINT NOT NULL DEFAULT 1 COMMENT '来源类型枚举：1=公开网页，2=授权 VIP，3=手动导入',
+  `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=无需认证，2=账号密码，3=Cookie',
   `rule_config_json` JSON,
   `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用：0=停用，1=启用',
   `priority` INT NOT NULL DEFAULT 100 COMMENT '采集优先级，越小越优先',
@@ -598,15 +598,15 @@ CREATE TABLE IF NOT EXISTS `crawl_source_credential` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '凭据主键 ID',
   `source_id` BIGINT NOT NULL COMMENT '采集源 ID，关联 crawl_source.id',
   `name` VARCHAR(64) NOT NULL COMMENT '凭据名称',
-  `auth_mode` VARCHAR(32) NOT NULL DEFAULT 'PASSWORD' COMMENT '认证方式枚举：PASSWORD=账号密码，COOKIE=Cookie',
+  `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=账号密码，2=Cookie',
   `username` VARCHAR(128) NULL COMMENT '登录用户名',
   `password_cipher` VARCHAR(1000) NULL COMMENT '密码密文或加密占位，不在前端明文回显',
   `cookie_text` TEXT NULL COMMENT 'Cookie 文本，用于授权抓取',
   `headers_json` JSON NULL COMMENT '额外请求头 JSON，如 User-Agent',
   `login_url` VARCHAR(512) NULL COMMENT '登录页面地址',
-  `status` VARCHAR(32) NOT NULL DEFAULT 'UNVERIFIED' COMMENT '凭据状态枚举：UNVERIFIED=未校验，VALID=有效，INVALID=无效，EXPIRED=过期',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '凭据状态枚举：1=未校验，2=有效，3=无效，4=过期',
   `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用：0=停用，1=启用',
-  `last_check_status` VARCHAR(32) NULL COMMENT '最近一次校验结果',
+  `last_check_status` TINYINT NULL COMMENT '最近一次校验结果：1=未校验，2=有效，3=无效，4=过期',
   `last_check_at` DATETIME NULL COMMENT '最近一次校验时间',
   `remark` VARCHAR(255) NULL COMMENT '备注',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -621,9 +621,9 @@ CREATE TABLE IF NOT EXISTS `crawl_task_v2` (
   `source_id` BIGINT NULL COMMENT '采集源 ID',
   `rank_source_id` BIGINT NULL COMMENT '榜单源 ID',
   `credential_id` BIGINT NULL COMMENT '授权凭据 ID',
-  `task_type` VARCHAR(32) NOT NULL COMMENT '任务类型枚举：PUBLIC=公开采集，VIP_AND_PUBLIC=公开+授权 VIP，IMPORT=手动导入',
-  `trigger_type` VARCHAR(32) NOT NULL DEFAULT 'MANUAL' COMMENT '触发方式枚举：MANUAL=手动，SCHEDULE=调度，SYSTEM=系统补偿',
-  `status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '任务状态枚举：PENDING=待执行，RUNNING=执行中，SUCCESS=成功，FAILED=失败',
+  `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=公开采集，2=公开+授权 VIP，3=手动导入，4=授权 VIP',
+  `trigger_type` TINYINT NOT NULL DEFAULT 1 COMMENT '触发方式枚举：1=手动，2=调度，3=系统补偿',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '任务状态枚举：1=待执行，2=执行中，3=成功，4=失败，5=部分成功，6=无数据',
   `target_url` VARCHAR(512) NULL COMMENT '本次采集目标 URL',
   `total_count` INT NOT NULL DEFAULT 0 COMMENT '发现或计划处理总数',
   `success_count` INT NOT NULL DEFAULT 0 COMMENT '成功处理数量',
@@ -650,11 +650,11 @@ CREATE TABLE IF NOT EXISTS `crawl_book_raw` (
   `intro` TEXT NULL COMMENT '来源简介',
   `cover_url` VARCHAR(512) NULL COMMENT '来源封面地址',
   `category_name` VARCHAR(64) NULL COMMENT '来源分类名称',
-  `book_status` VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN' COMMENT '来源书籍状态枚举：UNKNOWN=未知，SERIALIZING=连载，COMPLETED=完结',
+  `book_status` TINYINT NOT NULL DEFAULT 1 COMMENT '来源书籍状态枚举：1=未知，2=连载，3=完结',
   `word_count` BIGINT NOT NULL DEFAULT 0 COMMENT '来源字数',
   `heat_score` BIGINT NOT NULL DEFAULT 0 COMMENT '热度分或榜单排序分',
   `rank_type` VARCHAR(32) NULL COMMENT '来源榜单类型：MONTH/WEEK/COMPLETED/HOT',
-  `content_status` VARCHAR(32) NOT NULL DEFAULT 'META_ONLY' COMMENT '内容状态枚举：META_ONLY=仅元数据，CATALOG_READY=目录已抓，CONTENT_READY=正文已抓，PENDING_REVIEW=待审核，FAILED=失败',
+  `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文已抓，4=待审核，5=已拒绝，6=可发布，7=失败',
   `raw_json` JSON NULL COMMENT '来源原始 JSON 或解析快照',
   `crawled_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '采集时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -677,7 +677,7 @@ CREATE TABLE IF NOT EXISTS `crawl_chapter_raw` (
   `title` VARCHAR(255) NOT NULL COMMENT '来源章节标题',
   `is_vip` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否来源 VIP 章节：0=免费，1=VIP',
   `price_coin` INT NOT NULL DEFAULT 0 COMMENT '来源章节价格或站内价格，0 表示免费',
-  `content_status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '正文状态枚举：PENDING=待抓取，CONTENT_READY=正文已抓，PENDING_REVIEW=待审核，FAILED=失败',
+  `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '正文状态枚举：1=待抓取，2=目录就绪，3=正文已抓，4=待审核，5=已拒绝，6=失败',
   `content_hash` CHAR(64) NULL COMMENT '正文哈希',
   `crawled_at` DATETIME NULL COMMENT '章节采集时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -694,7 +694,7 @@ CREATE TABLE IF NOT EXISTS `crawl_content_raw` (
   `content` LONGTEXT NOT NULL COMMENT '原始章节正文，必须是真实正文，不应仅为 URL 或 ID',
   `content_hash` CHAR(64) NOT NULL COMMENT '正文哈希，用于去重和变更检测',
   `content_length` INT NOT NULL DEFAULT 0 COMMENT '正文字符长度',
-  `storage_mode` VARCHAR(32) NOT NULL DEFAULT 'MYSQL_LONGTEXT' COMMENT '存储模式枚举：MYSQL_LONGTEXT=MySQL 长文本，FILE=文件/对象存储',
+  `storage_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '存储模式枚举：1=MySQL 长文本，2=文件/对象存储',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   UNIQUE KEY uk_chapter_content (chapter_raw_id),
   KEY idx_content_hash (content_hash)
@@ -703,7 +703,7 @@ CREATE TABLE IF NOT EXISTS `crawl_content_raw` (
 CREATE TABLE IF NOT EXISTS `crawl_merge_task` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '清洗任务主键 ID',
   `crawl_task_id` BIGINT NULL COMMENT '来源采集任务 ID，关联 crawl_task_v2.id',
-  `status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '清洗状态枚举：PENDING=待清洗，MERGING=清洗中，MERGED=全部入库，PARTIAL_MERGED=部分入库，PENDING_REVIEW=待审核，FAILED=失败',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '清洗状态枚举：1=待清洗，2=清洗中，3=全部入库，4=部分入库，5=待审核，6=失败',
   `total_count` INT NOT NULL DEFAULT 0 COMMENT '处理书籍总数',
   `merged_count` INT NOT NULL DEFAULT 0 COMMENT '成功入库书籍数',
   `pending_review_count` INT NOT NULL DEFAULT 0 COMMENT '待审核书籍数',
@@ -723,7 +723,7 @@ CREATE TABLE IF NOT EXISTS `crawl_merge_item` (
   `book_raw_id` BIGINT NOT NULL COMMENT '原始小说 ID，关联 crawl_book_raw.id',
   `identity_id` BIGINT NULL COMMENT '小说统一身份 ID，关联 mini_novel.novel_identity.id',
   `novel_id` BIGINT NULL COMMENT '业务小说 ID，关联 mini_novel.novel.id；未入库时为空',
-  `match_status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '明细状态枚举：PENDING=待处理，RETRYING=重新清洗中，MERGED=已入库，PARTIAL_MERGED=部分入库，PENDING_REVIEW=待审核，FAILED=失败，IGNORED=人工忽略',
+  `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '明细状态枚举：1=待处理，2=重新清洗中，3=已入库，4=部分入库，5=待审核，6=失败，7=人工忽略',
   `confidence_score` INT NOT NULL DEFAULT 0 COMMENT '匹配置信度，0-100',
   `message` VARCHAR(1000) NULL COMMENT '明细处理说明、待审核原因或失败原因',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -822,8 +822,8 @@ INSERT INTO crawl_source (
   'shuqi_public',
   '书旗公开免费章节',
   'https://www.shuqi.com',
-  'PUBLIC',
-  'NONE',
+  1,
+  1,
   JSON_OBJECT('parser', 'shuqi', 'freeOnly', true, 'verifiedBookId', '8872073'),
   1,
   20,
@@ -1069,8 +1069,8 @@ INSERT INTO crawl_source (
   '23qb_public',
   '铅笔小说公开分类',
   'https://www.23qb.net',
-  'PUBLIC',
-  'NONE',
+  1,
+  1,
   JSON_OBJECT(
     'rankRules', JSON_OBJECT(
       'bookList', '.module-items .module-item',
@@ -1250,8 +1250,8 @@ INSERT INTO crawl_source (
   'h528_authorized',
   'h528 authorized single-post PoC',
   'http://www.h528.com',
-  'AUTHORIZED_VIP',
-  'NONE',
+  2,
+  1,
   JSON_OBJECT(
     'isolation', JSON_OBJECT(
       'reviewOnly', true,
@@ -1338,8 +1338,8 @@ INSERT INTO crawl_source (
   'novel69h_authorized',
   '69hnovel authorized single-article PoC',
   'https://www.69hnovel.com',
-  'AUTHORIZED_VIP',
-  'NONE',
+  2,
+  1,
   JSON_OBJECT(
     'isolation', JSON_OBJECT(
       'reviewOnly', true,
@@ -1424,8 +1424,8 @@ FROM (
    AND b.source_book_id = nsm.source_book_id
   JOIN mini_novel_crawler.crawl_source s
     ON s.source_code = nsm.source_code
-   AND s.source_type = 'AUTHORIZED_VIP'
-  WHERE nsm.content_status = 'CONTENT_READY'
+   AND s.source_type = 2
+  WHERE nsm.content_status = 3
 ) seed
 ON DUPLICATE KEY UPDATE name=VALUES(name), enabled=1, updated_at=NOW();
 INSERT INTO vip_source_category_mapping(source_code, source_category_name, normalized_name, vip_category_id, enabled)
@@ -1444,7 +1444,7 @@ FROM (
   FROM mini_novel_crawler.crawl_book_raw b
   JOIN mini_novel_crawler.crawl_source s
     ON s.source_code = b.source_code
-   AND s.source_type = 'AUTHORIZED_VIP'
+   AND s.source_type = 2
 ) seed
 JOIN vip_category vc ON vc.normalized_name = seed.normalized_name
 ON DUPLICATE KEY UPDATE
@@ -1460,7 +1460,7 @@ JOIN mini_novel_crawler.crawl_book_raw b
  AND b.source_book_id = nsm.source_book_id
 JOIN mini_novel_crawler.crawl_source s
   ON s.source_code = nsm.source_code
- AND s.source_type = 'AUTHORIZED_VIP'
+ AND s.source_type = 2
 JOIN (
   SELECT
     source_code,
@@ -1478,7 +1478,7 @@ JOIN (
   ON seed.source_code = nsm.source_code
  AND seed.source_book_id = nsm.source_book_id
 JOIN vip_category vc ON vc.normalized_name = seed.normalized_name
-WHERE nsm.content_status = 'CONTENT_READY'
+WHERE nsm.content_status = 3
 ON DUPLICATE KEY UPDATE
   vip_category_id=VALUES(vip_category_id),
   source_code=VALUES(source_code),
@@ -1708,23 +1708,23 @@ FROM (
   FROM mini_novel_crawler.crawl_book_raw b
   JOIN mini_novel_crawler.crawl_source s
     ON s.source_code = b.source_code
-   AND s.source_type = 'AUTHORIZED_VIP'
+   AND s.source_type = 2
   UNION ALL
   SELECT source_code, '', '', '其他'
   FROM mini_novel_crawler.crawl_source
-  WHERE source_type = 'AUTHORIZED_VIP'
+  WHERE source_type = 2
   UNION ALL
   SELECT source_code, 'UNKNOWN', 'unknown', '其他'
   FROM mini_novel_crawler.crawl_source
-  WHERE source_type = 'AUTHORIZED_VIP'
+  WHERE source_type = 2
   UNION ALL
   SELECT source_code, 'AUTHORIZED_VIP', 'authorizedvip', '其他'
   FROM mini_novel_crawler.crawl_source
-  WHERE source_type = 'AUTHORIZED_VIP'
+  WHERE source_type = 2
   UNION ALL
   SELECT source_code, 'VIP_AUTH_REVIEW', 'vipauthreview', '其他'
   FROM mini_novel_crawler.crawl_source
-  WHERE source_type = 'AUTHORIZED_VIP'
+  WHERE source_type = 2
 ) seed
 JOIN vip_category target ON target.normalized_name = seed.target_name
 ON DUPLICATE KEY UPDATE
@@ -1929,8 +1929,8 @@ INSERT INTO crawl_source (
   'kkxsz_public',
   '2k小说站授权免费源',
   'https://www.kkxsz.com',
-  'PUBLIC',
-  'NONE',
+  1,
+  1,
   JSON_OBJECT(
     'authorization', JSON_OBJECT(
       'proofRef', 'offline_company_agreement',
@@ -2029,7 +2029,7 @@ WHERE auto_merge = 1;
 UPDATE mini_novel_crawler.crawl_schedule s
 JOIN mini_novel_crawler.crawl_source src ON src.id = s.source_id
 SET s.auto_merge = 1, s.updated_at = NOW()
-WHERE s.enabled = 1 AND src.source_type = 'PUBLIC';
+WHERE s.enabled = 1 AND src.source_type = 1;
 -- 2) "已发布"的待审章节自动转回 CONTENT_READY——幂等纠正
 --    判断依据：novel_source_mapping + chapter_source_mapping 中已存在该章节的发布映射
 --    （说明该章节内容已入库，无论公开源自动合并还是授权源审核通过，都无需再审核）。
@@ -2040,8 +2040,8 @@ JOIN mini_novel.novel_source_mapping m
   ON m.source_code = b.source_code AND m.source_book_id = b.source_book_id
 JOIN mini_novel.chapter_source_mapping csm
   ON csm.novel_mapping_id = m.id AND csm.source_chapter_id = c.source_chapter_id
-SET c.content_status = 'CONTENT_READY', c.updated_at = NOW()
-WHERE c.content_status = 'PENDING_REVIEW';
+SET c.content_status = 3, c.updated_at = NOW()
+WHERE c.content_status = 4;
 
 -- ============================================================================
 -- §4  后续变更区（新变更写在这里，保持幂等）
@@ -2057,6 +2057,134 @@ WHERE c.content_status = 'PENDING_REVIEW';
 --     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'novel' AND INDEX_NAME = 'idx_new');
 --   SET @ddl := IF(@idx_exists = 0, 'ALTER TABLE novel ADD INDEX idx_new (title, author)', 'SELECT 1');
 --   PREPARE ddl_stmt FROM @ddl; EXECUTE ddl_stmt; DEALLOCATE PREPARE ddl_stmt;
+
+-- ----------------------------------------------------------------------------
+-- 类型/状态字符串枚举 → 1~N 整数枚举迁移（幂等，可重复执行）
+-- 顺序：先 UPDATE 把旧字符串映射为新整数，再 MODIFY 列类型为 TINYINT。
+-- 幂等：二次执行时列已是 TINYINT，字符串字面量在数值上下文被隐式转为 0，
+--       而映射目标除 before/after_status（0 基）外均为 >=1，UPDATE 匹配不到行、MODIFY 无变化。
+-- rank_type（crawl_rank_source / crawl_book_raw）保留字符串，不在此迁移范围。
+-- ----------------------------------------------------------------------------
+
+USE `mini_novel`;
+
+UPDATE `app_user` SET `vip_source` = CASE `vip_source` WHEN 'INVITATION' THEN 1 WHEN 'ADMIN' THEN 2 WHEN 'ORDER' THEN 3 END WHERE `vip_source` IN ('INVITATION','ADMIN','ORDER');
+ALTER TABLE `app_user` MODIFY `vip_source` TINYINT NULL COMMENT 'VIP 来源枚举：1=邀请，2=后台，3=订单';
+
+UPDATE `vip_invitation_code` SET `status` = CASE `status` WHEN 'ENABLED' THEN 1 WHEN 'DISABLED' THEN 2 WHEN 'REVOKED' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE `status` IN ('ENABLED','DISABLED','REVOKED','EXPIRED');
+ALTER TABLE `vip_invitation_code` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=启用，2=停用，3=已撤销，4=过期';
+
+UPDATE `vip_invitation_record` SET `status` = CASE `status` WHEN 'ACTIVATED' THEN 1 END WHERE `status` IN ('ACTIVATED');
+ALTER TABLE `vip_invitation_record` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=已激活';
+
+UPDATE `vip_order` SET `pay_channel` = CASE `pay_channel` WHEN 'wechat' THEN 1 WHEN 'alipay' THEN 2 WHEN 'manual' THEN 3 END WHERE `pay_channel` IN ('wechat','alipay','manual');
+ALTER TABLE `vip_order` MODIFY `pay_channel` TINYINT NULL COMMENT '支付渠道枚举：1=微信，2=支付宝，3=人工';
+
+UPDATE `crawl_task` SET `task_type` = CASE `task_type` WHEN 'LIST' THEN 1 WHEN 'DETAIL' THEN 2 WHEN 'CHAPTER' THEN 3 WHEN 'MANUAL' THEN 4 END WHERE `task_type` IN ('LIST','DETAIL','CHAPTER','MANUAL');
+ALTER TABLE `crawl_task` MODIFY `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=列表，2=详情，3=章节，4=手动';
+
+UPDATE `novel_identity` SET `match_status` = CASE `match_status` WHEN 'ACTIVE' THEN 1 WHEN 'MERGED' THEN 2 WHEN 'IGNORED' THEN 3 END WHERE `match_status` IN ('ACTIVE','MERGED','IGNORED');
+ALTER TABLE `novel_identity` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '身份状态枚举：1=有效，2=已合并，3=忽略';
+
+UPDATE `novel_source_mapping` SET `content_status` = CASE `content_status` WHEN 'META_ONLY' THEN 1 WHEN 'CATALOG_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'FAILED' THEN 5 WHEN 'IGNORED' THEN 6 END WHERE `content_status` IN ('META_ONLY','CATALOG_READY','CONTENT_READY','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `novel_source_mapping` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文可用，4=待审核，5=失败，6=忽略';
+
+UPDATE `novel_source_mapping` SET `match_status` = CASE `match_status` WHEN 'PENDING' THEN 1 WHEN 'MATCHED' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 WHEN 'IGNORED' THEN 7 END WHERE `match_status` IN ('PENDING','MATCHED','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `novel_source_mapping` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '匹配状态枚举：1=待匹配，2=已匹配，3=已入库，4=部分入库，5=待审核，6=失败，7=忽略';
+
+UPDATE `chapter_source_mapping` SET `content_status` = CASE `content_status` WHEN 'PENDING' THEN 1 WHEN 'MERGED' THEN 2 WHEN 'PENDING_REVIEW' THEN 3 WHEN 'FAILED' THEN 4 WHEN 'IGNORED' THEN 5 END WHERE `content_status` IN ('PENDING','MERGED','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `chapter_source_mapping` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=待处理，2=已入库，3=待审核，4=失败，5=忽略';
+
+UPDATE `chapter_content` SET `storage_type` = CASE `storage_type` WHEN 'MYSQL' THEN 1 WHEN 'FILE' THEN 2 END WHERE `storage_type` IN ('MYSQL','FILE');
+ALTER TABLE `chapter_content` MODIFY `storage_type` TINYINT NOT NULL DEFAULT 1 COMMENT '正文存储方式枚举：1=存 MySQL，2=文件/对象存储';
+
+UPDATE `vip_adjust_log` SET `action` = CASE `action` WHEN 'UPGRADE' THEN 1 WHEN 'DOWNGRADE' THEN 2 WHEN 'SUSPEND' THEN 3 WHEN 'CANCEL' THEN 4 WHEN 'RESTORE' THEN 5 WHEN 'SET' THEN 6 END WHERE `action` IN ('UPGRADE','DOWNGRADE','SUSPEND','CANCEL','RESTORE','SET');
+ALTER TABLE `vip_adjust_log` MODIFY `action` TINYINT NOT NULL COMMENT '调整动作枚举：1=开通/延长，2=降级，3=暂停，4=取消，5=恢复，6=设置';
+
+UPDATE `vip_adjust_log` SET `before_status` = CAST(`before_status` AS UNSIGNED) WHERE `before_status` IS NOT NULL;
+UPDATE `vip_adjust_log` SET `after_status` = CAST(`after_status` AS UNSIGNED) WHERE `after_status` IS NOT NULL;
+ALTER TABLE `vip_adjust_log` MODIFY `before_status` TINYINT NULL COMMENT '调整前 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP';
+ALTER TABLE `vip_adjust_log` MODIFY `after_status` TINYINT NULL COMMENT '调整后 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP';
+
+UPDATE `user_vip` SET `source_type` = CASE `source_type` WHEN 'INVITATION' THEN 1 WHEN 'ADMIN' THEN 2 WHEN 'ORDER' THEN 3 END WHERE `source_type` IN ('INVITATION','ADMIN','ORDER');
+ALTER TABLE `user_vip` MODIFY `source_type` TINYINT NULL COMMENT '权益来源类型枚举：1=邀请，2=后台，3=订单';
+
+UPDATE `subscribe_channel` SET `status` = CASE `status` WHEN 'PUBLISHED' THEN 1 WHEN 'OFFLINE' THEN 2 END WHERE `status` IN ('PUBLISHED','OFFLINE');
+ALTER TABLE `subscribe_channel` MODIFY `status` TINYINT NOT NULL DEFAULT 2 COMMENT '状态枚举：1=已发布，2=已下架';
+
+UPDATE `user_coin_log` SET `biz_type` = CASE `biz_type` WHEN 'RECHARGE' THEN 1 WHEN 'SUBSCRIBE' THEN 2 WHEN 'REFUND' THEN 3 WHEN 'GRANT' THEN 4 END WHERE `biz_type` IN ('RECHARGE','SUBSCRIBE','REFUND','GRANT');
+ALTER TABLE `user_coin_log` MODIFY `biz_type` TINYINT NOT NULL COMMENT '业务类型枚举：1=后台充值，2=订阅扣费，3=冲正，4=赠送';
+
+UPDATE `user_subscribe` SET `period_type` = CASE `period_type` WHEN 'WEEK' THEN 1 WHEN 'MONTH' THEN 2 WHEN 'QUARTER' THEN 3 WHEN 'YEAR' THEN 4 END WHERE `period_type` IN ('WEEK','MONTH','QUARTER','YEAR');
+ALTER TABLE `user_subscribe` MODIFY `period_type` TINYINT NOT NULL COMMENT '周期类型枚举：1=周，2=月，3=季，4=年';
+
+UPDATE `user_subscribe` SET `status` = CASE `status` WHEN 'ACTIVE' THEN 1 WHEN 'EXPIRED' THEN 2 WHEN 'CANCELLED' THEN 3 END WHERE `status` IN ('ACTIVE','EXPIRED','CANCELLED');
+ALTER TABLE `user_subscribe` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=生效，2=过期，3=取消';
+
+UPDATE `ticket` SET `status` = CASE `status` WHEN 'OPEN' THEN 1 WHEN 'CLOSED' THEN 2 END WHERE `status` IN ('OPEN','CLOSED');
+ALTER TABLE `ticket` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=待处理，2=已关闭';
+
+UPDATE `ticket_reply` SET `replier_type` = CASE `replier_type` WHEN 'USER' THEN 1 WHEN 'ADMIN' THEN 2 END WHERE `replier_type` IN ('USER','ADMIN');
+ALTER TABLE `ticket_reply` MODIFY `replier_type` TINYINT NOT NULL COMMENT '回复人类型枚举：1=用户，2=管理员';
+
+UPDATE `media_asset` SET `file_type` = CASE `file_type` WHEN 'IMAGE' THEN 1 WHEN 'VIDEO' THEN 2 END WHERE `file_type` IN ('IMAGE','VIDEO');
+ALTER TABLE `media_asset` MODIFY `file_type` TINYINT NOT NULL COMMENT '文件类型枚举：1=图片，2=视频';
+
+UPDATE `media_asset` SET `status` = CASE `status` WHEN 'PROCESSING' THEN 1 WHEN 'READY' THEN 2 WHEN 'FAILED' THEN 3 END WHERE `status` IN ('PROCESSING','READY','FAILED');
+ALTER TABLE `media_asset` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=处理中，2=就绪，3=失败';
+
+UPDATE `media_post` SET `type` = CASE `type` WHEN 'IMAGE' THEN 1 WHEN 'VIDEO' THEN 2 WHEN 'MIXED' THEN 3 END WHERE `type` IN ('IMAGE','VIDEO','MIXED');
+ALTER TABLE `media_post` MODIFY `type` TINYINT NOT NULL DEFAULT 1 COMMENT '内容类型枚举：1=图文，2=视频，3=图文+视频（自动判定，无纯文本帖）';
+
+ALTER TABLE `media_post` DROP CHECK `chk_media_post_status`;
+UPDATE `media_post` SET `status` = CASE `status` WHEN 'DRAFT' THEN 1 WHEN 'PUBLISHED' THEN 2 END WHERE `status` IN ('DRAFT','PUBLISHED');
+ALTER TABLE `media_post` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=草稿，2=已发布';
+ALTER TABLE `media_post` ADD CONSTRAINT `chk_media_post_status` CHECK (`status` IN (1,2));
+
+USE `mini_novel_crawler`;
+
+UPDATE `crawl_source` SET `source_type` = CASE `source_type` WHEN 'PUBLIC' THEN 1 WHEN 'AUTHORIZED_VIP' THEN 2 WHEN 'IMPORT' THEN 3 END WHERE `source_type` IN ('PUBLIC','AUTHORIZED_VIP','IMPORT');
+ALTER TABLE `crawl_source` MODIFY `source_type` TINYINT NOT NULL DEFAULT 1 COMMENT '来源类型枚举：1=公开网页，2=授权 VIP，3=手动导入';
+
+UPDATE `crawl_source` SET `auth_mode` = CASE `auth_mode` WHEN 'NONE' THEN 1 WHEN 'PASSWORD' THEN 2 WHEN 'COOKIE' THEN 3 END WHERE `auth_mode` IN ('NONE','PASSWORD','COOKIE');
+ALTER TABLE `crawl_source` MODIFY `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=无需认证，2=账号密码，3=Cookie';
+
+UPDATE `crawl_source_credential` SET `auth_mode` = CASE `auth_mode` WHEN 'PASSWORD' THEN 1 WHEN 'COOKIE' THEN 2 END WHERE `auth_mode` IN ('PASSWORD','COOKIE');
+ALTER TABLE `crawl_source_credential` MODIFY `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=账号密码，2=Cookie';
+
+UPDATE `crawl_source_credential` SET `status` = CASE `status` WHEN 'UNVERIFIED' THEN 1 WHEN 'VALID' THEN 2 WHEN 'INVALID' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE `status` IN ('UNVERIFIED','VALID','INVALID','EXPIRED');
+ALTER TABLE `crawl_source_credential` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '凭据状态枚举：1=未校验，2=有效，3=无效，4=过期';
+
+UPDATE `crawl_source_credential` SET `last_check_status` = CASE `last_check_status` WHEN 'UNVERIFIED' THEN 1 WHEN 'VALID' THEN 2 WHEN 'INVALID' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE `last_check_status` IN ('UNVERIFIED','VALID','INVALID','EXPIRED');
+ALTER TABLE `crawl_source_credential` MODIFY `last_check_status` TINYINT NULL COMMENT '最近一次校验结果：1=未校验，2=有效，3=无效，4=过期';
+
+UPDATE `crawl_task_v2` SET `task_type` = CASE `task_type` WHEN 'PUBLIC' THEN 1 WHEN 'VIP_AND_PUBLIC' THEN 2 WHEN 'IMPORT' THEN 3 WHEN 'AUTHORIZED_VIP' THEN 4 END WHERE `task_type` IN ('PUBLIC','VIP_AND_PUBLIC','IMPORT','AUTHORIZED_VIP');
+ALTER TABLE `crawl_task_v2` MODIFY `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=公开采集，2=公开+授权 VIP，3=手动导入，4=授权 VIP';
+
+UPDATE `crawl_task_v2` SET `trigger_type` = CASE `trigger_type` WHEN 'MANUAL' THEN 1 WHEN 'SCHEDULE' THEN 2 WHEN 'SYSTEM' THEN 3 END WHERE `trigger_type` IN ('MANUAL','SCHEDULE','SYSTEM');
+ALTER TABLE `crawl_task_v2` MODIFY `trigger_type` TINYINT NOT NULL DEFAULT 1 COMMENT '触发方式枚举：1=手动，2=调度，3=系统补偿';
+
+UPDATE `crawl_task_v2` SET `status` = CASE `status` WHEN 'PENDING' THEN 1 WHEN 'RUNNING' THEN 2 WHEN 'SUCCESS' THEN 3 WHEN 'FAILED' THEN 4 WHEN 'PARTIAL_SUCCESS' THEN 5 WHEN 'NO_DATA' THEN 6 END WHERE `status` IN ('PENDING','RUNNING','SUCCESS','FAILED','PARTIAL_SUCCESS','NO_DATA');
+ALTER TABLE `crawl_task_v2` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '任务状态枚举：1=待执行，2=执行中，3=成功，4=失败，5=部分成功，6=无数据';
+
+UPDATE `crawl_book_raw` SET `book_status` = CASE `book_status` WHEN 'UNKNOWN' THEN 1 WHEN 'SERIALIZING' THEN 2 WHEN 'COMPLETED' THEN 3 END WHERE `book_status` IN ('UNKNOWN','SERIALIZING','COMPLETED');
+ALTER TABLE `crawl_book_raw` MODIFY `book_status` TINYINT NOT NULL DEFAULT 1 COMMENT '来源书籍状态枚举：1=未知，2=连载，3=完结';
+
+UPDATE `crawl_book_raw` SET `content_status` = CASE `content_status` WHEN 'META_ONLY' THEN 1 WHEN 'CATALOG_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'REVIEW_REJECTED' THEN 5 WHEN 'PUBLISH_READY' THEN 6 WHEN 'FAILED' THEN 7 END WHERE `content_status` IN ('META_ONLY','CATALOG_READY','CONTENT_READY','PENDING_REVIEW','REVIEW_REJECTED','PUBLISH_READY','FAILED');
+ALTER TABLE `crawl_book_raw` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文已抓，4=待审核，5=已拒绝，6=可发布，7=失败';
+
+UPDATE `crawl_chapter_raw` SET `content_status` = CASE `content_status` WHEN 'PENDING' THEN 1 WHEN 'ENTRY_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'REVIEW_REJECTED' THEN 5 WHEN 'FAILED' THEN 6 END WHERE `content_status` IN ('PENDING','ENTRY_READY','CONTENT_READY','PENDING_REVIEW','REVIEW_REJECTED','FAILED');
+ALTER TABLE `crawl_chapter_raw` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '正文状态枚举：1=待抓取，2=目录就绪，3=正文已抓，4=待审核，5=已拒绝，6=失败';
+
+UPDATE `crawl_content_raw` SET `storage_mode` = CASE `storage_mode` WHEN 'MYSQL_LONGTEXT' THEN 1 WHEN 'FILE' THEN 2 END WHERE `storage_mode` IN ('MYSQL_LONGTEXT','FILE');
+ALTER TABLE `crawl_content_raw` MODIFY `storage_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '存储模式枚举：1=MySQL 长文本，2=文件/对象存储';
+
+UPDATE `crawl_merge_task` SET `status` = CASE `status` WHEN 'PENDING' THEN 1 WHEN 'MERGING' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 END WHERE `status` IN ('PENDING','MERGING','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED');
+ALTER TABLE `crawl_merge_task` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '清洗状态枚举：1=待清洗，2=清洗中，3=全部入库，4=部分入库，5=待审核，6=失败';
+
+UPDATE `crawl_merge_item` SET `match_status` = CASE `match_status` WHEN 'PENDING' THEN 1 WHEN 'RETRYING' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 WHEN 'IGNORED' THEN 7 END WHERE `match_status` IN ('PENDING','RETRYING','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `crawl_merge_item` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '明细状态枚举：1=待处理，2=重新清洗中，3=已入库，4=部分入库，5=待审核，6=失败，7=人工忽略';
+
 -- ============================================================================
 
 -- ============================================================================

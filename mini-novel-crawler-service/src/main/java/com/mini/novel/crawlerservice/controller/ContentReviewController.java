@@ -58,10 +58,10 @@ public class ContentReviewController {
         String source = validateSource(sourceCode);
         String sql = """
             SELECT
-              SUM(c.content_status='PENDING_REVIEW') pendingTotal,
-              SUM(c.content_status='PENDING_REVIEW' AND r.id IS NOT NULL) reviewableTotal,
-              SUM(c.content_status='PENDING_REVIEW' AND r.id IS NULL) recrawlTotal,
-              SUM(c.content_status='REVIEW_REJECTED') rejectedTotal
+              SUM(c.content_status=4) pendingTotal,
+              SUM(c.content_status=4 AND r.id IS NOT NULL) reviewableTotal,
+              SUM(c.content_status=4 AND r.id IS NULL) recrawlTotal,
+              SUM(c.content_status=5) rejectedTotal
             FROM mini_novel_crawler.crawl_chapter_raw c
             JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
@@ -86,7 +86,7 @@ public class ContentReviewController {
         String source = validateSource(sourceCode);
         int safeSize = Math.max(1, Math.min(100, size));
         int safePage = Math.max(1, page);
-        String where = " c.content_status IN ('PENDING_REVIEW','ENTRY_READY','REVIEW_REJECTED') ";
+        String where = " c.content_status IN (4,2,5) ";
         if (StringUtils.hasText(source)) {
             where += " AND b.source_code=? ";
         }
@@ -97,12 +97,12 @@ public class ContentReviewController {
                 : jdbc.queryForObject(countSql, Long.class);
         String sql = """
             SELECT b.id bookRawId,b.title,b.source_code sourceCode,COUNT(*) chapterCount,
-              SUM(c.content_status='PENDING_REVIEW' AND r.id IS NOT NULL) reviewableCount,
-              SUM(c.content_status='PENDING_REVIEW' AND r.id IS NULL) recrawlCount,
-              SUM(c.content_status='ENTRY_READY') missingCount,
-              SUM(c.content_status='CONTENT_READY') readyCount,
-              SUM(c.content_status='REVIEW_REJECTED') rejectedCount,
-              GROUP_CONCAT(CASE WHEN c.content_status='PENDING_REVIEW' AND r.id IS NOT NULL THEN c.id END ORDER BY c.id) reviewableChapterIdsCsv
+              SUM(c.content_status=4 AND r.id IS NOT NULL) reviewableCount,
+              SUM(c.content_status=4 AND r.id IS NULL) recrawlCount,
+              SUM(c.content_status=2) missingCount,
+              SUM(c.content_status=3) readyCount,
+              SUM(c.content_status=5) rejectedCount,
+              GROUP_CONCAT(CASE WHEN c.content_status=4 AND r.id IS NOT NULL THEN c.id END ORDER BY c.id) reviewableChapterIdsCsv
             FROM mini_novel_crawler.crawl_book_raw b
             JOIN mini_novel_crawler.crawl_chapter_raw c ON c.book_raw_id=b.id
             LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
@@ -155,7 +155,7 @@ public class ContentReviewController {
             FROM mini_novel_crawler.crawl_chapter_raw c
             JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
-            WHERE c.id=? AND c.content_status='PENDING_REVIEW' %s LIMIT 1
+            WHERE c.id=? AND c.content_status=4 %s LIMIT 1
             """;
         Object[] params = StringUtils.hasText(source)
                 ? new Object[]{chapterRawId, source}
@@ -245,7 +245,7 @@ public class ContentReviewController {
             FROM mini_novel_crawler.crawl_chapter_raw c
             JOIN mini_novel_crawler.crawl_book_raw b ON b.id=c.book_raw_id
             JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
-            WHERE c.content_status='PENDING_REVIEW' %s
+            WHERE c.content_status=4 %s
             ORDER BY c.id
             """;
         return StringUtils.hasText(sourceCode)
@@ -257,8 +257,8 @@ public class ContentReviewController {
                                                       Long operatorId, String actionPrefix) {
         Map<String, Object> chapter = chapterForUpdate(chapterRawId, sourceCode);
         String before = Objects.toString(chapter.get("contentStatus"), "");
-        if (!"PENDING_REVIEW".equals(before) || chapter.get("contentRawId") == null) throw new IllegalArgumentException("Only pending chapters with isolated content can be reviewed.");
-        String after = "APPROVE".equals(request.decision) ? "CONTENT_READY" : "REVIEW_REJECTED";
+        if (!"4".equals(before) || chapter.get("contentRawId") == null) throw new IllegalArgumentException("Only pending chapters with isolated content can be reviewed.");
+        int after = "APPROVE".equals(request.decision) ? 3 : 5;
         jdbc.update("UPDATE mini_novel_crawler.crawl_chapter_raw SET content_status=?,updated_at=NOW() WHERE id=?", after, chapterRawId);
         if ("APPROVE".equals(request.decision)) publishChapter(chapter, operatorId); else unpublishChapter(chapter);
         recomputeBook(((Number) chapter.get("bookRawId")).longValue());
@@ -276,14 +276,14 @@ public class ContentReviewController {
         List<Map<String, Object>> pending = jdbc.queryForList("""
             SELECT c.id chapterRawId,c.book_raw_id bookRawId,c.content_status contentStatus,r.id contentRawId
             FROM mini_novel_crawler.crawl_chapter_raw c LEFT JOIN mini_novel_crawler.crawl_content_raw r ON r.chapter_raw_id=c.id
-            WHERE c.book_raw_id=? AND c.content_status='PENDING_REVIEW' FOR UPDATE
+            WHERE c.book_raw_id=? AND c.content_status=4 FOR UPDATE
             """, bookRawId);
         if (pending.isEmpty()) throw new IllegalArgumentException("This book has no reviewable pending chapters.");
-        long missing = pending.stream().filter(row -> row.get("contentRawId") == null).count() + count(bookRawId, "ENTRY_READY");
+        long missing = pending.stream().filter(row -> row.get("contentRawId") == null).count() + count(bookRawId, 2);
         if ("APPROVE".equals(request.decision) && missing > 0) throw new IllegalArgumentException("Book approval requires no missing chapters.");
         List<Map<String, Object>> reviewable = pending.stream().filter(row -> row.get("contentRawId") != null).toList();
         if (reviewable.isEmpty()) throw new IllegalArgumentException("This book has no isolated content available for review.");
-        String after = "APPROVE".equals(request.decision) ? "CONTENT_READY" : "REVIEW_REJECTED";
+        int after = "APPROVE".equals(request.decision) ? 3 : 5;
         for (Map<String, Object> chapter : reviewable) {
             Long chapterId = ((Number) chapter.get("chapterRawId")).longValue();
             jdbc.update("UPDATE mini_novel_crawler.crawl_chapter_raw SET content_status=?,updated_at=NOW() WHERE id=?", after, chapterId);
@@ -291,14 +291,14 @@ public class ContentReviewController {
             Map<String, Object> fullChapter = chapterForUpdate(chapterId, sourceCode);
             if ("APPROVE".equals(request.decision)) publishChapter(fullChapter, operatorId); else unpublishChapter(fullChapter);
         }
-        String bookStatus = recomputeBook(bookRawId);
+        int bookStatus = recomputeBook(bookRawId);
         return Result.ok(Map.of("bookRawId", bookRawId, "reviewedChapters", reviewable.size(), "contentStatus", bookStatus));
     }
 
     static String reviewState(String status, boolean hasContent) {
-        if ("PENDING_REVIEW".equals(status)) return hasContent ? "PENDING_REVIEW" : "MISSING";
-        if ("CONTENT_READY".equals(status)) return "CONTENT_READY";
-        if ("REVIEW_REJECTED".equals(status)) return "REVIEW_REJECTED";
+        if ("4".equals(status)) return hasContent ? "PENDING_REVIEW" : "MISSING";
+        if ("3".equals(status)) return "CONTENT_READY";
+        if ("5".equals(status)) return "REVIEW_REJECTED";
         return "MISSING";
     }
 
@@ -344,9 +344,9 @@ public class ContentReviewController {
         if (!StringUtils.hasText(sourceCode)) {
             return false;
         }
-        List<String> rows = jdbc.query("SELECT source_type FROM mini_novel_crawler.crawl_source WHERE source_code=? LIMIT 1",
-                (rs, row) -> rs.getString(1), sourceCode);
-        return !rows.isEmpty() && "AUTHORIZED_VIP".equalsIgnoreCase(rows.get(0));
+        List<Integer> rows = jdbc.query("SELECT source_type FROM mini_novel_crawler.crawl_source WHERE source_code=? LIMIT 1",
+                (rs, row) -> rs.getInt(1), sourceCode);
+        return !rows.isEmpty() && rows.get(0) != null && rows.get(0) == 2;
     }
 
     private Map<String, Object> verifyBook(Long id, String sourceCode) {
@@ -372,13 +372,13 @@ public class ContentReviewController {
                 : jdbc.queryForList(sql.formatted(""), id);
         if (rows.isEmpty()) throw new IllegalArgumentException("Review chapter does not exist."); return rows.get(0);
     }
-    private long count(Long bookId, String status) {
+    private long count(Long bookId, int status) {
         Long value = jdbc.queryForObject("SELECT COUNT(*) FROM mini_novel_crawler.crawl_chapter_raw WHERE book_raw_id=? AND content_status=?", Long.class, bookId, status);
         return value == null ? 0 : value;
     }
-    private String recomputeBook(Long bookId) {
-        long pending = count(bookId, "PENDING_REVIEW"), missing = count(bookId, "ENTRY_READY"), rejected = count(bookId, "REVIEW_REJECTED");
-        String status = pending > 0 || missing > 0 ? "PENDING_REVIEW" : rejected > 0 ? "REVIEW_REJECTED" : "PUBLISH_READY";
+    private int recomputeBook(Long bookId) {
+        long pending = count(bookId, 4), missing = count(bookId, 2), rejected = count(bookId, 5);
+        int status = pending > 0 || missing > 0 ? 4 : rejected > 0 ? 5 : 6;
         jdbc.update("UPDATE mini_novel_crawler.crawl_book_raw SET content_status=?,updated_at=NOW() WHERE id=?", status, bookId);
         return status;
     }
@@ -514,10 +514,10 @@ public class ContentReviewController {
         jdbc.update("""
             INSERT INTO mini_novel.chapter_source_mapping
               (novel_mapping_id,chapter_id,source_chapter_id,source_url,source_title,chapter_no,is_vip,content_hash,content_status,created_at,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,'CONTENT_READY',NOW(),NOW())
+            VALUES (?,?,?,?,?,?,?,?,3,NOW(),NOW())
             ON DUPLICATE KEY UPDATE
               chapter_id=VALUES(chapter_id),source_title=VALUES(source_title),source_url=VALUES(source_url),
-              chapter_no=VALUES(chapter_no),is_vip=VALUES(is_vip),content_hash=VALUES(content_hash),content_status='CONTENT_READY',updated_at=NOW()
+              chapter_no=VALUES(chapter_no),is_vip=VALUES(is_vip),content_hash=VALUES(content_hash),content_status=3,updated_at=NOW()
             """, novelMappingId, chapterIds.get(0), chapter.get("sourceChapterId"), chapter.get("chapterSourceUrl"),
                 chapter.get("chapterTitle"), chapter.get("chapterNo"), truthy(chapter.get("vip")) ? 1 : 0, chapter.get("contentHash"));
     }
@@ -562,7 +562,7 @@ public class ContentReviewController {
             jdbc.update("""
                 INSERT INTO mini_novel.novel_identity
                   (canonical_title,canonical_author,normalized_title,normalized_author,novel_id,match_status,confidence_score,created_at,updated_at)
-                VALUES (?,?,?,?,?,'ACTIVE',100,NOW(),NOW())
+                VALUES (?,?,?,?,?,1,100,NOW(),NOW())
                 """, limit(title, 128), limit(StringUtils.hasText(author) ? author : "Unknown", 64),
                     limit(normalizedTitle, 128), limit(normalizedAuthor, 64), novelId);
             identityId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
@@ -573,11 +573,11 @@ public class ContentReviewController {
         jdbc.update("""
             INSERT INTO mini_novel.novel_source_mapping
               (identity_id,novel_id,source_code,source_book_id,source_url,source_title,source_author,content_status,match_status,confidence_score,last_crawled_at,created_at,updated_at)
-            VALUES (?,?,?,?,?, ?,?,'CONTENT_READY','MATCHED',100,NOW(),NOW(),NOW())
+            VALUES (?,?,?,?,?, ?,?,3,2,100,NOW(),NOW(),NOW())
             ON DUPLICATE KEY UPDATE
               identity_id=VALUES(identity_id),novel_id=VALUES(novel_id),source_url=VALUES(source_url),
               source_title=VALUES(source_title),source_author=VALUES(source_author),
-              content_status='CONTENT_READY',match_status='MATCHED',confidence_score=100,last_crawled_at=NOW(),updated_at=NOW()
+              content_status=3,match_status=2,confidence_score=100,last_crawled_at=NOW(),updated_at=NOW()
             """, identityId, novelId, chapter.get("sourceCode"), chapter.get("sourceBookId"),
                 chapter.get("bookSourceUrl"), limit(title, 128), limit(StringUtils.hasText(author) ? author : "Unknown", 64));
         return jdbc.queryForObject("""

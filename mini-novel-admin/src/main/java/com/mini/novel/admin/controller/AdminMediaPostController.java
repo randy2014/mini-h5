@@ -10,6 +10,7 @@ import com.mini.novel.common.result.Result;
 import com.mini.novel.media.entity.MediaPost;
 import com.mini.novel.media.service.MediaPostService;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -94,7 +95,7 @@ public class AdminMediaPostController {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "发布必须选择挂载频道");
         }
         SubscribeChannel channel = channelMapper.selectById(channelId);
-        if (channel == null || !SubscribeChannel.STATUS_PUBLISHED.equals(channel.getStatus())) {
+        if (channel == null || !Objects.equals(SubscribeChannel.STATUS_PUBLISHED, channel.getStatus())) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "挂载频道不存在或未发布（仅订阅频道管理中已发布频道可挂载）");
         }
     }

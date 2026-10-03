@@ -60,7 +60,7 @@ public class CrawlerTaskServiceImpl implements CrawlerTaskService {
         CrawlTask task = new CrawlTask();
         task.setSourceId(request.getSourceId());
         task.setNovelId(request.getNovelId());
-        task.setTaskType("MANUAL");
+        task.setTaskType(4);
         task.setStatus(0);
         task.setRetryCount(0);
         task.setCreatedAt(LocalDateTime.now());

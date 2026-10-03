@@ -13,7 +13,7 @@ public class CrawlMergeItem {
     public Long bookRawId;
     public Long identityId;
     public Long novelId;
-    public String matchStatus;
+    public Integer matchStatus;
     public Integer confidenceScore;
     public String message;
     public LocalDateTime createdAt;

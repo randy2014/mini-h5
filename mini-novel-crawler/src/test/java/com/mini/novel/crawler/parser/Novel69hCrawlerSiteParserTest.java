@@ -129,8 +129,8 @@ class Novel69hCrawlerSiteParserTest {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "novel69h_authorized";
         source.baseUrl = "https://www.69hnovel.com";
-        source.sourceType = "AUTHORIZED_VIP";
-        source.authMode = "NONE";
+        source.sourceType = 2;
+        source.authMode = 1;
         source.ruleConfigJson = rules;
         return source;
     }

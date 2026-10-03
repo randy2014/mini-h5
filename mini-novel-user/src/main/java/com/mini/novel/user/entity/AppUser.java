@@ -17,7 +17,7 @@ public class AppUser {
     private Integer status;
     private Integer vipStatus;
     private LocalDateTime vipExpireTime;
-    private String vipSource;
+    private Integer vipSource;
     private LocalDateTime vipActivatedAt;
     private LocalDateTime vipDisabledAt;
     private LocalDateTime createdAt;
@@ -41,8 +41,8 @@ public class AppUser {
     public void setVipStatus(Integer vipStatus) { this.vipStatus = vipStatus; }
     public LocalDateTime getVipExpireTime() { return vipExpireTime; }
     public void setVipExpireTime(LocalDateTime vipExpireTime) { this.vipExpireTime = vipExpireTime; }
-    public String getVipSource() { return vipSource; }
-    public void setVipSource(String vipSource) { this.vipSource = vipSource; }
+    public Integer getVipSource() { return vipSource; }
+    public void setVipSource(Integer vipSource) { this.vipSource = vipSource; }
     public LocalDateTime getVipActivatedAt() { return vipActivatedAt; }
     public void setVipActivatedAt(LocalDateTime vipActivatedAt) { this.vipActivatedAt = vipActivatedAt; }
     public LocalDateTime getVipDisabledAt() { return vipDisabledAt; }

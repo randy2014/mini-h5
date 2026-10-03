@@ -8,7 +8,7 @@ public interface CoinService {
 
     void recharge(Long userId, long amount, Long operatorId, String remark);
 
-    void deduct(Long userId, long amount, String bizType, String bizId);
+    void deduct(Long userId, long amount, Integer bizType, String bizId);
 
     List<UserCoinLog> logs(Long userId);
 }

@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -136,18 +137,18 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
                 cover = assets.get(postLinks.get(0).getAssetId());
             }
             ChannelFeedVo.FeedItem item = new ChannelFeedVo.FeedItem();
-            item.setKind(post.getType()); // IMAGE/VIDEO/MIXED
+            item.setKind(typeName(post.getType())); // IMAGE/VIDEO/MIXED
             item.setId(post.getId());
             item.setTitle(post.getTitle());
-            item.setCoverKind(cover != null && MediaAsset.TYPE_VIDEO.equals(cover.getFileType()) ? "poster" : "thumb");
+            item.setCoverKind(cover != null && Objects.equals(MediaAsset.TYPE_VIDEO, cover.getFileType()) ? "poster" : "thumb");
             item.setCoverAssetId(cover == null ? null : cover.getId());
-            item.setVideoDurationMs(cover != null && MediaAsset.TYPE_VIDEO.equals(cover.getFileType())
+            item.setVideoDurationMs(cover != null && Objects.equals(MediaAsset.TYPE_VIDEO, cover.getFileType())
                     ? cover.getDurationMs() : null);
             long imageCount = postLinks.stream()
-                    .filter(l -> { MediaAsset a = assets.get(l.getAssetId()); return a != null && MediaAsset.TYPE_IMAGE.equals(a.getFileType()); })
+                    .filter(l -> { MediaAsset a = assets.get(l.getAssetId()); return a != null && Objects.equals(MediaAsset.TYPE_IMAGE, a.getFileType()); })
                     .count();
             long videoCount = postLinks.stream()
-                    .filter(l -> { MediaAsset a = assets.get(l.getAssetId()); return a != null && MediaAsset.TYPE_VIDEO.equals(a.getFileType()); })
+                    .filter(l -> { MediaAsset a = assets.get(l.getAssetId()); return a != null && Objects.equals(MediaAsset.TYPE_VIDEO, a.getFileType()); })
                     .count();
             item.setImageCount((int) imageCount);
             item.setVideoCount((int) videoCount);
@@ -155,6 +156,17 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
             out.add(item);
         }
         return out;
+    }
+
+    private static String typeName(Integer type) {
+        if (type == null) {
+            return "IMAGE";
+        }
+        return switch (type) {
+            case 2 -> "VIDEO";
+            case 3 -> "MIXED";
+            default -> "IMAGE";
+        };
     }
 
     /** 简介摘要：压缩空白后截取前 maxLength 个字符，超出补省略号；仅返回摘要，不下发全文。 */

@@ -8,14 +8,14 @@ import java.time.LocalDateTime;
 
 @TableName("subscribe_channel")
 public class SubscribeChannel {
-    public static final String STATUS_PUBLISHED = "PUBLISHED";
-    public static final String STATUS_OFFLINE = "OFFLINE";
+    public static final int STATUS_PUBLISHED = 1;
+    public static final int STATUS_OFFLINE = 2;
 
     @TableId(type = IdType.AUTO)
     private Long id;
     private String name;
     private Integer sort;
-    private String status;
+    private Integer status;
     private String cover;
     private String description;
     private LocalDateTime createdAt;
@@ -33,8 +33,8 @@ public class SubscribeChannel {
     public void setName(String name) { this.name = name; }
     public Integer getSort() { return sort; }
     public void setSort(Integer sort) { this.sort = sort; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public Integer getStatus() { return status; }
+    public void setStatus(Integer status) { this.status = status; }
     public String getCover() { return cover; }
     public void setCover(String cover) { this.cover = cover; }
     public String getDescription() { return description; }

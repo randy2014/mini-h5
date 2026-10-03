@@ -43,7 +43,7 @@
         </el-table-column>
         <el-table-column label="类型" width="110">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.type === 'VIDEO' ? 'primary' : row.type === 'MIXED' ? 'warning' : 'success'">
+            <el-tag size="small" :type="row.type === 2 ? 'primary' : row.type === 3 ? 'warning' : 'success'">
               {{ typeName(row.type) }}
             </el-tag>
           </template>
@@ -104,7 +104,7 @@
                 <img :src="assetUrl(a, 'thumb')" />
                 <span class="ord">{{ i + 1 }}{{ i === 0 ? ' · 封面' : '' }}</span>
                 <span class="del" @click="removeAsset(a)">✕</span>
-                <span v-if="a.status !== 'READY'" class="proc">{{ a.status === 'FAILED' ? '失败' : '处理中' }}</span>
+                <span v-if="a.status !== 2" class="proc">{{ a.status === 3 ? '失败' : '处理中' }}</span>
               </div>
             </div>
             <div class="hint">第 1 张为封面；可上传 GIF（取首帧静态图）、不支持 WebP</div>
@@ -119,7 +119,7 @@
             <div v-else class="media-item video">
               <video :src="assetUrl(videoAsset, 'main')" controls preload="metadata" style="width:100%;max-height:150px;background:#000" />
               <div class="v-meta">{{ videoAsset.originalName }}
-                <span v-if="videoAsset.status !== 'READY'">{{ videoAsset.status === 'FAILED' ? '(转码失败)' : '(转码中…)' }}</span>
+                <span v-if="videoAsset.status !== 2">{{ videoAsset.status === 3 ? '(转码失败)' : '(转码中…)' }}</span>
               </div>
               <el-button size="small" @click="removeVideo">移除视频</el-button>
             </div>
@@ -143,7 +143,7 @@
       </div>
       <el-radio-group v-model="publishChannelId" class="channel-picker">
         <el-radio v-for="c in channels" :key="c.id" :value="c.id" class="channel-opt">
-          {{ c.name }} <span class="muted">· {{ c.status === 'PUBLISHED' ? '已发布' : '已下架' }}</span>
+          {{ c.name }} <span class="muted">· {{ c.status === 1 ? '已发布' : '已下架' }}</span>
         </el-radio>
       </el-radio-group>
       <div class="hint">发布后仅在该频道详情页展示，不上首页；可随时下架回草稿</div>
@@ -158,7 +158,7 @@
       <template v-if="detail">
         <h3 class="dt">{{ detail.title }}</h3>
         <div class="detail-media" v-for="a in detail.assets" :key="a.id">
-          <video v-if="a.fileType === 'VIDEO'" :src="assetUrl(a, 'main')" controls preload="metadata"
+          <video v-if="a.fileType === 2" :src="assetUrl(a, 'main')" controls preload="metadata"
                  style="width:100%;max-height:260px;background:#000;border-radius:8px" />
           <el-image v-else :src="assetUrl(a, 'main')" fit="contain" style="width:100%;max-height:400px" preview-teleported />
         </div>
@@ -206,10 +206,10 @@ const savedThisSession = ref(false);
 const allAssets = computed(() => (videoAsset.value ? [...imageAssets.value, videoAsset.value] : imageAssets.value));
 
 function typeName(t) {
-  return { IMAGE: '图文', VIDEO: '视频', MIXED: '图文+视频' }[t] || t;
+  return { 1: '图文', 2: '视频', 3: '图文+视频' }[t] || '未知';
 }
 function typeClass(t) {
-  return t === 'VIDEO' ? 'v' : t === 'MIXED' ? 'm' : 'g';
+  return t === 2 ? 'v' : t === 3 ? 'm' : 'g';
 }
 function fmtTime(t) {
   if (!t) return '-';
@@ -224,10 +224,10 @@ function assetUrl(a, kind) {
 }
 function coverOf(row) {
   const c = row._cover;
-  return c ? assetUrl(c, c.fileType === 'VIDEO' ? 'poster' : 'thumb') : '';
+  return c ? assetUrl(c, c.fileType === 2 ? 'poster' : 'thumb') : '';
 }
 function coverList(row) {
-  return row._assets ? row._assets.filter((a) => a.fileType === 'IMAGE').map((a) => assetUrl(a, 'main')) : [];
+  return row._assets ? row._assets.filter((a) => a.fileType === 1).map((a) => assetUrl(a, 'main')) : [];
 }
 
 async function loadChannels() {
@@ -262,8 +262,8 @@ async function decorate(posts) {
       const d = await adminApi.get(`/media/posts/${post.id}`);
       post._cover = d.cover;
       post._assets = d.assets;
-      post.imageCount = d.assets.filter((a) => a.fileType === 'IMAGE').length;
-      post.videoCount = d.assets.filter((a) => a.fileType === 'VIDEO').length;
+      post.imageCount = d.assets.filter((a) => a.fileType === 1).length;
+      post.videoCount = d.assets.filter((a) => a.fileType === 2).length;
     } catch { /* 忽略装饰失败 */ }
     out.push(post);
   }
@@ -281,7 +281,7 @@ function openEditor(mode, row) {
     adminApi.get(`/media/posts/${row.id}`).then((d) => {
       form.title = d.post?.title || row.title;
       d.assets.forEach((a) => {
-        if (a.fileType === 'IMAGE') imageAssets.value.push(a);
+        if (a.fileType === 1) imageAssets.value.push(a);
         else videoAsset.value = a;
       });
     });
@@ -326,13 +326,13 @@ async function uploadOne(opt) {
     // 图片由后端在非事务线程同步处理完返回 READY；视频为 PROCESSING，轮询
     const asset = { id: r.assetId, fileType: r.fileType, status: r.status, originalName: opt.file.name };
     sessionUploaded.value.push(r.assetId);
-    if (r.fileType === 'VIDEO') {
+    if (r.fileType === 2) {
       videoAsset.value = asset;
       pollAsset(asset);
     } else {
       imageAssets.value.push(asset);
     }
-    ElMessage.success(`已上传${r.fileType === 'VIDEO' ? '视频' : '图片'}（自动压缩/转码）`);
+    ElMessage.success(`已上传${r.fileType === 2 ? '视频' : '图片'}（自动压缩/转码）`);
   } catch (e) {
     ElMessage.error(e.message || '上传失败');
   }
@@ -346,7 +346,7 @@ function pollAsset(asset) {
       const fresh = list.find((a) => a.id === asset.id);
       if (fresh) {
         asset.status = fresh.status;
-        if (fresh.status === 'READY' || fresh.status === 'FAILED') {
+        if (fresh.status === 2 || fresh.status === 3) {
           clearInterval(timer);
         }
       }
@@ -383,7 +383,7 @@ async function saveDraft() {
     ElMessage.warning('请至少上传一张图片或一个视频');
     return;
   }
-  if (allAssets.value.some((a) => a.status !== 'READY')) {
+  if (allAssets.value.some((a) => a.status !== 2)) {
     ElMessage.warning('素材仍在处理中（转码/压缩），请稍候再保存');
     return;
   }

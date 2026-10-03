@@ -16,8 +16,8 @@ public class NovelSourceMapping {
     public String sourceUrl;
     public String sourceTitle;
     public String sourceAuthor;
-    public String contentStatus;
-    public String matchStatus;
+    public Integer contentStatus;
+    public Integer matchStatus;
     public Integer confidenceScore;
     public LocalDateTime lastCrawledAt;
     public LocalDateTime createdAt;

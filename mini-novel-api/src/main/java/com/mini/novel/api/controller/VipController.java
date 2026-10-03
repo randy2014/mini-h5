@@ -102,16 +102,16 @@ public class VipController {
                 // 频道下架（OFFLINE）后会重新回到 VIP 专区；与后台「VIP 文章管理」口径一致。
                 .notExists("SELECT 1 FROM subscribe_channel_novel linked "
                         + "JOIN subscribe_channel linked_channel ON linked_channel.id = linked.channel_id "
-                        + "WHERE linked.novel_id = novel.id AND linked_channel.status = '"
-                        + SubscribeChannel.STATUS_PUBLISHED + "'")
+                        + "WHERE linked.novel_id = novel.id AND linked_channel.status = "
+                        + SubscribeChannel.STATUS_PUBLISHED)
                 .exists("""
                         SELECT 1
                         FROM novel_source_mapping vip_mapping
                         JOIN mini_novel_crawler.crawl_source vip_source
                           ON vip_source.source_code = vip_mapping.source_code
-                         AND vip_source.source_type = 'AUTHORIZED_VIP'
+                         AND vip_source.source_type = 2
                         WHERE vip_mapping.novel_id = novel.id
-                          AND vip_mapping.content_status = 'CONTENT_READY'
+                          AND vip_mapping.content_status = 3
                         """)
                 .exists("SELECT 1 FROM chapter vip_chapter WHERE vip_chapter.novel_id = novel.id");
         String key = StringUtils.hasText(category) ? category.trim().toLowerCase(Locale.ROOT) : CATEGORY_ALL;

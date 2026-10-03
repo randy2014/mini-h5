@@ -31,10 +31,10 @@ const logs = ref([]);
 
 function bizLabel(log) {
   const map = {
-    RECHARGE: '后台充值',
-    SUBSCRIBE: '订阅扣费',
-    REFUND: '冲正',
-    GRANT: '赠送'
+    1: '后台充值',
+    2: '订阅扣费',
+    3: '冲正',
+    4: '赠送'
   };
   const base = map[log.bizType] || log.bizType;
   return log.remark ? `${base} · ${log.remark}` : base;

@@ -13,6 +13,6 @@ public class CrawlContentRaw {
     public String content;
     public String contentHash;
     public Integer contentLength;
-    public String storageMode;
+    public Integer storageMode;
     public LocalDateTime createdAt;
 }

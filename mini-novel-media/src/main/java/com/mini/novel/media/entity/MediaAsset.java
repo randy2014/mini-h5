@@ -7,15 +7,15 @@ import java.time.LocalDateTime;
 
 @TableName("media_asset")
 public class MediaAsset {
-    public static final String TYPE_IMAGE = "IMAGE";
-    public static final String TYPE_VIDEO = "VIDEO";
-    public static final String STATUS_PROCESSING = "PROCESSING";
-    public static final String STATUS_READY = "READY";
-    public static final String STATUS_FAILED = "FAILED";
+    public static final int TYPE_IMAGE = 1;
+    public static final int TYPE_VIDEO = 2;
+    public static final int STATUS_PROCESSING = 1;
+    public static final int STATUS_READY = 2;
+    public static final int STATUS_FAILED = 3;
 
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String fileType;
+    private Integer fileType;
     private String originalName;
     private String md5;
     private Long sizeBytes;
@@ -25,7 +25,7 @@ public class MediaAsset {
     private String mainPath;
     private String thumbPath;
     private String posterPath;
-    private String status;
+    private Integer status;
     private String failReason;
     private Long operatorId;
     private LocalDateTime createdAt;
@@ -33,8 +33,8 @@ public class MediaAsset {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
-    public String getFileType() { return fileType; }
-    public void setFileType(String fileType) { this.fileType = fileType; }
+    public Integer getFileType() { return fileType; }
+    public void setFileType(Integer fileType) { this.fileType = fileType; }
     public String getOriginalName() { return originalName; }
     public void setOriginalName(String originalName) { this.originalName = originalName; }
     public String getMd5() { return md5; }
@@ -53,8 +53,8 @@ public class MediaAsset {
     public void setThumbPath(String thumbPath) { this.thumbPath = thumbPath; }
     public String getPosterPath() { return posterPath; }
     public void setPosterPath(String posterPath) { this.posterPath = posterPath; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public Integer getStatus() { return status; }
+    public void setStatus(Integer status) { this.status = status; }
     public String getFailReason() { return failReason; }
     public void setFailReason(String failReason) { this.failReason = failReason; }
     public Long getOperatorId() { return operatorId; }

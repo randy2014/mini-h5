@@ -143,7 +143,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         update.setId(userId);
         update.setVipExpireTime(afterExpire);
         update.setVipStatus(afterExpire == null ? 0 : (afterExpire.getYear() >= 2099 ? 2 : 1));
-        update.setVipSource(afterExpire == null ? null : "ADMIN");
+        update.setVipSource(afterExpire == null ? null : 2);
         update.setVipActivatedAt(afterExpire == null ? before.getVipActivatedAt() : now);
         update.setVipDisabledAt(afterExpire == null ? now : null);
         update.setUpdatedAt(now);
@@ -155,8 +155,8 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         } else {
             code = ensureCurrentCode(userId, operatorId, reason, now);
         }
-        insertUserVip(userId, afterExpire, "ADMIN", null, operatorId, reason, now);
-        insertVipAdjustLog(before, appUserMapper.selectById(userId), normalizedAction, days, reason, operatorId, now);
+        insertUserVip(userId, afterExpire, 2, null, operatorId, reason, now);
+        insertVipAdjustLog(before, appUserMapper.selectById(userId), actionCode(normalizedAction), days, reason, operatorId, now);
         audit(normalizedAction, userId, code == null ? null : code.getId(), null,
                 userJson(before), userJson(appUserMapper.selectById(userId)), operatorId, reason, requestId, now);
 
@@ -180,14 +180,14 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         if (code == null || owner == null || !isVip(owner)) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "仅有效 VIP 的邀请码可启用");
         }
-        code.setStatus("ENABLED");
+        code.setStatus(1);
         code.setEnabledAt(LocalDateTime.now());
         code.setDisabledAt(null);
         code.setOperatorId(operatorId);
         code.setRemark(reason);
         code.setUpdatedAt(LocalDateTime.now());
         invitationCodeMapper.updateById(code);
-        audit("ENABLE_CODE", code.getOwnerUserId(), code.getId(), null, null, code.getStatus(), operatorId, reason, requestId, LocalDateTime.now());
+        audit("ENABLE_CODE", code.getOwnerUserId(), code.getId(), null, null, String.valueOf(code.getStatus()), operatorId, reason, requestId, LocalDateTime.now());
         return code;
     }
 
@@ -202,7 +202,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "邀请码不存在");
         }
         disableCurrentCode(code, operatorId, reason, LocalDateTime.now());
-        audit("DISABLE_CODE", code.getOwnerUserId(), code.getId(), null, null, code.getStatus(), operatorId, reason, requestId, LocalDateTime.now());
+        audit("DISABLE_CODE", code.getOwnerUserId(), code.getId(), null, null, String.valueOf(code.getStatus()), operatorId, reason, requestId, LocalDateTime.now());
         return code;
     }
 
@@ -220,7 +220,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         VipInvitationCode old = invitationCodeMapper.selectCurrentByOwnerForUpdate(userId);
         if (old != null) {
             old.setCurrent(false);
-            old.setStatus("REVOKED");
+            old.setStatus(3);
             old.setRevokedAt(now);
             old.setOperatorId(operatorId);
             old.setRemark(reason);
@@ -350,7 +350,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         vip.setId(user.getId());
         vip.setVipStatus(2);
         vip.setVipExpireTime(PERMANENT_EXPIRE_AT);
-        vip.setVipSource("INVITATION");
+        vip.setVipSource(1);
         vip.setVipActivatedAt(now);
         vip.setUpdatedAt(now);
         appUserMapper.updateById(vip);
@@ -360,13 +360,13 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         record.setCodeSnapshot(codeFingerprint(inviterCode.getCode()));
         record.setInviterUserId(inviterCode.getOwnerUserId());
         record.setInviteeUserId(user.getId());
-        record.setStatus("ACTIVATED");
+        record.setStatus(1);
         record.setActivatedAt(now);
         record.setRemark("邀请注册激活 VIP");
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         invitationRecordMapper.insert(record);
-        insertUserVip(user.getId(), PERMANENT_EXPIRE_AT, "INVITATION", record.getId(), inviterCode.getOwnerUserId(), "邀请注册激活", now);
+        insertUserVip(user.getId(), PERMANENT_EXPIRE_AT, 1, record.getId(), inviterCode.getOwnerUserId(), "邀请注册激活", now);
         audit("INVITE_ACTIVATE", user.getId(), inviterCode.getId(), record.getId(), null,
                 invitationAuditJson(inviterCode), inviterCode.getOwnerUserId(), "邀请注册激活", null, now);
     }
@@ -376,7 +376,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         vip.setId(user.getId());
         vip.setVipStatus(2);
         vip.setVipExpireTime(PERMANENT_EXPIRE_AT);
-        vip.setVipSource("INVITATION");
+        vip.setVipSource(1);
         vip.setVipActivatedAt(now);
         vip.setUpdatedAt(now);
         appUserMapper.updateById(vip);
@@ -385,8 +385,8 @@ public class VipInvitationServiceImpl implements VipInvitationService {
     private VipInvitationCode ensureCurrentCode(Long userId, Long operatorId, String reason, LocalDateTime now) {
         VipInvitationCode code = invitationCodeMapper.selectCurrentByOwner(userId);
         if (code != null) {
-            if (!"ENABLED".equals(code.getStatus())) {
-                code.setStatus("ENABLED");
+            if (code.getStatus() == null || code.getStatus() != 1) {
+                code.setStatus(1);
                 code.setEnabledAt(now);
                 code.setDisabledAt(null);
                 code.setUpdatedAt(now);
@@ -414,7 +414,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         VipInvitationCode code = new VipInvitationCode();
         code.setOwnerUserId(userId);
         code.setCode(generateCode());
-        code.setStatus("ENABLED");
+        code.setStatus(1);
         code.setTotalQuota(quota);
         code.setUsedQuota(0);
         code.setRemainingQuota(quota);
@@ -434,7 +434,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         if (code == null) {
             return;
         }
-        code.setStatus("DISABLED");
+        code.setStatus(2);
         code.setDisabledAt(now);
         code.setOperatorId(operatorId);
         code.setRemark(reason);
@@ -442,7 +442,7 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         invitationCodeMapper.updateById(code);
     }
 
-    private void insertUserVip(Long userId, LocalDateTime expireAt, String sourceType, Long sourceRefId, Long operatorId, String remark, LocalDateTime now) {
+    private void insertUserVip(Long userId, LocalDateTime expireAt, Integer sourceType, Long sourceRefId, Long operatorId, String remark, LocalDateTime now) {
         if (expireAt == null) {
             return;
         }
@@ -460,14 +460,14 @@ public class VipInvitationServiceImpl implements VipInvitationService {
         userVipMapper.insert(userVip);
     }
 
-    private void insertVipAdjustLog(AppUser before, AppUser after, String action, Integer days, String reason, Long operatorId, LocalDateTime now) {
+    private void insertVipAdjustLog(AppUser before, AppUser after, int action, Integer days, String reason, Long operatorId, LocalDateTime now) {
         VipAdjustLog log = new VipAdjustLog();
         log.setUserId(after.getId());
         log.setAction(action);
         log.setBeforeExpireTime(before.getVipExpireTime());
         log.setAfterExpireTime(after.getVipExpireTime());
-        log.setBeforeStatus(String.valueOf(before.getVipStatus()));
-        log.setAfterStatus(String.valueOf(after.getVipStatus()));
+        log.setBeforeStatus(before.getVipStatus());
+        log.setAfterStatus(after.getVipStatus());
         log.setDays(days);
         log.setReason(reason);
         log.setOperatorId(operatorId == null ? 1L : operatorId);
@@ -508,12 +508,23 @@ public class VipInvitationServiceImpl implements VipInvitationService {
     }
 
     private boolean isUsable(VipInvitationCode code) {
-        return code != null && "ENABLED".equals(code.getStatus()) && safe(code.getRemainingQuota()) > 0
+        return code != null && code.getStatus() != null && code.getStatus() == 1 && safe(code.getRemainingQuota()) > 0
                 && !VipInvitationPolicy.expired(code.getExpiresAt(), LocalDateTime.now());
     }
     private VipInvitationCode displayStatus(VipInvitationCode code) {
-        if (code != null && "ENABLED".equals(code.getStatus()) && VipInvitationPolicy.expired(code.getExpiresAt(), LocalDateTime.now())) code.setStatus("EXPIRED");
+        if (code != null && code.getStatus() != null && code.getStatus() == 1 && VipInvitationPolicy.expired(code.getExpiresAt(), LocalDateTime.now())) code.setStatus(4);
         return code;
+    }
+
+    private int actionCode(String action) {
+        return switch (action) {
+            case "DOWNGRADE" -> 2;
+            case "SUSPEND" -> 3;
+            case "CANCEL" -> 4;
+            case "RESTORE" -> 5;
+            case "SET" -> 6;
+            default -> 1; // UPGRADE
+        };
     }
 
     private boolean isVip(AppUser user) {

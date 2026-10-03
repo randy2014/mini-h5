@@ -12,8 +12,8 @@ public class CrawlerSourceConfig {
     public String sourceCode;
     public String name;
     public String baseUrl;
-    public String sourceType;
-    public String authMode;
+    public Integer sourceType;
+    public Integer authMode;
     public String ruleConfigJson;
     public Boolean enabled;
     public Integer priority;

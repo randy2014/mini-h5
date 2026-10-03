@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -95,7 +96,7 @@ public class SubscribeServiceImpl implements SubscribeService {
             UserSubscribe active = activeByChannel.get(channel.getId());
             vo.setSubscribed(active != null || trial);
             if (active != null) {
-                vo.setPeriodType(active.getPeriodType());
+                vo.setPeriodType(periodName(active.getPeriodType()));
                 vo.setEndTime(active.getEndTime());
                 vo.setDaysLeft(daysLeft(active.getEndTime()));
             }
@@ -112,7 +113,7 @@ public class SubscribeServiceImpl implements SubscribeService {
     @Override
     public ChannelNovelsVo channelNovels(Long userId, Long channelId, long page, long pageSize) {
         SubscribeChannel channel = channelMapper.selectById(channelId);
-        if (channel == null || !SubscribeChannel.STATUS_PUBLISHED.equals(channel.getStatus())) {
+        if (channel == null || !Objects.equals(SubscribeChannel.STATUS_PUBLISHED, channel.getStatus())) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "频道不存在或未发布");
         }
         List<SubscribeChannelNovel> links = channelNovelMapper.selectList(new QueryWrapper<SubscribeChannelNovel>()
@@ -155,7 +156,7 @@ public class SubscribeServiceImpl implements SubscribeService {
         LocalDateTime now = LocalDateTime.now();
         if (existing != null) {
             existing.setEndTime(existing.getEndTime().plusDays(daysFor(normalizedPeriod)));
-            existing.setPeriodType(normalizedPeriod);
+            existing.setPeriodType(periodCode(normalizedPeriod));
             existing.setCostCoins((existing.getCostCoins() == null ? 0 : existing.getCostCoins()) + price);
             existing.setUpdatedAt(now);
             subscribeMapper.updateById(existing);
@@ -164,7 +165,7 @@ public class SubscribeServiceImpl implements SubscribeService {
         UserSubscribe sub = new UserSubscribe();
         sub.setUserId(userId);
         sub.setChannelId(channelId);
-        sub.setPeriodType(normalizedPeriod);
+        sub.setPeriodType(periodCode(normalizedPeriod));
         sub.setStartTime(now);
         sub.setEndTime(now.plusDays(daysFor(normalizedPeriod)));
         sub.setStatus(UserSubscribe.STATUS_ACTIVE);
@@ -260,7 +261,7 @@ public class SubscribeServiceImpl implements SubscribeService {
 
     private SubscribeChannel requirePublished(Long channelId) {
         SubscribeChannel channel = channelMapper.selectById(channelId);
-        if (channel == null || !SubscribeChannel.STATUS_PUBLISHED.equals(channel.getStatus())) {
+        if (channel == null || !Objects.equals(SubscribeChannel.STATUS_PUBLISHED, channel.getStatus())) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "频道不存在或未发布");
         }
         return channel;
@@ -275,16 +276,37 @@ public class SubscribeServiceImpl implements SubscribeService {
 
     static String normalizePeriod(String periodType) {
         if (!StringUtils.hasText(periodType)) {
-            return UserSubscribe.PERIOD_MONTH;
+            return "MONTH";
         }
         return periodType.trim().toUpperCase();
     }
 
+    static Integer periodCode(String period) {
+        return switch (period) {
+            case "WEEK" -> UserSubscribe.PERIOD_WEEK;
+            case "QUARTER" -> UserSubscribe.PERIOD_QUARTER;
+            case "YEAR" -> UserSubscribe.PERIOD_YEAR;
+            default -> UserSubscribe.PERIOD_MONTH;
+        };
+    }
+
+    static String periodName(Integer code) {
+        if (code == null) {
+            return "MONTH";
+        }
+        return switch (code) {
+            case 1 -> "WEEK";
+            case 3 -> "QUARTER";
+            case 4 -> "YEAR";
+            default -> "MONTH";
+        };
+    }
+
     static long daysFor(String periodType) {
         return switch (periodType) {
-            case UserSubscribe.PERIOD_WEEK -> 7;
-            case UserSubscribe.PERIOD_QUARTER -> 90;
-            case UserSubscribe.PERIOD_YEAR -> 365;
+            case "WEEK" -> 7;
+            case "QUARTER" -> 90;
+            case "YEAR" -> 365;
             default -> 30;
         };
     }

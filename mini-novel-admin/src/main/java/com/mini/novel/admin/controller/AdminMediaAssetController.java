@@ -46,8 +46,8 @@ public class AdminMediaAssetController {
     }
 
     /** 上传结果（单文件失败不整体回滚）。 */
-    public record UploadResult(String fileName, boolean ok, Long assetId, String fileType,
-                               String status, String reason) {
+    public record UploadResult(String fileName, boolean ok, Long assetId, Integer fileType,
+                               Integer status, String reason) {
     }
 
     /** 批量上传：图片同步压缩返回 READY；视频登记后异步转码返回 PROCESSING。 */
@@ -72,7 +72,7 @@ public class AdminMediaAssetController {
                 results.add(new UploadResult(name, true, asset.getId(),
                         asset.getFileType(), asset.getStatus(), null));
             } catch (Exception e) {
-                results.add(new UploadResult(name, false, null, null, "FAILED",
+                results.add(new UploadResult(name, false, null, null, MediaAsset.STATUS_FAILED,
                         e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
             }
         }
@@ -80,8 +80,8 @@ public class AdminMediaAssetController {
     }
 
     @GetMapping
-    public Result<Page<MediaAsset>> list(@RequestParam(required = false) String type,
-                                         @RequestParam(required = false) String status,
+    public Result<Page<MediaAsset>> list(@RequestParam(required = false) Integer type,
+                                         @RequestParam(required = false) Integer status,
                                          @RequestParam(required = false) String keyword,
                                          @RequestParam(defaultValue = "1") long page,
                                          @RequestParam(defaultValue = "20") long pageSize) {

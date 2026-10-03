@@ -27,7 +27,7 @@ class InvitationQrCodeServiceTest {
 
     @Test
     void generatesPngWithTrustedLoginUrl() throws Exception {
-        VipInvitationCode invitation = invitation("ENABLED", 2, LocalDateTime.now().plusDays(1));
+        VipInvitationCode invitation = invitation(1, 2, LocalDateTime.now().plusDays(1));
         when(codeMapper.selectById(7L)).thenReturn(invitation);
         byte[] png = service().generate(7L);
 
@@ -43,9 +43,9 @@ class InvitationQrCodeServiceTest {
     void rejectsMissingDisabledExpiredAndExhaustedCodesWithoutDetailLeak() {
         for (VipInvitationCode invitation : new VipInvitationCode[] {
                 null,
-                invitation("DISABLED", 1, null),
-                invitation("ENABLED", 0, null),
-                invitation("ENABLED", 1, LocalDateTime.now().minusSeconds(1))}) {
+                invitation(2, 1, null),
+                invitation(1, 0, null),
+                invitation(1, 1, LocalDateTime.now().minusSeconds(1))}) {
             when(codeMapper.selectById(7L)).thenReturn(invitation);
             BusinessException error = assertThrows(BusinessException.class, () -> service().generate(7L));
             assertEquals("邀请码当前不可生成二维码", error.getMessage());
@@ -62,7 +62,7 @@ class InvitationQrCodeServiceTest {
         return new InvitationQrCodeService(codeMapper, "https://xs2026.site");
     }
 
-    private static VipInvitationCode invitation(String status, int remaining, LocalDateTime expiresAt) {
+    private static VipInvitationCode invitation(Integer status, int remaining, LocalDateTime expiresAt) {
         VipInvitationCode invitation = new VipInvitationCode();
         invitation.setCode("SAFE_CODE");
         invitation.setStatus(status);

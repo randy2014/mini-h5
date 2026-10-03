@@ -12,7 +12,7 @@ public class ChapterContent {
     private Long chapterId;
     private String content;
     private String contentHash;
-    private String storageType;
+    private Integer storageType;
     private String contentPath;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -25,8 +25,8 @@ public class ChapterContent {
     public void setContent(String content) { this.content = content; }
     public String getContentHash() { return contentHash; }
     public void setContentHash(String contentHash) { this.contentHash = contentHash; }
-    public String getStorageType() { return storageType; }
-    public void setStorageType(String storageType) { this.storageType = storageType; }
+    public Integer getStorageType() { return storageType; }
+    public void setStorageType(Integer storageType) { this.storageType = storageType; }
     public String getContentPath() { return contentPath; }
     public void setContentPath(String contentPath) { this.contentPath = contentPath; }
     public LocalDateTime getCreatedAt() { return createdAt; }

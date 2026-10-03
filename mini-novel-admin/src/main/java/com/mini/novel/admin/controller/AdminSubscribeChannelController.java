@@ -328,7 +328,7 @@ public class AdminSubscribeChannelController {
         }
         channel.setName(channel.getName().trim());
         channel.setSort(channel.getSort() == null ? 100 : channel.getSort());
-        if (!StringUtils.hasText(channel.getStatus())) {
+        if (channel.getStatus() == null) {
             channel.setStatus(SubscribeChannel.STATUS_OFFLINE);
         }
     }

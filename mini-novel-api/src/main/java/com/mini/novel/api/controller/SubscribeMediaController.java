@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -80,7 +81,7 @@ public class SubscribeMediaController {
         MediaPostService.MediaPostDetail detail = postService.getDetail(postId);
         if (detail.post() == null || detail.post().getChannelId() == null
                 || !detail.post().getChannelId().equals(channelId)
-                || !MediaPost.STATUS_PUBLISHED.equals(detail.post().getStatus())) {
+                || !Objects.equals(MediaPost.STATUS_PUBLISHED, detail.post().getStatus())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "内容不存在");
         }
         return Result.ok(detail);
@@ -124,11 +125,11 @@ public class SubscribeMediaController {
             card.setType(post.getType());
             card.setPublishedAt(post.getPublishedAt());
             card.setAssetCount(d.assets().size());
-            card.setVideoDurationMs(cover != null && MediaAsset.TYPE_VIDEO.equals(cover.getFileType())
+            card.setVideoDurationMs(cover != null && Objects.equals(MediaAsset.TYPE_VIDEO, cover.getFileType())
                     ? cover.getDurationMs() : null);
             card.setCoverAssetId(cover == null ? null : cover.getId());
             card.setCoverKind(cover == null ? null
-                    : (MediaAsset.TYPE_VIDEO.equals(cover.getFileType()) ? "poster" : "thumb"));
+                    : (Objects.equals(MediaAsset.TYPE_VIDEO, cover.getFileType()) ? "poster" : "thumb"));
             out.add(card);
         }
         return out;
@@ -151,7 +152,7 @@ public class SubscribeMediaController {
         private Long id;
         private Long channelId;
         private String title;
-        private String type;
+        private Integer type;
         private java.time.LocalDateTime publishedAt;
         private int assetCount;
         private Long videoDurationMs;
@@ -164,8 +165,8 @@ public class SubscribeMediaController {
         public void setChannelId(Long channelId) { this.channelId = channelId; }
         public String getTitle() { return title; }
         public void setTitle(String title) { this.title = title; }
-        public String getType() { return type; }
-        public void setType(String type) { this.type = type; }
+        public Integer getType() { return type; }
+        public void setType(Integer type) { this.type = type; }
         public java.time.LocalDateTime getPublishedAt() { return publishedAt; }
         public void setPublishedAt(java.time.LocalDateTime publishedAt) { this.publishedAt = publishedAt; }
         public int getAssetCount() { return assetCount; }

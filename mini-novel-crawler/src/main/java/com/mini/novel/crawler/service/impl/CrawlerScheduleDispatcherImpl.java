@@ -72,10 +72,10 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     public void recoverInterruptedTasksOnStartup() {
         LocalDateTime now = LocalDateTime.now();
         List<CrawlTaskRecord> runningTasks = taskRecordMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
-                .in("status", List.of("RUNNING"))
+                .in("status", List.of(2))
                 .last("LIMIT 200"));
         for (CrawlTaskRecord task : runningTasks) {
-            task.status = "FAILED";
+            task.status = 4;
             task.finishedAt = now;
             task.updatedAt = now;
             task.message = appendMessage(task.message, "Crawler service restarted; interrupted running task was closed.");
@@ -83,10 +83,10 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         }
 
         List<CrawlMergeTask> mergingTasks = mergeTaskMapper.selectList(new QueryWrapper<CrawlMergeTask>()
-                .in("status", List.of("MERGING"))
+                .in("status", List.of(2))
                 .last("LIMIT 200"));
         for (CrawlMergeTask task : mergingTasks) {
-            task.status = "FAILED";
+            task.status = 6;
             task.finishedAt = now;
             task.updatedAt = now;
             task.message = appendMessage(task.message, "Crawler service restarted; interrupted merge task was closed.");
@@ -115,7 +115,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
                     if (hasActiveRankTask(schedule.sourceId, rank.id, null)) {
                         continue;
                     }
-                    createTask(schedule, rank, "SCHEDULE");
+                    createTask(schedule, rank, 2);
                     createdCount++;
                 }
                 if (createdCount == 0) {
@@ -135,7 +135,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
     @Override
     public void runPendingTasks() {
         List<CrawlTaskRecord> tasks = taskRecordMapper.selectList(new QueryWrapper<CrawlTaskRecord>()
-                .eq("status", "PENDING")
+                .eq("status", 1)
                 .orderByAsc("id")
                 .last("LIMIT 10"));
         Set<Long> dispatchedSourceIds = new HashSet<>();
@@ -189,7 +189,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         }
         Long existing = taskRecordMapper.selectCount(new QueryWrapper<CrawlTaskRecord>()
                 .eq("schedule_id", schedule.id)
-                .eq("trigger_type", "SCHEDULE")
+                .eq("trigger_type", 2)
                 .ge("created_at", now)
                 .lt("created_at", now.plusMinutes(1)));
         return existing == null || existing == 0 ? new DueWindow(now, zoneId) : null;
@@ -211,9 +211,9 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         if (source == null || !Boolean.TRUE.equals(source.enabled)) {
             return false;
         }
-        return "PUBLIC".equalsIgnoreCase(source.sourceType)
-                || "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType)
-                || !StringUtils.hasText(source.sourceType);
+        return source.sourceType == null
+                || source.sourceType == 1
+                || source.sourceType == 2;
     }
 
     private List<CrawlRankSource> loadEnabledRanks(Long sourceId) {
@@ -230,7 +230,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         }
         QueryWrapper<CrawlTaskRecord> wrapper = new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", sourceId)
-                .in("status", List.of("PENDING", "RUNNING"));
+                .in("status", List.of(1, 2));
         if (rankSourceId == null) {
             wrapper.isNull("rank_source_id");
         } else {
@@ -249,7 +249,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         }
         QueryWrapper<CrawlTaskRecord> wrapper = new QueryWrapper<CrawlTaskRecord>()
                 .eq("source_id", sourceId)
-                .eq("status", "RUNNING");
+                .eq("status", 2);
         if (excludedTaskId != null) {
             wrapper.ne("id", excludedTaskId);
         }
@@ -257,7 +257,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         return count != null && count > 0;
     }
 
-    private CrawlTaskRecord createTask(CrawlSchedule schedule, CrawlRankSource rank, String triggerType) {
+    private CrawlTaskRecord createTask(CrawlSchedule schedule, CrawlRankSource rank, Integer triggerType) {
         LocalDateTime now = LocalDateTime.now();
         CrawlTaskRecord task = new CrawlTaskRecord();
         task.scheduleId = schedule.id;
@@ -266,7 +266,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         task.credentialId = schedule.credentialId;
         task.taskType = taskType(schedule);
         task.triggerType = triggerType;
-        task.status = "PENDING";
+        task.status = 1;
         task.targetUrl = rank.rankUrl;
         task.totalCount = 0;
         task.successCount = 0;
@@ -279,7 +279,7 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         if (schedule.autoMerge == null || schedule.autoMerge) {
             CrawlMergeTask mergeTask = new CrawlMergeTask();
             mergeTask.crawlTaskId = task.id;
-            mergeTask.status = "PENDING";
+            mergeTask.status = 1;
             mergeTask.totalCount = 0;
             mergeTask.mergedCount = 0;
             mergeTask.pendingReviewCount = 0;
@@ -292,12 +292,12 @@ public class CrawlerScheduleDispatcherImpl implements CrawlerScheduleDispatcher 
         return task;
     }
 
-    private String taskType(CrawlSchedule schedule) {
+    private Integer taskType(CrawlSchedule schedule) {
         CrawlerSourceConfig source = schedule == null || schedule.sourceId == null ? null : sourceMapper.selectById(schedule.sourceId);
-        if (source != null && "AUTHORIZED_VIP".equalsIgnoreCase(source.sourceType)) {
-            return "AUTHORIZED_VIP";
+        if (source != null && source.sourceType != null && source.sourceType == 2) {
+            return 4;
         }
-        return schedule != null && Boolean.TRUE.equals(schedule.crawlVip) ? "VIP_AND_PUBLIC" : "PUBLIC";
+        return schedule != null && Boolean.TRUE.equals(schedule.crawlVip) ? 2 : 1;
     }
 
     private String scheduleLockName(CrawlSchedule schedule, LocalDateTime windowStart) {

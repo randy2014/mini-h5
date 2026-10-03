@@ -11,7 +11,7 @@ class CrawlerExecutionServiceFetchConfigTest {
     void kkxszUsesMinimalPublicHeadersAcceptedBySource() {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "kkxsz_public";
-        source.sourceType = "PUBLIC";
+        source.sourceType = 1;
 
         var connection = CrawlerExecutionServiceImpl.configureFetchConnection(
                 "https://www.kkxsz.com/list-8/", source);
@@ -27,7 +27,7 @@ class CrawlerExecutionServiceFetchConfigTest {
     void nonKkxszSourcesKeepExistingBrowserLikeHeaders() {
         CrawlerSourceConfig source = new CrawlerSourceConfig();
         source.sourceCode = "23qb_public";
-        source.sourceType = "PUBLIC";
+        source.sourceType = 1;
 
         var connection = CrawlerExecutionServiceImpl.configureFetchConnection(
                 "https://www.23qb.com/class/1_1.html", source);

@@ -95,7 +95,7 @@
           <el-tooltip :content="qrUnavailableReason(row)" :disabled="canGenerateQr(row)">
             <span><el-button link type="primary" :icon="Grid" :disabled="!canGenerateQr(row)" @click="previewQr(row)">二维码</el-button></span>
           </el-tooltip>
-          <el-button v-if="row.status==='ENABLED'" link type="danger" @click="disableListedCode(row)">禁用</el-button>
+          <el-button v-if="row.status===1" link type="danger" @click="disableListedCode(row)">禁用</el-button>
         </template></el-table-column>
       </el-table>
       <h3>邀请记录</h3>
@@ -215,12 +215,12 @@ async function copyCode(code) {
   catch { ElMessage.error('复制失败，请手动复制'); }
 }
 function canGenerateQr(invitation) {
-  return invitation?.status === 'ENABLED'
+  return invitation?.status === 1
     && Number(invitation.remainingQuota) > 0
     && (!invitation.expiresAt || toEpochMillis(invitation.expiresAt) > Date.now());
 }
 function qrUnavailableReason(invitation) {
-  if (!invitation || invitation.status !== 'ENABLED') return '邀请码未启用';
+  if (!invitation || invitation.status !== 1) return '邀请码未启用';
   if (Number(invitation.remainingQuota) <= 0) return '邀请码额度已用尽';
   if (invitation.expiresAt && toEpochMillis(invitation.expiresAt) <= Date.now()) return '邀请码已过期';
   return '';

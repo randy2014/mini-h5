@@ -59,7 +59,7 @@ public class InvitationQrCodeService {
     }
 
     private boolean isUsable(VipInvitationCode invitation) {
-        return invitation != null && "ENABLED".equals(invitation.getStatus())
+        return invitation != null && invitation.getStatus() != null && invitation.getStatus() == 1
                 && invitation.getRemainingQuota() != null && invitation.getRemainingQuota() > 0
                 && (invitation.getExpiresAt() == null || invitation.getExpiresAt().isAfter(LocalDateTime.now()));
     }

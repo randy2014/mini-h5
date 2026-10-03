@@ -11,7 +11,7 @@ public class CrawlTask {
     private Long id;
     private Long sourceId;
     private Long novelId;
-    private String taskType;
+    private Integer taskType;
     private Integer status;
     private String message;
     private Integer retryCount;
@@ -25,8 +25,8 @@ public class CrawlTask {
     public void setSourceId(Long sourceId) { this.sourceId = sourceId; }
     public Long getNovelId() { return novelId; }
     public void setNovelId(Long novelId) { this.novelId = novelId; }
-    public String getTaskType() { return taskType; }
-    public void setTaskType(String taskType) { this.taskType = taskType; }
+    public Integer getTaskType() { return taskType; }
+    public void setTaskType(Integer taskType) { this.taskType = taskType; }
     public Integer getStatus() { return status; }
     public void setStatus(Integer status) { this.status = status; }
     public String getMessage() { return message; }

@@ -139,7 +139,7 @@
             <div v-for="c in channels" :key="c.id" class="join-row">
               <span class="join-name">
                 <span class="join-title">{{ c.name }}</span>
-                <el-tag v-if="c.status !== 'PUBLISHED'" size="small" type="info" effect="plain">已下架</el-tag>
+                <el-tag v-if="c.status !== 1" size="small" type="info" effect="plain">已下架</el-tag>
                 <span class="join-count">小说 {{ c.novelCount ?? 0 }} · 图文视频 {{ c.mediaCount ?? 0 }}</span>
               </span>
               <template v-if="joinMode === 'single' && joinedChannelIds.includes(c.id)">

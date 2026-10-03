@@ -43,7 +43,7 @@ public class CoinServiceImpl implements CoinService {
 
     @Override
     @Transactional
-    public void deduct(Long userId, long amount, String bizType, String bizId) {
+    public void deduct(Long userId, long amount, Integer bizType, String bizId) {
         if (amount <= 0) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "扣费数量必须大于 0");
         }
@@ -77,7 +77,7 @@ public class CoinServiceImpl implements CoinService {
         return balance;
     }
 
-    private void insertLog(Long userId, long change, long after, String bizType,
+    private void insertLog(Long userId, long change, long after, Integer bizType,
                            String bizId, Long operatorId, String remark) {
         UserCoinLog log = new UserCoinLog();
         log.setUserId(userId);
