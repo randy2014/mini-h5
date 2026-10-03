@@ -40,9 +40,19 @@
               @clear="searchNovels"
             />
             <el-button type="primary" @click="searchNovels">查询</el-button>
+            <el-button type="danger" :disabled="!selectedNovels.length" @click="batchRemoveNovels">
+              批量移出频道{{ selectedNovels.length ? `（${selectedNovels.length}）` : '' }}
+            </el-button>
             <el-button @click="$router.push('/admin/articles')">去VIP文章管理加入小说</el-button>
           </div>
-          <el-table :data="novels" v-loading="novelLoading" row-key="id">
+          <el-table
+            ref="novelTableRef"
+            :data="novels"
+            v-loading="novelLoading"
+            row-key="id"
+            @selection-change="onNovelSelectionChange"
+          >
+            <el-table-column type="selection" width="46" />
             <el-table-column prop="id" label="ID" width="80" />
             <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
             <el-table-column prop="author" label="作者" width="120" show-overflow-tooltip />
@@ -167,6 +177,8 @@ const novelKeyword = ref('');
 const novelPage = ref(1);
 const novelPageSize = 20;
 const novelTotal = ref(0);
+const novelTableRef = ref(null);
+const selectedNovels = ref([]);
 
 const posts = ref([]);
 const postLoading = ref(false);
@@ -288,6 +300,32 @@ async function removeNovel(row) {
   await adminApi.delete(`/subscribe-channels/${channelId}/novels/${row.id}`);
   ElMessage.success('已移出频道');
   await Promise.all([loadChannel(), loadNovels()]);
+}
+
+function onNovelSelectionChange(selection) {
+  selectedNovels.value = selection || [];
+}
+
+async function batchRemoveNovels() {
+  const ids = selectedNovels.value.map((n) => n.id);
+  if (!ids.length) {
+    ElMessage.warning('请先勾选要移出频道的小说');
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(`将选中的 ${ids.length} 本小说从本频道移出？`, '确认');
+  } catch {
+    return;
+  }
+  const r = await adminApi.delete(`/subscribe-channels/${channelId}/novels/batch`, {
+    data: { novelIds: ids }
+  });
+  const removed = r?.removed ?? ids.length;
+  const notInChannel = r?.notInChannel ?? 0;
+  ElMessage.success(`已移出 ${removed} 本` + (notInChannel ? `，其中 ${notInChannel} 本原本不在频道` : ''));
+  await Promise.all([loadChannel(), loadNovels()]);
+  novelTableRef.value?.clearSelection();
+  selectedNovels.value = [];
 }
 
 onMounted(async () => {

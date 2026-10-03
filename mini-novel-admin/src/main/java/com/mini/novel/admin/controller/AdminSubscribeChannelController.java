@@ -273,6 +273,29 @@ public class AdminSubscribeChannelController {
         return Result.ok(true);
     }
 
+    /**
+     * 批量移出频道（频道详情多选后一次提交）：幂等语义——
+     * 原本不在该频道的关系直接忽略，返回实际移出数量与不在频道数量。
+     */
+    @DeleteMapping("/{channelId}/novels/batch")
+    @Transactional
+    public Result<BatchRemoveResult> removeNovelsBatch(@PathVariable Long channelId,
+                                                       @RequestBody BatchRemoveNovelRequest request) {
+        require(channelId);
+        List<Long> ids = request.novelIds() == null ? List.of()
+                : request.novelIds().stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "请选择要移出的小说");
+        }
+        if (ids.size() > MAX_BATCH_SIZE) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "单次最多移出 " + MAX_BATCH_SIZE + " 本小说");
+        }
+        int removed = channelNovelMapper.delete(new LambdaQueryWrapper<SubscribeChannelNovel>()
+                .eq(SubscribeChannelNovel::getChannelId, channelId)
+                .in(SubscribeChannelNovel::getNovelId, ids));
+        return Result.ok(new BatchRemoveResult(ids.size(), removed, ids.size() - removed));
+    }
+
     /** 补内容统计（小说数 + 已发布多媒体帖数）；一次 IN 查询取回，避免 N+1。 */
     private List<SubscribeChannel> withCounts(List<SubscribeChannel> channels) {
         if (channels.isEmpty()) {
@@ -326,6 +349,13 @@ public class AdminSubscribeChannelController {
 
     /** requested=提交总数，added=新增，skipped=已在该频道，notFound=小说不存在。 */
     public record BatchJoinResult(int requested, int added, int skipped, int notFound) {
+    }
+
+    public record BatchRemoveNovelRequest(List<Long> novelIds) {
+    }
+
+    /** requested=提交总数，removed=实际移出，notInChannel=原本不在该频道。 */
+    public record BatchRemoveResult(int requested, int removed, int notInChannel) {
     }
 
     /** 频道内小说条目（含加入频道时间）。 */
