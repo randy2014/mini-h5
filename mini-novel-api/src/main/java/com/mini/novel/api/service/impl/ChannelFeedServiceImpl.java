@@ -96,6 +96,7 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
             item.setId(novel.getId());
             item.setTitle(novel.getTitle());
             item.setAuthor(novel.getAuthor());
+            item.setIntro(excerpt(novel.getIntro(), 60));
             item.setCoverKind("novel");
             item.setSortTime(link.getCreatedAt() == null ? LocalDateTime.now() : link.getCreatedAt());
             out.add(item);
@@ -154,5 +155,17 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
             out.add(item);
         }
         return out;
+    }
+
+    /** 简介摘要：压缩空白后截取前 maxLength 个字符，超出补省略号；仅返回摘要，不下发全文。 */
+    private static String excerpt(String text, int maxLength) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String flat = text.replaceAll("\\s+", " ").trim();
+        if (flat.length() <= maxLength) {
+            return flat;
+        }
+        return flat.substring(0, maxLength).trim() + "…";
     }
 }

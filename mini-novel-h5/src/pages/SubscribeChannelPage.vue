@@ -10,35 +10,13 @@
     <div v-if="restricted" class="filter-hint">🔇 媒体图文/视频为订阅专属，订阅后可见</div>
     <div v-else-if="readHiddenCount > 0" class="filter-hint">🔇 已隐藏已读小说 {{ readHiddenCount }} 本 · 媒体内容不参与已读过滤</div>
 
-    <!-- 工具栏：网格/列表切换（沿用现有交互） -->
+    <!-- 工具栏 -->
     <div class="toolbar">
       <span class="count">{{ total }} 条内容</span>
-      <div class="view-toggle">
-        <div :class="['vt', { active: viewMode === 'grid' }]" @click="viewMode = 'grid'">▦ 网格</div>
-        <div :class="['vt', { active: viewMode === 'list' }]" @click="viewMode = 'list'">☰ 列表</div>
-      </div>
-    </div>
-
-    <!-- 网格：统一混排 -->
-    <div v-if="viewMode === 'grid'" class="grid">
-      <div v-for="item in visible" :key="item.kind + '-' + item.id" class="gcell" @click="open(item)">
-        <div class="gcover-wrap">
-          <div v-if="coverFailed(item)" class="gcover" :class="coverClass(item)">{{ coverText(item) }}</div>
-          <img v-else-if="coverSrc(item)" :src="coverSrc(item)" class="gcover-img" @error="markCoverFailed(item)" />
-          <div v-else class="gcover" :class="coverClass(item)">{{ coverText(item) }}</div>
-          <span v-if="item.kind === 'NOVEL'" class="badge novel">📖</span>
-          <span v-else-if="item.kind === 'VIDEO'" class="badge video">▶</span>
-          <span v-else-if="item.kind === 'MIXED'" class="badge mixed">图+▶</span>
-          <span v-else class="badge image">🖼</span>
-          <span v-if="item.videoDurationMs" class="dur">{{ fmtDur(item.videoDurationMs) }}</span>
-        </div>
-        <div class="gname">{{ item.title }}</div>
-        <div v-if="item.kind === 'NOVEL'" class="gauthor">{{ item.author || '' }}</div>
-      </div>
     </div>
 
     <!-- 列表：统一混排 -->
-    <div v-else class="list">
+    <div class="list">
       <div v-for="item in visible" :key="item.kind + '-' + item.id" class="book-row" @click="open(item)">
         <div class="lcover-wrap">
           <div v-if="coverFailed(item)" class="bcover" :class="coverClass(item)">{{ coverText(item) }}</div>
@@ -52,7 +30,7 @@
               {{ typeName(item.kind) }}
             </span>
           </div>
-          <div class="ba">{{ item.author || mediaDesc(item) }}</div>
+          <div class="ba">{{ subline(item) }}</div>
         </div>
         <span class="go">›</span>
       </div>
@@ -87,7 +65,6 @@ const feed = ref([]);
 const total = ref(0);
 const restricted = ref(false);
 const loading = ref(false);
-const viewMode = ref('grid');
 const page = ref(1);
 const pageSize = 20;
 
@@ -112,6 +89,17 @@ function mediaDesc(item) {
   if (item.videoCount) parts.push(`${item.videoCount} 视频`);
   if (item.videoDurationMs) parts.push(fmtDur(item.videoDurationMs));
   return parts.join(' · ');
+}
+
+function subline(item) {
+  if (item.kind === 'NOVEL') {
+    const author = item.author;
+    if (author && author !== 'Unknown' && author !== 'unknown') {
+      return author;
+    }
+    return item.intro || '';
+  }
+  return mediaDesc(item);
 }
 
 function coverText(item) {
@@ -163,7 +151,7 @@ function open(item) {
     markSubscribeRead(item.id, { title: item.title, author: item.author || '' });
     readHiddenCount.value += 1;
     refreshReadIds();
-    router.push(`/h5/read/${item.id}`);
+    router.push(`/h5/book/${item.id}`);
     return;
   }
   router.push(`/h5/subscribe/${channelId}/media/${item.id}`);
@@ -214,22 +202,7 @@ onMounted(load);
 .chan-head .cnt { font-size: 11px; opacity: .85; margin-top: 6px; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 0; }
 .toolbar .count { font-size: 12px; color: #55657a; font-weight: 600; }
-.view-toggle { display: flex; background: #e9ecf2; border-radius: 10px; padding: 3px; }
-.vt { padding: 6px 16px; font-size: 12px; font-weight: 600; color: #8a92a3; border-radius: 8px; }
-.vt.active { background: #fff; color: #1f6f64; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .filter-hint { padding: 8px 14px 0; font-size: 11px; color: #a6adb9; }
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px 14px; }
-.gcell { display: flex; flex-direction: column; gap: 5px; }
-.gcover-wrap { position: relative; border-radius: 9px; overflow: hidden; aspect-ratio: 3 / 4; }
-.gcover-img { width: 100%; height: 100%; object-fit: cover; display: block; background: #e4eaf1; }
-.gcover { width: 100%; height: 100%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-align: center; line-height: 1.3; }
-.gname { font-size: 11px; font-weight: 600; color: #4b5563; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.gauthor { font-size: 10px; color: #98a5b5; }
-.badge { position: absolute; top: 5px; left: 5px; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: rgba(0,0,0,.55); color: #fff; }
-.badge.video { background: rgba(47,111,216,.92); }
-.badge.mixed { background: rgba(122,63,224,.92); }
-.badge.image { background: rgba(31,122,92,.92); }
-.dur { position: absolute; right: 5px; bottom: 5px; font-size: 9px; background: rgba(0,0,0,.6); color: #fff; padding: 1px 6px; border-radius: 7px; }
 .list { padding: 8px 14px; }
 .book-row { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #eef1f6; background: #fff; border-radius: 10px; margin-bottom: 8px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
 .lcover-wrap { width: 62px; height: 84px; flex-shrink: 0; border-radius: 7px; overflow: hidden; position: relative; }
@@ -242,7 +215,7 @@ onMounted(load);
 .type-chip.t-image { background: #e7f6f0; color: #1f7a5c; }
 .type-chip.t-video { background: #eaf2ff; color: #2f6fd8; }
 .type-chip.t-mixed { background: #f6eefe; color: #7a3fe0; }
-.ba { font-size: 10px; color: #98a5b5; }
+.ba { font-size: 10px; color: #98a5b5; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .go { color: #c4ccd6; font-size: 16px; align-self: center; }
 .empty-list { text-align: center; color: #a6adb9; font-size: 13px; padding: 40px 0; }
 .more { text-align: center; color: #1f6f64; font-size: 13px; padding: 12px; }

@@ -17,6 +17,7 @@ public class ChannelFeedVo {
         private Long id;            // NOVEL → novel.id；媒体 → post.id
         private String title;
         private String author;      // 小说作者
+        private String intro;       // 小说简介摘要（NOVEL 专用，仅截取后的摘要，非全文）
         private String coverKind;   // 'novel'（H5 走 /api/cover/{id}）| 'thumb' | 'poster'（媒体）
         private Long coverAssetId;  // 媒体封面素材 id（thumb/poster）
         private Integer imageCount;
@@ -32,6 +33,8 @@ public class ChannelFeedVo {
         public void setTitle(String title) { this.title = title; }
         public String getAuthor() { return author; }
         public void setAuthor(String author) { this.author = author; }
+        public String getIntro() { return intro; }
+        public void setIntro(String intro) { this.intro = intro; }
         public String getCoverKind() { return coverKind; }
         public void setCoverKind(String coverKind) { this.coverKind = coverKind; }
         public Long getCoverAssetId() { return coverAssetId; }
