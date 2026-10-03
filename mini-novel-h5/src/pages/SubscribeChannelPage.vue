@@ -15,24 +15,21 @@
       <span class="count">{{ total }} 条内容</span>
     </div>
 
-    <!-- 列表：统一混排 -->
+    <!-- 列表：统一混排（卡片式，参考 VIP 专区精选书单） -->
     <div class="list">
-      <div v-for="item in visible" :key="item.kind + '-' + item.id" class="book-row" @click="open(item)">
-        <div class="lcover-wrap">
-          <div v-if="coverFailed(item)" class="bcover" :class="coverClass(item)">{{ coverText(item) }}</div>
-          <img v-else-if="coverSrc(item)" :src="coverSrc(item)" class="bcover-img" @error="markCoverFailed(item)" />
-          <div v-else class="bcover" :class="coverClass(item)">{{ coverText(item) }}</div>
+      <div v-for="item in visible" :key="item.kind + '-' + item.id" class="feed-card" @click="open(item)">
+        <div class="fc-cover-wrap">
+          <div v-if="coverFailed(item)" class="fc-cover" :class="coverClass(item)">{{ coverText(item) }}</div>
+          <img v-else-if="coverSrc(item)" :src="coverSrc(item)" class="fc-cover-img" @error="markCoverFailed(item)" />
+          <div v-else class="fc-cover" :class="coverClass(item)">{{ coverText(item) }}</div>
         </div>
-        <div class="info">
-          <div class="bt">
-            {{ item.title }}
-            <span class="type-chip" :class="'t-' + item.kind.toLowerCase()">
-              {{ typeName(item.kind) }}
-            </span>
+        <div class="fc-body">
+          <div class="fc-topline">
+            <span class="type-chip" :class="'t-' + item.kind.toLowerCase()">{{ typeName(item.kind) }}</span>
           </div>
-          <div class="ba">{{ subline(item) }}</div>
+          <strong class="fc-title">{{ item.title }}</strong>
+          <em class="fc-sub">{{ subline(item) }}</em>
         </div>
-        <span class="go">›</span>
       </div>
     </div>
 
@@ -203,20 +200,21 @@ onMounted(load);
 .toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 0; }
 .toolbar .count { font-size: 12px; color: #55657a; font-weight: 600; }
 .filter-hint { padding: 8px 14px 0; font-size: 11px; color: #a6adb9; }
-.list { padding: 8px 14px; }
-.book-row { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #eef1f6; background: #fff; border-radius: 10px; margin-bottom: 8px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
-.lcover-wrap { width: 62px; height: 84px; flex-shrink: 0; border-radius: 7px; overflow: hidden; position: relative; }
-.bcover-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.bcover { width: 100%; height: 100%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.3; }
-.info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
-.bt { font-size: 13px; font-weight: 600; }
-.type-chip { font-size: 9px; padding: 1px 6px; border-radius: 8px; margin-left: 5px; vertical-align: 1px; }
-.type-chip.t-novel { background: #fdf3dd; color: #b07f13; }
-.type-chip.t-image { background: #e7f6f0; color: #1f7a5c; }
-.type-chip.t-video { background: #eaf2ff; color: #2f6fd8; }
-.type-chip.t-mixed { background: #f6eefe; color: #7a3fe0; }
-.ba { font-size: 10px; color: #98a5b5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.go { color: #c4ccd6; font-size: 16px; align-self: center; }
+.list { padding: 10px 14px; }
+.feed-card { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 13px; margin-bottom: 12px; padding: 12px; border: 1px solid rgba(31, 37, 40, .08); border-radius: var(--radius); background: var(--panel); box-shadow: 0 8px 24px rgba(31, 37, 40, .04); }
+.feed-card:active { transform: scale(.99); }
+.fc-cover-wrap { width: 78px; }
+.fc-cover-img { width: 78px; aspect-ratio: 5 / 7; border-radius: 6px; object-fit: cover; display: block; background: #d9dfdc; }
+.fc-cover { width: 78px; aspect-ratio: 5 / 7; border-radius: 6px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.3; }
+.fc-body { min-width: 0; display: flex; flex-direction: column; }
+.fc-topline { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.type-chip { display: inline-flex; align-items: center; width: fit-content; padding: 2px 7px; border-radius: 999px; font-size: 11px; line-height: 1.25; }
+.type-chip.t-novel { border: 1px solid rgba(155, 122, 47, .28); color: var(--gold); background: #fff6d9; }
+.type-chip.t-image { border: 1px solid rgba(31, 111, 100, .25); color: var(--brand); background: #e7f3ef; }
+.type-chip.t-video { border: 1px solid rgba(47, 111, 216, .25); color: #2f6fd8; background: #eaf2ff; }
+.type-chip.t-mixed { border: 1px solid rgba(122, 63, 224, .25); color: #7a3fe0; background: #f6eefe; }
+.fc-title { display: block; overflow: hidden; margin: 0 0 6px; font-size: 17px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.fc-sub { display: -webkit-box; overflow: hidden; color: #485351; font-size: 13px; font-style: normal; line-height: 1.48; white-space: pre-line; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .empty-list { text-align: center; color: #a6adb9; font-size: 13px; padding: 40px 0; }
 .more { text-align: center; color: #1f6f64; font-size: 13px; padding: 12px; }
 .footbar { position: fixed; left: 0; right: 0; bottom: 52px; background: #fff; border-top: 1px solid #e9ecf2; padding: 11px 14px; display: flex; align-items: center; gap: 10px; }
