@@ -2098,8 +2098,8 @@ ALTER TABLE `chapter_source_mapping` MODIFY `content_status` TINYINT NOT NULL DE
 UPDATE `chapter_content` SET `storage_type` = CASE `storage_type` WHEN 'MYSQL' THEN 1 WHEN 'FILE' THEN 2 END WHERE `storage_type` IN ('MYSQL','FILE');
 ALTER TABLE `chapter_content` MODIFY `storage_type` TINYINT NOT NULL DEFAULT 1 COMMENT '正文存储方式枚举：1=存 MySQL，2=文件/对象存储';
 
-UPDATE `vip_adjust_log` SET `action` = CASE `action` WHEN 'UPGRADE' THEN 1 WHEN 'DOWNGRADE' THEN 2 WHEN 'SUSPEND' THEN 3 WHEN 'CANCEL' THEN 4 WHEN 'RESTORE' THEN 5 WHEN 'SET' THEN 6 END WHERE `action` IN ('UPGRADE','DOWNGRADE','SUSPEND','CANCEL','RESTORE','SET');
-ALTER TABLE `vip_adjust_log` MODIFY `action` TINYINT NOT NULL COMMENT '调整动作枚举：1=开通/延长，2=降级，3=暂停，4=取消，5=恢复，6=设置';
+UPDATE `vip_adjust_log` SET `action` = CASE `action` WHEN 'UPGRADE' THEN 1 WHEN 'DOWNGRADE' THEN 2 WHEN 'SUSPEND' THEN 3 WHEN 'CANCEL' THEN 4 WHEN 'RESTORE' THEN 5 WHEN 'SET' THEN 6 WHEN 'GRANT' THEN 1 WHEN 'REVOKE' THEN 4 WHEN 'EXPIRE' THEN 3 WHEN 'CORRECT' THEN 6 END WHERE `action` IN ('UPGRADE','DOWNGRADE','SUSPEND','CANCEL','RESTORE','SET','GRANT','REVOKE','EXPIRE','CORRECT');
+ALTER TABLE `vip_adjust_log` MODIFY `action` TINYINT NOT NULL COMMENT '调整动作枚举：1=开通/延长，2=降级，3=暂停，4=取消，5=恢复，6=设置（兼容历史 GRANT/REVOKE/EXPIRE/CORRECT）';
 
 UPDATE `vip_adjust_log` SET `before_status` = CAST(`before_status` AS UNSIGNED) WHERE `before_status` IS NOT NULL;
 UPDATE `vip_adjust_log` SET `after_status` = CAST(`after_status` AS UNSIGNED) WHERE `after_status` IS NOT NULL;
