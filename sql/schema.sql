@@ -314,7 +314,7 @@ CREATE TABLE IF NOT EXISTS `chapter_source_mapping` (
   `chapter_no` INT NOT NULL COMMENT '来源章节序号',
   `is_vip` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否来源 VIP 章节：0=免费，1=VIP',
   `content_hash` CHAR(64) NULL COMMENT '来源正文哈希',
-  `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=待处理，2=已入库，3=待审核，4=失败，5=忽略',
+  `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=待处理，2=已入库，3=正文可用，4=失败，5=忽略',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY uk_source_chapter (novel_mapping_id, source_chapter_id),
@@ -733,6 +733,157 @@ CREATE TABLE IF NOT EXISTS `crawl_merge_item` (
   KEY idx_novel_id (novel_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='清洗明细表，记录每本原始小说的匹配、入库、待审核或忽略状态';
 
+
+-- ----------------------------------------------------------------------------
+-- 类型/状态字符串枚举 → 1~N 整数枚举迁移（幂等，可重复执行）
+-- 顺序：先 UPDATE 把旧字符串映射为新整数，再 MODIFY 列类型为 TINYINT。
+-- 幂等：二次执行时列已是 TINYINT，字符串字面量在数值上下文被隐式转为 0，
+--       而映射目标除 before/after_status（0 基）外均为 >=1，UPDATE 匹配不到行、MODIFY 无变化。
+-- rank_type（crawl_rank_source / crawl_book_raw）保留字符串，不在此迁移范围。
+-- ----------------------------------------------------------------------------
+
+USE `mini_novel`;
+
+UPDATE `app_user` SET `vip_source` = CASE `vip_source` WHEN 'INVITATION' THEN 1 WHEN 'ADMIN' THEN 2 WHEN 'ORDER' THEN 3 END WHERE CAST(`vip_source` AS CHAR) IN ('INVITATION','ADMIN','ORDER');
+ALTER TABLE `app_user` MODIFY `vip_source` TINYINT NULL COMMENT 'VIP 来源枚举：1=邀请，2=后台，3=订单';
+
+UPDATE `vip_invitation_code` SET `status` = CASE `status` WHEN 'ENABLED' THEN 1 WHEN 'DISABLED' THEN 2 WHEN 'REVOKED' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE CAST(`status` AS CHAR) IN ('ENABLED','DISABLED','REVOKED','EXPIRED');
+ALTER TABLE `vip_invitation_code` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=启用，2=停用，3=已撤销，4=过期';
+
+UPDATE `vip_invitation_record` SET `status` = CASE `status` WHEN 'ACTIVATED' THEN 1 END WHERE CAST(`status` AS CHAR) IN ('ACTIVATED');
+ALTER TABLE `vip_invitation_record` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=已激活';
+
+UPDATE `vip_order` SET `pay_channel` = CASE `pay_channel` WHEN 'wechat' THEN 1 WHEN 'alipay' THEN 2 WHEN 'manual' THEN 3 END WHERE CAST(`pay_channel` AS CHAR) IN ('wechat','alipay','manual');
+ALTER TABLE `vip_order` MODIFY `pay_channel` TINYINT NULL COMMENT '支付渠道枚举：1=微信，2=支付宝，3=人工';
+
+UPDATE `crawl_task` SET `task_type` = CASE `task_type` WHEN 'LIST' THEN 1 WHEN 'DETAIL' THEN 2 WHEN 'CHAPTER' THEN 3 WHEN 'MANUAL' THEN 4 END WHERE CAST(`task_type` AS CHAR) IN ('LIST','DETAIL','CHAPTER','MANUAL');
+ALTER TABLE `crawl_task` MODIFY `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=列表，2=详情，3=章节，4=手动';
+
+UPDATE `novel_identity` SET `match_status` = CASE `match_status` WHEN 'ACTIVE' THEN 1 WHEN 'MERGED' THEN 2 WHEN 'IGNORED' THEN 3 END WHERE CAST(`match_status` AS CHAR) IN ('ACTIVE','MERGED','IGNORED');
+ALTER TABLE `novel_identity` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '身份状态枚举：1=有效，2=已合并，3=忽略';
+
+UPDATE `novel_source_mapping` SET `content_status` = CASE `content_status` WHEN 'META_ONLY' THEN 1 WHEN 'CATALOG_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'FAILED' THEN 5 WHEN 'IGNORED' THEN 6 END WHERE CAST(`content_status` AS CHAR) IN ('META_ONLY','CATALOG_READY','CONTENT_READY','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `novel_source_mapping` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文可用，4=待审核，5=失败，6=忽略';
+
+UPDATE `novel_source_mapping` SET `match_status` = CASE `match_status` WHEN 'PENDING' THEN 1 WHEN 'MATCHED' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 WHEN 'IGNORED' THEN 7 END WHERE CAST(`match_status` AS CHAR) IN ('PENDING','MATCHED','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `novel_source_mapping` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '匹配状态枚举：1=待匹配，2=已匹配，3=已入库，4=部分入库，5=待审核，6=失败，7=忽略';
+
+UPDATE `chapter_source_mapping` SET `content_status` = CASE `content_status` WHEN 'PENDING' THEN 1 WHEN 'MERGED' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 3 WHEN 'FAILED' THEN 4 WHEN 'IGNORED' THEN 5 END WHERE CAST(`content_status` AS CHAR) IN ('PENDING','MERGED','CONTENT_READY','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `chapter_source_mapping` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=待处理，2=已入库，3=正文可用，4=失败，5=忽略';
+
+UPDATE `chapter_content` SET `storage_type` = CASE `storage_type` WHEN 'MYSQL' THEN 1 WHEN 'FILE' THEN 2 END WHERE CAST(`storage_type` AS CHAR) IN ('MYSQL','FILE');
+ALTER TABLE `chapter_content` MODIFY `storage_type` TINYINT NOT NULL DEFAULT 1 COMMENT '正文存储方式枚举：1=存 MySQL，2=文件/对象存储';
+
+UPDATE `vip_adjust_log` SET `action` = CASE `action` WHEN 'UPGRADE' THEN 1 WHEN 'DOWNGRADE' THEN 2 WHEN 'SUSPEND' THEN 3 WHEN 'CANCEL' THEN 4 WHEN 'RESTORE' THEN 5 WHEN 'SET' THEN 6 WHEN 'GRANT' THEN 1 WHEN 'REVOKE' THEN 4 WHEN 'EXPIRE' THEN 3 WHEN 'CORRECT' THEN 6 END WHERE CAST(`action` AS CHAR) IN ('UPGRADE','DOWNGRADE','SUSPEND','CANCEL','RESTORE','SET','GRANT','REVOKE','EXPIRE','CORRECT');
+ALTER TABLE `vip_adjust_log` MODIFY `action` TINYINT NOT NULL COMMENT '调整动作枚举：1=开通/延长，2=降级，3=暂停，4=取消，5=恢复，6=设置（兼容历史 GRANT/REVOKE/EXPIRE/CORRECT）';
+
+UPDATE `vip_adjust_log` SET `before_status` = CAST(`before_status` AS UNSIGNED) WHERE `before_status` IS NOT NULL;
+UPDATE `vip_adjust_log` SET `after_status` = CAST(`after_status` AS UNSIGNED) WHERE `after_status` IS NOT NULL;
+ALTER TABLE `vip_adjust_log` MODIFY `before_status` TINYINT NULL COMMENT '调整前 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP';
+ALTER TABLE `vip_adjust_log` MODIFY `after_status` TINYINT NULL COMMENT '调整后 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP';
+
+UPDATE `user_vip` SET `source_type` = CASE `source_type` WHEN 'INVITATION' THEN 1 WHEN 'ADMIN' THEN 2 WHEN 'ORDER' THEN 3 END WHERE CAST(`source_type` AS CHAR) IN ('INVITATION','ADMIN','ORDER');
+ALTER TABLE `user_vip` MODIFY `source_type` TINYINT NULL COMMENT '权益来源类型枚举：1=邀请，2=后台，3=订单';
+
+UPDATE `subscribe_channel` SET `status` = CASE `status` WHEN 'PUBLISHED' THEN 1 WHEN 'OFFLINE' THEN 2 END WHERE CAST(`status` AS CHAR) IN ('PUBLISHED','OFFLINE');
+ALTER TABLE `subscribe_channel` MODIFY `status` TINYINT NOT NULL DEFAULT 2 COMMENT '状态枚举：1=已发布，2=已下架';
+
+UPDATE `user_coin_log` SET `biz_type` = CASE `biz_type` WHEN 'RECHARGE' THEN 1 WHEN 'SUBSCRIBE' THEN 2 WHEN 'REFUND' THEN 3 WHEN 'GRANT' THEN 4 END WHERE CAST(`biz_type` AS CHAR) IN ('RECHARGE','SUBSCRIBE','REFUND','GRANT');
+ALTER TABLE `user_coin_log` MODIFY `biz_type` TINYINT NOT NULL COMMENT '业务类型枚举：1=后台充值，2=订阅扣费，3=冲正，4=赠送';
+
+UPDATE `user_subscribe` SET `period_type` = CASE `period_type` WHEN 'WEEK' THEN 1 WHEN 'MONTH' THEN 2 WHEN 'QUARTER' THEN 3 WHEN 'YEAR' THEN 4 END WHERE CAST(`period_type` AS CHAR) IN ('WEEK','MONTH','QUARTER','YEAR');
+ALTER TABLE `user_subscribe` MODIFY `period_type` TINYINT NOT NULL COMMENT '周期类型枚举：1=周，2=月，3=季，4=年';
+
+UPDATE `user_subscribe` SET `status` = CASE `status` WHEN 'ACTIVE' THEN 1 WHEN 'EXPIRED' THEN 2 WHEN 'CANCELLED' THEN 3 END WHERE CAST(`status` AS CHAR) IN ('ACTIVE','EXPIRED','CANCELLED');
+ALTER TABLE `user_subscribe` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=生效，2=过期，3=取消';
+
+UPDATE `ticket` SET `status` = CASE `status` WHEN 'OPEN' THEN 1 WHEN 'CLOSED' THEN 2 END WHERE CAST(`status` AS CHAR) IN ('OPEN','CLOSED');
+ALTER TABLE `ticket` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=待处理，2=已关闭';
+
+UPDATE `ticket_reply` SET `replier_type` = CASE `replier_type` WHEN 'USER' THEN 1 WHEN 'ADMIN' THEN 2 END WHERE CAST(`replier_type` AS CHAR) IN ('USER','ADMIN');
+ALTER TABLE `ticket_reply` MODIFY `replier_type` TINYINT NOT NULL COMMENT '回复人类型枚举：1=用户，2=管理员';
+
+UPDATE `media_asset` SET `file_type` = CASE `file_type` WHEN 'IMAGE' THEN 1 WHEN 'VIDEO' THEN 2 END WHERE CAST(`file_type` AS CHAR) IN ('IMAGE','VIDEO');
+ALTER TABLE `media_asset` MODIFY `file_type` TINYINT NOT NULL COMMENT '文件类型枚举：1=图片，2=视频';
+
+UPDATE `media_asset` SET `status` = CASE `status` WHEN 'PROCESSING' THEN 1 WHEN 'READY' THEN 2 WHEN 'FAILED' THEN 3 END WHERE CAST(`status` AS CHAR) IN ('PROCESSING','READY','FAILED');
+ALTER TABLE `media_asset` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=处理中，2=就绪，3=失败';
+
+UPDATE `media_post` SET `type` = CASE `type` WHEN 'IMAGE' THEN 1 WHEN 'VIDEO' THEN 2 WHEN 'MIXED' THEN 3 END WHERE CAST(`type` AS CHAR) IN ('IMAGE','VIDEO','MIXED');
+ALTER TABLE `media_post` MODIFY `type` TINYINT NOT NULL DEFAULT 1 COMMENT '内容类型枚举：1=图文，2=视频，3=图文+视频（自动判定，无纯文本帖）';
+
+-- 旧版 media_post.status 的字符串枚举 CHECK 约束（若存在）需先删除，否则 UPDATE 会因约束校验失败；
+-- 改完数据与列类型后再按整数枚举重建（若不存在）。二者都用 information_schema 守卫，保证幂等。
+SET @has_mp_chk := (
+  SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'media_post'
+    AND CONSTRAINT_NAME = 'chk_media_post_status'
+    AND CONSTRAINT_TYPE = 'CHECK'
+);
+SET @drop_mp_chk := IF(@has_mp_chk > 0, 'ALTER TABLE media_post DROP CHECK chk_media_post_status', 'SELECT 1');
+PREPARE drop_mp_chk_stmt FROM @drop_mp_chk;
+EXECUTE drop_mp_chk_stmt;
+DEALLOCATE PREPARE drop_mp_chk_stmt;
+
+UPDATE `media_post` SET `status` = CASE `status` WHEN 'DRAFT' THEN 1 WHEN 'PUBLISHED' THEN 2 END WHERE CAST(`status` AS CHAR) IN ('DRAFT','PUBLISHED');
+ALTER TABLE `media_post` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=草稿，2=已发布';
+
+SET @has_mp_chk2 := (
+  SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'media_post'
+    AND CONSTRAINT_NAME = 'chk_media_post_status'
+    AND CONSTRAINT_TYPE = 'CHECK'
+);
+SET @add_mp_chk := IF(@has_mp_chk2 = 0, 'ALTER TABLE media_post ADD CONSTRAINT chk_media_post_status CHECK (status IN (1,2))', 'SELECT 1');
+PREPARE add_mp_chk_stmt FROM @add_mp_chk;
+EXECUTE add_mp_chk_stmt;
+DEALLOCATE PREPARE add_mp_chk_stmt;
+
+USE `mini_novel_crawler`;
+
+UPDATE `crawl_source` SET `source_type` = CASE `source_type` WHEN 'PUBLIC' THEN 1 WHEN 'AUTHORIZED_VIP' THEN 2 WHEN 'IMPORT' THEN 3 END WHERE CAST(`source_type` AS CHAR) IN ('PUBLIC','AUTHORIZED_VIP','IMPORT');
+ALTER TABLE `crawl_source` MODIFY `source_type` TINYINT NOT NULL DEFAULT 1 COMMENT '来源类型枚举：1=公开网页，2=授权 VIP，3=手动导入';
+
+UPDATE `crawl_source` SET `auth_mode` = CASE `auth_mode` WHEN 'NONE' THEN 1 WHEN 'PASSWORD' THEN 2 WHEN 'COOKIE' THEN 3 END WHERE CAST(`auth_mode` AS CHAR) IN ('NONE','PASSWORD','COOKIE');
+ALTER TABLE `crawl_source` MODIFY `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=无需认证，2=账号密码，3=Cookie';
+
+UPDATE `crawl_source_credential` SET `auth_mode` = CASE `auth_mode` WHEN 'PASSWORD' THEN 1 WHEN 'COOKIE' THEN 2 END WHERE CAST(`auth_mode` AS CHAR) IN ('PASSWORD','COOKIE');
+ALTER TABLE `crawl_source_credential` MODIFY `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=账号密码，2=Cookie';
+
+UPDATE `crawl_source_credential` SET `status` = CASE `status` WHEN 'UNVERIFIED' THEN 1 WHEN 'VALID' THEN 2 WHEN 'INVALID' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE CAST(`status` AS CHAR) IN ('UNVERIFIED','VALID','INVALID','EXPIRED');
+ALTER TABLE `crawl_source_credential` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '凭据状态枚举：1=未校验，2=有效，3=无效，4=过期';
+
+UPDATE `crawl_source_credential` SET `last_check_status` = CASE `last_check_status` WHEN 'UNVERIFIED' THEN 1 WHEN 'VALID' THEN 2 WHEN 'INVALID' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE CAST(`last_check_status` AS CHAR) IN ('UNVERIFIED','VALID','INVALID','EXPIRED');
+ALTER TABLE `crawl_source_credential` MODIFY `last_check_status` TINYINT NULL COMMENT '最近一次校验结果：1=未校验，2=有效，3=无效，4=过期';
+
+UPDATE `crawl_task_v2` SET `task_type` = CASE `task_type` WHEN 'PUBLIC' THEN 1 WHEN 'VIP_AND_PUBLIC' THEN 2 WHEN 'IMPORT' THEN 3 WHEN 'AUTHORIZED_VIP' THEN 4 END WHERE CAST(`task_type` AS CHAR) IN ('PUBLIC','VIP_AND_PUBLIC','IMPORT','AUTHORIZED_VIP');
+ALTER TABLE `crawl_task_v2` MODIFY `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=公开采集，2=公开+授权 VIP，3=手动导入，4=授权 VIP';
+
+UPDATE `crawl_task_v2` SET `trigger_type` = CASE `trigger_type` WHEN 'MANUAL' THEN 1 WHEN 'SCHEDULE' THEN 2 WHEN 'SYSTEM' THEN 3 END WHERE CAST(`trigger_type` AS CHAR) IN ('MANUAL','SCHEDULE','SYSTEM');
+ALTER TABLE `crawl_task_v2` MODIFY `trigger_type` TINYINT NOT NULL DEFAULT 1 COMMENT '触发方式枚举：1=手动，2=调度，3=系统补偿';
+
+UPDATE `crawl_task_v2` SET `status` = CASE `status` WHEN 'PENDING' THEN 1 WHEN 'RUNNING' THEN 2 WHEN 'SUCCESS' THEN 3 WHEN 'FAILED' THEN 4 WHEN 'PARTIAL_SUCCESS' THEN 5 WHEN 'NO_DATA' THEN 6 END WHERE CAST(`status` AS CHAR) IN ('PENDING','RUNNING','SUCCESS','FAILED','PARTIAL_SUCCESS','NO_DATA');
+ALTER TABLE `crawl_task_v2` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '任务状态枚举：1=待执行，2=执行中，3=成功，4=失败，5=部分成功，6=无数据';
+
+UPDATE `crawl_book_raw` SET `book_status` = CASE `book_status` WHEN 'UNKNOWN' THEN 1 WHEN 'SERIALIZING' THEN 2 WHEN 'COMPLETED' THEN 3 END WHERE CAST(`book_status` AS CHAR) IN ('UNKNOWN','SERIALIZING','COMPLETED');
+ALTER TABLE `crawl_book_raw` MODIFY `book_status` TINYINT NOT NULL DEFAULT 1 COMMENT '来源书籍状态枚举：1=未知，2=连载，3=完结';
+
+UPDATE `crawl_book_raw` SET `content_status` = CASE `content_status` WHEN 'META_ONLY' THEN 1 WHEN 'CATALOG_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'REVIEW_REJECTED' THEN 5 WHEN 'PUBLISH_READY' THEN 6 WHEN 'FAILED' THEN 7 END WHERE CAST(`content_status` AS CHAR) IN ('META_ONLY','CATALOG_READY','CONTENT_READY','PENDING_REVIEW','REVIEW_REJECTED','PUBLISH_READY','FAILED');
+ALTER TABLE `crawl_book_raw` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文已抓，4=待审核，5=已拒绝，6=可发布，7=失败';
+
+UPDATE `crawl_chapter_raw` SET `content_status` = CASE `content_status` WHEN 'PENDING' THEN 1 WHEN 'ENTRY_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'REVIEW_REJECTED' THEN 5 WHEN 'FAILED' THEN 6 END WHERE CAST(`content_status` AS CHAR) IN ('PENDING','ENTRY_READY','CONTENT_READY','PENDING_REVIEW','REVIEW_REJECTED','FAILED');
+ALTER TABLE `crawl_chapter_raw` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '正文状态枚举：1=待抓取，2=目录就绪，3=正文已抓，4=待审核，5=已拒绝，6=失败';
+
+UPDATE `crawl_content_raw` SET `storage_mode` = CASE `storage_mode` WHEN 'MYSQL_LONGTEXT' THEN 1 WHEN 'FILE' THEN 2 END WHERE CAST(`storage_mode` AS CHAR) IN ('MYSQL_LONGTEXT','FILE');
+ALTER TABLE `crawl_content_raw` MODIFY `storage_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '存储模式枚举：1=MySQL 长文本，2=文件/对象存储';
+
+UPDATE `crawl_merge_task` SET `status` = CASE `status` WHEN 'PENDING' THEN 1 WHEN 'MERGING' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 END WHERE CAST(`status` AS CHAR) IN ('PENDING','MERGING','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED');
+ALTER TABLE `crawl_merge_task` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '清洗状态枚举：1=待清洗，2=清洗中，3=全部入库，4=部分入库，5=待审核，6=失败';
+
+UPDATE `crawl_merge_item` SET `match_status` = CASE `match_status` WHEN 'PENDING' THEN 1 WHEN 'RETRYING' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 WHEN 'IGNORED' THEN 7 END WHERE CAST(`match_status` AS CHAR) IN ('PENDING','RETRYING','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED','IGNORED');
+ALTER TABLE `crawl_merge_item` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '明细状态枚举：1=待处理，2=重新清洗中，3=已入库，4=部分入库，5=待审核，6=失败，7=人工忽略';
 
 -- ============================================================================
 -- §3  预置配置与幂等数据修正（顺序即历史执行顺序）
@@ -2058,156 +2209,6 @@ WHERE c.content_status = 4;
 --   SET @ddl := IF(@idx_exists = 0, 'ALTER TABLE novel ADD INDEX idx_new (title, author)', 'SELECT 1');
 --   PREPARE ddl_stmt FROM @ddl; EXECUTE ddl_stmt; DEALLOCATE PREPARE ddl_stmt;
 
--- ----------------------------------------------------------------------------
--- 类型/状态字符串枚举 → 1~N 整数枚举迁移（幂等，可重复执行）
--- 顺序：先 UPDATE 把旧字符串映射为新整数，再 MODIFY 列类型为 TINYINT。
--- 幂等：二次执行时列已是 TINYINT，字符串字面量在数值上下文被隐式转为 0，
---       而映射目标除 before/after_status（0 基）外均为 >=1，UPDATE 匹配不到行、MODIFY 无变化。
--- rank_type（crawl_rank_source / crawl_book_raw）保留字符串，不在此迁移范围。
--- ----------------------------------------------------------------------------
-
-USE `mini_novel`;
-
-UPDATE `app_user` SET `vip_source` = CASE `vip_source` WHEN 'INVITATION' THEN 1 WHEN 'ADMIN' THEN 2 WHEN 'ORDER' THEN 3 END WHERE `vip_source` IN ('INVITATION','ADMIN','ORDER');
-ALTER TABLE `app_user` MODIFY `vip_source` TINYINT NULL COMMENT 'VIP 来源枚举：1=邀请，2=后台，3=订单';
-
-UPDATE `vip_invitation_code` SET `status` = CASE `status` WHEN 'ENABLED' THEN 1 WHEN 'DISABLED' THEN 2 WHEN 'REVOKED' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE `status` IN ('ENABLED','DISABLED','REVOKED','EXPIRED');
-ALTER TABLE `vip_invitation_code` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=启用，2=停用，3=已撤销，4=过期';
-
-UPDATE `vip_invitation_record` SET `status` = CASE `status` WHEN 'ACTIVATED' THEN 1 END WHERE `status` IN ('ACTIVATED');
-ALTER TABLE `vip_invitation_record` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=已激活';
-
-UPDATE `vip_order` SET `pay_channel` = CASE `pay_channel` WHEN 'wechat' THEN 1 WHEN 'alipay' THEN 2 WHEN 'manual' THEN 3 END WHERE `pay_channel` IN ('wechat','alipay','manual');
-ALTER TABLE `vip_order` MODIFY `pay_channel` TINYINT NULL COMMENT '支付渠道枚举：1=微信，2=支付宝，3=人工';
-
-UPDATE `crawl_task` SET `task_type` = CASE `task_type` WHEN 'LIST' THEN 1 WHEN 'DETAIL' THEN 2 WHEN 'CHAPTER' THEN 3 WHEN 'MANUAL' THEN 4 END WHERE `task_type` IN ('LIST','DETAIL','CHAPTER','MANUAL');
-ALTER TABLE `crawl_task` MODIFY `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=列表，2=详情，3=章节，4=手动';
-
-UPDATE `novel_identity` SET `match_status` = CASE `match_status` WHEN 'ACTIVE' THEN 1 WHEN 'MERGED' THEN 2 WHEN 'IGNORED' THEN 3 END WHERE `match_status` IN ('ACTIVE','MERGED','IGNORED');
-ALTER TABLE `novel_identity` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '身份状态枚举：1=有效，2=已合并，3=忽略';
-
-UPDATE `novel_source_mapping` SET `content_status` = CASE `content_status` WHEN 'META_ONLY' THEN 1 WHEN 'CATALOG_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'FAILED' THEN 5 WHEN 'IGNORED' THEN 6 END WHERE `content_status` IN ('META_ONLY','CATALOG_READY','CONTENT_READY','PENDING_REVIEW','FAILED','IGNORED');
-ALTER TABLE `novel_source_mapping` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文可用，4=待审核，5=失败，6=忽略';
-
-UPDATE `novel_source_mapping` SET `match_status` = CASE `match_status` WHEN 'PENDING' THEN 1 WHEN 'MATCHED' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 WHEN 'IGNORED' THEN 7 END WHERE `match_status` IN ('PENDING','MATCHED','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED','IGNORED');
-ALTER TABLE `novel_source_mapping` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '匹配状态枚举：1=待匹配，2=已匹配，3=已入库，4=部分入库，5=待审核，6=失败，7=忽略';
-
-UPDATE `chapter_source_mapping` SET `content_status` = CASE `content_status` WHEN 'PENDING' THEN 1 WHEN 'MERGED' THEN 2 WHEN 'PENDING_REVIEW' THEN 3 WHEN 'FAILED' THEN 4 WHEN 'IGNORED' THEN 5 END WHERE `content_status` IN ('PENDING','MERGED','PENDING_REVIEW','FAILED','IGNORED');
-ALTER TABLE `chapter_source_mapping` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=待处理，2=已入库，3=待审核，4=失败，5=忽略';
-
-UPDATE `chapter_content` SET `storage_type` = CASE `storage_type` WHEN 'MYSQL' THEN 1 WHEN 'FILE' THEN 2 END WHERE `storage_type` IN ('MYSQL','FILE');
-ALTER TABLE `chapter_content` MODIFY `storage_type` TINYINT NOT NULL DEFAULT 1 COMMENT '正文存储方式枚举：1=存 MySQL，2=文件/对象存储';
-
-UPDATE `vip_adjust_log` SET `action` = CASE `action` WHEN 'UPGRADE' THEN 1 WHEN 'DOWNGRADE' THEN 2 WHEN 'SUSPEND' THEN 3 WHEN 'CANCEL' THEN 4 WHEN 'RESTORE' THEN 5 WHEN 'SET' THEN 6 WHEN 'GRANT' THEN 1 WHEN 'REVOKE' THEN 4 WHEN 'EXPIRE' THEN 3 WHEN 'CORRECT' THEN 6 END WHERE `action` IN ('UPGRADE','DOWNGRADE','SUSPEND','CANCEL','RESTORE','SET','GRANT','REVOKE','EXPIRE','CORRECT');
-ALTER TABLE `vip_adjust_log` MODIFY `action` TINYINT NOT NULL COMMENT '调整动作枚举：1=开通/延长，2=降级，3=暂停，4=取消，5=恢复，6=设置（兼容历史 GRANT/REVOKE/EXPIRE/CORRECT）';
-
-UPDATE `vip_adjust_log` SET `before_status` = CAST(`before_status` AS UNSIGNED) WHERE `before_status` IS NOT NULL;
-UPDATE `vip_adjust_log` SET `after_status` = CAST(`after_status` AS UNSIGNED) WHERE `after_status` IS NOT NULL;
-ALTER TABLE `vip_adjust_log` MODIFY `before_status` TINYINT NULL COMMENT '调整前 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP';
-ALTER TABLE `vip_adjust_log` MODIFY `after_status` TINYINT NULL COMMENT '调整后 VIP 状态：0=非 VIP，1=有效期 VIP，2=永久 VIP';
-
-UPDATE `user_vip` SET `source_type` = CASE `source_type` WHEN 'INVITATION' THEN 1 WHEN 'ADMIN' THEN 2 WHEN 'ORDER' THEN 3 END WHERE `source_type` IN ('INVITATION','ADMIN','ORDER');
-ALTER TABLE `user_vip` MODIFY `source_type` TINYINT NULL COMMENT '权益来源类型枚举：1=邀请，2=后台，3=订单';
-
-UPDATE `subscribe_channel` SET `status` = CASE `status` WHEN 'PUBLISHED' THEN 1 WHEN 'OFFLINE' THEN 2 END WHERE `status` IN ('PUBLISHED','OFFLINE');
-ALTER TABLE `subscribe_channel` MODIFY `status` TINYINT NOT NULL DEFAULT 2 COMMENT '状态枚举：1=已发布，2=已下架';
-
-UPDATE `user_coin_log` SET `biz_type` = CASE `biz_type` WHEN 'RECHARGE' THEN 1 WHEN 'SUBSCRIBE' THEN 2 WHEN 'REFUND' THEN 3 WHEN 'GRANT' THEN 4 END WHERE `biz_type` IN ('RECHARGE','SUBSCRIBE','REFUND','GRANT');
-ALTER TABLE `user_coin_log` MODIFY `biz_type` TINYINT NOT NULL COMMENT '业务类型枚举：1=后台充值，2=订阅扣费，3=冲正，4=赠送';
-
-UPDATE `user_subscribe` SET `period_type` = CASE `period_type` WHEN 'WEEK' THEN 1 WHEN 'MONTH' THEN 2 WHEN 'QUARTER' THEN 3 WHEN 'YEAR' THEN 4 END WHERE `period_type` IN ('WEEK','MONTH','QUARTER','YEAR');
-ALTER TABLE `user_subscribe` MODIFY `period_type` TINYINT NOT NULL COMMENT '周期类型枚举：1=周，2=月，3=季，4=年';
-
-UPDATE `user_subscribe` SET `status` = CASE `status` WHEN 'ACTIVE' THEN 1 WHEN 'EXPIRED' THEN 2 WHEN 'CANCELLED' THEN 3 END WHERE `status` IN ('ACTIVE','EXPIRED','CANCELLED');
-ALTER TABLE `user_subscribe` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=生效，2=过期，3=取消';
-
-UPDATE `ticket` SET `status` = CASE `status` WHEN 'OPEN' THEN 1 WHEN 'CLOSED' THEN 2 END WHERE `status` IN ('OPEN','CLOSED');
-ALTER TABLE `ticket` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=待处理，2=已关闭';
-
-UPDATE `ticket_reply` SET `replier_type` = CASE `replier_type` WHEN 'USER' THEN 1 WHEN 'ADMIN' THEN 2 END WHERE `replier_type` IN ('USER','ADMIN');
-ALTER TABLE `ticket_reply` MODIFY `replier_type` TINYINT NOT NULL COMMENT '回复人类型枚举：1=用户，2=管理员';
-
-UPDATE `media_asset` SET `file_type` = CASE `file_type` WHEN 'IMAGE' THEN 1 WHEN 'VIDEO' THEN 2 END WHERE `file_type` IN ('IMAGE','VIDEO');
-ALTER TABLE `media_asset` MODIFY `file_type` TINYINT NOT NULL COMMENT '文件类型枚举：1=图片，2=视频';
-
-UPDATE `media_asset` SET `status` = CASE `status` WHEN 'PROCESSING' THEN 1 WHEN 'READY' THEN 2 WHEN 'FAILED' THEN 3 END WHERE `status` IN ('PROCESSING','READY','FAILED');
-ALTER TABLE `media_asset` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=处理中，2=就绪，3=失败';
-
-UPDATE `media_post` SET `type` = CASE `type` WHEN 'IMAGE' THEN 1 WHEN 'VIDEO' THEN 2 WHEN 'MIXED' THEN 3 END WHERE `type` IN ('IMAGE','VIDEO','MIXED');
-ALTER TABLE `media_post` MODIFY `type` TINYINT NOT NULL DEFAULT 1 COMMENT '内容类型枚举：1=图文，2=视频，3=图文+视频（自动判定，无纯文本帖）';
-
--- 旧版 media_post.status 的字符串枚举 CHECK 约束（若存在）需先删除，否则 UPDATE 会因约束校验失败；
--- 改完数据与列类型后再按整数枚举重建（若不存在）。二者都用 information_schema 守卫，保证幂等。
-SET @has_mp_chk := (
-  SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
-  WHERE CONSTRAINT_SCHEMA = DATABASE()
-    AND TABLE_NAME = 'media_post'
-    AND CONSTRAINT_NAME = 'chk_media_post_status'
-    AND CONSTRAINT_TYPE = 'CHECK'
-);
-SET @drop_mp_chk := IF(@has_mp_chk > 0, 'ALTER TABLE media_post DROP CHECK chk_media_post_status', 'SELECT 1');
-PREPARE drop_mp_chk_stmt FROM @drop_mp_chk;
-EXECUTE drop_mp_chk_stmt;
-DEALLOCATE PREPARE drop_mp_chk_stmt;
-
-UPDATE `media_post` SET `status` = CASE `status` WHEN 'DRAFT' THEN 1 WHEN 'PUBLISHED' THEN 2 END WHERE `status` IN ('DRAFT','PUBLISHED');
-ALTER TABLE `media_post` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态枚举：1=草稿，2=已发布';
-
-SET @has_mp_chk2 := (
-  SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
-  WHERE CONSTRAINT_SCHEMA = DATABASE()
-    AND TABLE_NAME = 'media_post'
-    AND CONSTRAINT_NAME = 'chk_media_post_status'
-    AND CONSTRAINT_TYPE = 'CHECK'
-);
-SET @add_mp_chk := IF(@has_mp_chk2 = 0, 'ALTER TABLE media_post ADD CONSTRAINT chk_media_post_status CHECK (status IN (1,2))', 'SELECT 1');
-PREPARE add_mp_chk_stmt FROM @add_mp_chk;
-EXECUTE add_mp_chk_stmt;
-DEALLOCATE PREPARE add_mp_chk_stmt;
-
-USE `mini_novel_crawler`;
-
-UPDATE `crawl_source` SET `source_type` = CASE `source_type` WHEN 'PUBLIC' THEN 1 WHEN 'AUTHORIZED_VIP' THEN 2 WHEN 'IMPORT' THEN 3 END WHERE `source_type` IN ('PUBLIC','AUTHORIZED_VIP','IMPORT');
-ALTER TABLE `crawl_source` MODIFY `source_type` TINYINT NOT NULL DEFAULT 1 COMMENT '来源类型枚举：1=公开网页，2=授权 VIP，3=手动导入';
-
-UPDATE `crawl_source` SET `auth_mode` = CASE `auth_mode` WHEN 'NONE' THEN 1 WHEN 'PASSWORD' THEN 2 WHEN 'COOKIE' THEN 3 END WHERE `auth_mode` IN ('NONE','PASSWORD','COOKIE');
-ALTER TABLE `crawl_source` MODIFY `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=无需认证，2=账号密码，3=Cookie';
-
-UPDATE `crawl_source_credential` SET `auth_mode` = CASE `auth_mode` WHEN 'PASSWORD' THEN 1 WHEN 'COOKIE' THEN 2 END WHERE `auth_mode` IN ('PASSWORD','COOKIE');
-ALTER TABLE `crawl_source_credential` MODIFY `auth_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '认证方式枚举：1=账号密码，2=Cookie';
-
-UPDATE `crawl_source_credential` SET `status` = CASE `status` WHEN 'UNVERIFIED' THEN 1 WHEN 'VALID' THEN 2 WHEN 'INVALID' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE `status` IN ('UNVERIFIED','VALID','INVALID','EXPIRED');
-ALTER TABLE `crawl_source_credential` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '凭据状态枚举：1=未校验，2=有效，3=无效，4=过期';
-
-UPDATE `crawl_source_credential` SET `last_check_status` = CASE `last_check_status` WHEN 'UNVERIFIED' THEN 1 WHEN 'VALID' THEN 2 WHEN 'INVALID' THEN 3 WHEN 'EXPIRED' THEN 4 END WHERE `last_check_status` IN ('UNVERIFIED','VALID','INVALID','EXPIRED');
-ALTER TABLE `crawl_source_credential` MODIFY `last_check_status` TINYINT NULL COMMENT '最近一次校验结果：1=未校验，2=有效，3=无效，4=过期';
-
-UPDATE `crawl_task_v2` SET `task_type` = CASE `task_type` WHEN 'PUBLIC' THEN 1 WHEN 'VIP_AND_PUBLIC' THEN 2 WHEN 'IMPORT' THEN 3 WHEN 'AUTHORIZED_VIP' THEN 4 END WHERE `task_type` IN ('PUBLIC','VIP_AND_PUBLIC','IMPORT','AUTHORIZED_VIP');
-ALTER TABLE `crawl_task_v2` MODIFY `task_type` TINYINT NOT NULL COMMENT '任务类型枚举：1=公开采集，2=公开+授权 VIP，3=手动导入，4=授权 VIP';
-
-UPDATE `crawl_task_v2` SET `trigger_type` = CASE `trigger_type` WHEN 'MANUAL' THEN 1 WHEN 'SCHEDULE' THEN 2 WHEN 'SYSTEM' THEN 3 END WHERE `trigger_type` IN ('MANUAL','SCHEDULE','SYSTEM');
-ALTER TABLE `crawl_task_v2` MODIFY `trigger_type` TINYINT NOT NULL DEFAULT 1 COMMENT '触发方式枚举：1=手动，2=调度，3=系统补偿';
-
-UPDATE `crawl_task_v2` SET `status` = CASE `status` WHEN 'PENDING' THEN 1 WHEN 'RUNNING' THEN 2 WHEN 'SUCCESS' THEN 3 WHEN 'FAILED' THEN 4 WHEN 'PARTIAL_SUCCESS' THEN 5 WHEN 'NO_DATA' THEN 6 END WHERE `status` IN ('PENDING','RUNNING','SUCCESS','FAILED','PARTIAL_SUCCESS','NO_DATA');
-ALTER TABLE `crawl_task_v2` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '任务状态枚举：1=待执行，2=执行中，3=成功，4=失败，5=部分成功，6=无数据';
-
-UPDATE `crawl_book_raw` SET `book_status` = CASE `book_status` WHEN 'UNKNOWN' THEN 1 WHEN 'SERIALIZING' THEN 2 WHEN 'COMPLETED' THEN 3 END WHERE `book_status` IN ('UNKNOWN','SERIALIZING','COMPLETED');
-ALTER TABLE `crawl_book_raw` MODIFY `book_status` TINYINT NOT NULL DEFAULT 1 COMMENT '来源书籍状态枚举：1=未知，2=连载，3=完结';
-
-UPDATE `crawl_book_raw` SET `content_status` = CASE `content_status` WHEN 'META_ONLY' THEN 1 WHEN 'CATALOG_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'REVIEW_REJECTED' THEN 5 WHEN 'PUBLISH_READY' THEN 6 WHEN 'FAILED' THEN 7 END WHERE `content_status` IN ('META_ONLY','CATALOG_READY','CONTENT_READY','PENDING_REVIEW','REVIEW_REJECTED','PUBLISH_READY','FAILED');
-ALTER TABLE `crawl_book_raw` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '内容状态枚举：1=仅元数据，2=目录已抓，3=正文已抓，4=待审核，5=已拒绝，6=可发布，7=失败';
-
-UPDATE `crawl_chapter_raw` SET `content_status` = CASE `content_status` WHEN 'PENDING' THEN 1 WHEN 'ENTRY_READY' THEN 2 WHEN 'CONTENT_READY' THEN 3 WHEN 'PENDING_REVIEW' THEN 4 WHEN 'REVIEW_REJECTED' THEN 5 WHEN 'FAILED' THEN 6 END WHERE `content_status` IN ('PENDING','ENTRY_READY','CONTENT_READY','PENDING_REVIEW','REVIEW_REJECTED','FAILED');
-ALTER TABLE `crawl_chapter_raw` MODIFY `content_status` TINYINT NOT NULL DEFAULT 1 COMMENT '正文状态枚举：1=待抓取，2=目录就绪，3=正文已抓，4=待审核，5=已拒绝，6=失败';
-
-UPDATE `crawl_content_raw` SET `storage_mode` = CASE `storage_mode` WHEN 'MYSQL_LONGTEXT' THEN 1 WHEN 'FILE' THEN 2 END WHERE `storage_mode` IN ('MYSQL_LONGTEXT','FILE');
-ALTER TABLE `crawl_content_raw` MODIFY `storage_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '存储模式枚举：1=MySQL 长文本，2=文件/对象存储';
-
-UPDATE `crawl_merge_task` SET `status` = CASE `status` WHEN 'PENDING' THEN 1 WHEN 'MERGING' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 END WHERE `status` IN ('PENDING','MERGING','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED');
-ALTER TABLE `crawl_merge_task` MODIFY `status` TINYINT NOT NULL DEFAULT 1 COMMENT '清洗状态枚举：1=待清洗，2=清洗中，3=全部入库，4=部分入库，5=待审核，6=失败';
-
-UPDATE `crawl_merge_item` SET `match_status` = CASE `match_status` WHEN 'PENDING' THEN 1 WHEN 'RETRYING' THEN 2 WHEN 'MERGED' THEN 3 WHEN 'PARTIAL_MERGED' THEN 4 WHEN 'PENDING_REVIEW' THEN 5 WHEN 'FAILED' THEN 6 WHEN 'IGNORED' THEN 7 END WHERE `match_status` IN ('PENDING','RETRYING','MERGED','PARTIAL_MERGED','PENDING_REVIEW','FAILED','IGNORED');
-ALTER TABLE `crawl_merge_item` MODIFY `match_status` TINYINT NOT NULL DEFAULT 1 COMMENT '明细状态枚举：1=待处理，2=重新清洗中，3=已入库，4=部分入库，5=待审核，6=失败，7=人工忽略';
 
 -- ============================================================================
 
