@@ -3,6 +3,7 @@ package com.mini.novel.common.mail;
 import java.time.LocalDateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -16,24 +17,26 @@ import org.springframework.util.StringUtils;
  * 设计要点：
  * - 异步发送（@Async），绝不阻塞业务事务；
  * - 任何异常都只记录日志、不向上抛，邮件失败不影响充值/工单主流程；
- * - 未配置 MAIL_PASSWORD（QQ 邮箱授权码）时自动跳过，应用可正常启动运行。
+ * - 用 ObjectProvider 延迟获取 JavaMailSender：未配置 spring.mail 的应用（如爬虫服务）
+ *   也能正常启动，不会因缺少邮件 Bean 而启动失败；
+ * - 未配置 MAIL_PASSWORD（QQ 邮箱授权码）时自动跳过。
  */
 @Service
 public class MailService {
     private static final Logger log = LoggerFactory.getLogger(MailService.class);
 
-    private final JavaMailSender mailSender;
+    private final ObjectProvider<JavaMailSender> mailSenderProvider;
     private final boolean enabled;
     private final String to;
     private final String from;
     private final String password;
 
-    public MailService(JavaMailSender mailSender,
+    public MailService(ObjectProvider<JavaMailSender> mailSenderProvider,
                        @Value("${app.mail.enabled:true}") boolean enabled,
                        @Value("${app.mail.to:}") String to,
                        @Value("${app.mail.from:}") String from,
                        @Value("${spring.mail.password:}") String password) {
-        this.mailSender = mailSender;
+        this.mailSenderProvider = mailSenderProvider;
         this.enabled = enabled;
         this.to = to;
         this.from = from;
@@ -69,6 +72,11 @@ public class MailService {
         }
         if (!StringUtils.hasText(to)) {
             log.warn("mail skipped (app.mail.to is empty): subject={}", subject);
+            return;
+        }
+        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
+        if (mailSender == null) {
+            log.warn("mail skipped (no JavaMailSender bean): subject={}", subject);
             return;
         }
         try {
