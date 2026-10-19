@@ -459,6 +459,7 @@ CREATE TABLE IF NOT EXISTS `coin_recharge_order` (
   `remark` VARCHAR(255) NULL COMMENT '用户备注',
   `confirmed_by` BIGINT NULL COMMENT '确认到账的后台操作人 ID',
   `confirmed_at` DATETIME NULL COMMENT '确认到账时间',
+  `paid_hint_at` DATETIME NULL COMMENT '用户点击「我已付款」的时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
@@ -2229,6 +2230,13 @@ WHERE c.content_status = 4;
 --   SET @ddl := IF(@idx_exists = 0, 'ALTER TABLE novel ADD INDEX idx_new (title, author)', 'SELECT 1');
 --   PREPARE ddl_stmt FROM @ddl; EXECUTE ddl_stmt; DEALLOCATE PREPARE ddl_stmt;
 
+-- ---- 20261019: 充值订单新增「用户已付款」提示时间（人工确认到账，减少误取消）----
+SET @coin_paid_hint_exists := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = 'mini_novel' AND TABLE_NAME = 'coin_recharge_order' AND COLUMN_NAME = 'paid_hint_at');
+SET @coin_paid_hint_ddl := IF(@coin_paid_hint_exists = 0,
+  'ALTER TABLE mini_novel.coin_recharge_order ADD COLUMN paid_hint_at DATETIME NULL COMMENT ''用户点击我已付款的时间'' AFTER confirmed_at',
+  'SELECT 1');
+PREPARE ddl_stmt FROM @coin_paid_hint_ddl; EXECUTE ddl_stmt; DEALLOCATE PREPARE ddl_stmt;
 
 -- ============================================================================
 

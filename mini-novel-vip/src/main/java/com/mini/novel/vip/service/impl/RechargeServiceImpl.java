@@ -1,8 +1,11 @@
 package com.mini.novel.vip.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
+import com.mini.novel.user.entity.AppUser;
+import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.vip.config.RechargeProperties;
 import com.mini.novel.vip.entity.CoinRechargeOrder;
 import com.mini.novel.vip.mapper.CoinRechargeOrderMapper;
@@ -13,17 +16,21 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 public class RechargeServiceImpl implements RechargeService {
     private final CoinRechargeOrderMapper orderMapper;
     private final RechargeProperties properties;
     private final CoinService coinService;
+    private final AppUserMapper appUserMapper;
 
-    public RechargeServiceImpl(CoinRechargeOrderMapper orderMapper, RechargeProperties properties, CoinService coinService) {
+    public RechargeServiceImpl(CoinRechargeOrderMapper orderMapper, RechargeProperties properties,
+                               CoinService coinService, AppUserMapper appUserMapper) {
         this.orderMapper = orderMapper;
         this.properties = properties;
         this.coinService = coinService;
+        this.appUserMapper = appUserMapper;
     }
 
     @Override
@@ -59,19 +66,51 @@ public class RechargeServiceImpl implements RechargeService {
     }
 
     @Override
-    public List<CoinRechargeOrder> myOrders(Long userId) {
-        return orderMapper.selectList(new LambdaQueryWrapper<CoinRechargeOrder>()
-                .eq(CoinRechargeOrder::getUserId, userId)
-                .orderByDesc(CoinRechargeOrder::getId)
-                .last("LIMIT 100"));
+    public Page<CoinRechargeOrder> myOrders(Long userId, long page, long pageSize) {
+        long safePage = Math.max(1, page);
+        long safePageSize = Math.max(1, Math.min(50, pageSize));
+        return orderMapper.selectPage(new Page<>(safePage, safePageSize),
+                new LambdaQueryWrapper<CoinRechargeOrder>()
+                        .eq(CoinRechargeOrder::getUserId, userId)
+                        .orderByDesc(CoinRechargeOrder::getId));
     }
 
     @Override
-    public List<CoinRechargeOrder> listOrders(Integer status) {
-        return orderMapper.selectList(new LambdaQueryWrapper<CoinRechargeOrder>()
+    public List<CoinRechargeOrder> listOrders(Integer status, String keyword, LocalDateTime startTime, LocalDateTime endTime) {
+        LambdaQueryWrapper<CoinRechargeOrder> wrapper = new LambdaQueryWrapper<CoinRechargeOrder>()
                 .eq(status != null, CoinRechargeOrder::getStatus, status)
+                .ge(startTime != null, CoinRechargeOrder::getCreatedAt, startTime)
+                .lt(endTime != null, CoinRechargeOrder::getCreatedAt, endTime)
                 .orderByDesc(CoinRechargeOrder::getId)
-                .last("LIMIT 200"));
+                .last("LIMIT 200");
+        if (StringUtils.hasText(keyword)) {
+            List<Long> userIds = matchingUserIds(keyword.trim());
+            if (userIds.isEmpty()) {
+                return List.of();
+            }
+            wrapper.in(CoinRechargeOrder::getUserId, userIds);
+        }
+        return orderMapper.selectList(wrapper);
+    }
+
+    @Override
+    @Transactional
+    public CoinRechargeOrder markPaidHint(Long userId, String orderNo) {
+        CoinRechargeOrder order = orderMapper.selectByOrderNoForUpdate(orderNo);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "充值订单不存在");
+        }
+        if (!order.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作该订单");
+        }
+        if (order.getStatus() != null && order.getStatus() != CoinRechargeOrder.STATUS_PENDING) {
+            return order;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        order.setPaidHintAt(now);
+        order.setUpdatedAt(now);
+        orderMapper.updateById(order);
+        return order;
     }
 
     @Override
@@ -112,6 +151,15 @@ public class RechargeServiceImpl implements RechargeService {
         order.setUpdatedAt(now);
         orderMapper.updateById(order);
         return order;
+    }
+
+    private List<Long> matchingUserIds(String keyword) {
+        return appUserMapper.selectList(new LambdaQueryWrapper<AppUser>()
+                        .like(AppUser::getNickname, keyword)
+                        .or()
+                        .like(AppUser::getMobile, keyword)
+                        .last("LIMIT 200"))
+                .stream().map(AppUser::getId).toList();
     }
 
     private RechargeProperties.RechargePackage findPackage(Long packageId) {

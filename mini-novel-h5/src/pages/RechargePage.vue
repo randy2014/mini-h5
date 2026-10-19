@@ -110,7 +110,13 @@
             <strong>{{ o.coins }} 快乐币</strong>
             <small>¥{{ amountText(o.amountYuan) }} · {{ timeText(o.createdAt) }}</small>
           </div>
-          <van-tag :type="statusTag(o.status)">{{ statusText(o.status) }}</van-tag>
+          <div class="history-right">
+            <van-tag :type="statusTag(o.status)">{{ statusText(o.status) }}</van-tag>
+            <small v-if="o.paidHintAt" class="paid-hint">已付款</small>
+          </div>
+        </div>
+        <div v-if="ordersHasMore" class="load-more">
+          <van-button size="small" plain :loading="loadingMore" @click="loadMoreOrders">加载更多</van-button>
         </div>
       </div>
     </template>
@@ -123,7 +129,8 @@ import { showToast } from 'vant';
 import {
   createRechargeOrder,
   fetchMyRechargeOrders,
-  fetchRechargePackages
+  fetchRechargePackages,
+  markOrderPaid
 } from '../services/recharge';
 
 const loading = ref(true);
@@ -136,19 +143,43 @@ const info = ref({ packages: [], wxQrUrl: '', alipayQrUrl: '', notice: '' });
 const order = ref(null);
 const orders = ref([]);
 const refreshing = ref(false);
+const ordersPage = ref(1);
+const ordersHasMore = ref(false);
+const loadingMore = ref(false);
 let pollTimer = null;
+
+async function loadOrders(reset) {
+  const page = reset ? 1 : ordersPage.value + 1;
+  const data = await fetchMyRechargeOrders(page, 10);
+  const records = data.records || [];
+  orders.value = reset ? records : [...orders.value, ...records];
+  ordersPage.value = Number(data.page || page);
+  ordersHasMore.value = Boolean(data.hasMore);
+}
 
 // 手动刷新充值记录状态（待确认订单可能已在后台被确认/取消）
 async function refreshOrders() {
   if (refreshing.value) return;
   refreshing.value = true;
   try {
-    orders.value = (await fetchMyRechargeOrders()) || [];
+    await loadOrders(true);
     showToast('已刷新');
   } catch {
     // http 层已统一 toast
   } finally {
     refreshing.value = false;
+  }
+}
+
+async function loadMoreOrders() {
+  if (loadingMore.value || !ordersHasMore.value) return;
+  loadingMore.value = true;
+  try {
+    await loadOrders(false);
+  } catch {
+    // http 层已统一 toast
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -180,14 +211,14 @@ function statusTag(status) {
 async function load() {
   loading.value = true;
   try {
-    const [packages, myOrders] = await Promise.all([fetchRechargePackages(), fetchMyRechargeOrders()]);
+    const packages = await fetchRechargePackages();
     info.value = packages;
     // 只配置了一种收款码时，自动选中对应支付方式（当前仅内置微信收款码）
     payMethod.value = !packages.wxQrUrl && packages.alipayQrUrl ? 2 : 1;
     if (packages.packages?.length) {
       packageId.value = packages.packages[0].id;
     }
-    orders.value = myOrders || [];
+    await loadOrders(true);
   } catch {
     showToast('加载失败，请稍后重试');
   } finally {
@@ -213,6 +244,8 @@ async function createOrder() {
 
 async function submitPaid() {
   submitted.value = true;
+  // 记录“我已付款”时间，后台可见，减少误取消
+  markOrderPaid(order.value.orderNo).catch(() => {});
   pollOrder();
 }
 
@@ -225,7 +258,7 @@ function pollOrder() {
       if (latest.status === 1) {
         stopPolling();
         phase.value = 'done';
-        orders.value = await fetchMyRechargeOrders();
+        await loadOrders(true);
         showToast('充值已到账');
       } else if (latest.status === 2) {
         stopPolling();
@@ -318,4 +351,7 @@ onBeforeUnmount(stopPolling);
 .history-row strong, .history-row small { display: block; }
 .history-row strong { font-size: 14px; }
 .history-row small { margin-top: 3px; color: #a6adb9; font-size: 11px; }
+.history-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.paid-hint { color: #1f6f64; font-weight: 700; }
+.load-more { display: flex; justify-content: center; padding: 14px 0 4px; }
 </style>

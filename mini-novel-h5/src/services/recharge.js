@@ -15,7 +15,12 @@ export function fetchRechargeOrder(orderNo) {
   return http.get(`/recharge/orders/${orderNo}`);
 }
 
-// 我的充值记录
-export function fetchMyRechargeOrders() {
-  return http.get('/recharge/orders');
+// 我的充值记录（分页）
+export function fetchMyRechargeOrders(page = 1, pageSize = 10) {
+  return http.get('/recharge/orders', { params: { page, pageSize } });
+}
+
+// 记录“我已付款”时间，便于后台核对、减少误取消
+export function markOrderPaid(orderNo) {
+  return http.post(`/recharge/orders/${orderNo}/paid-hint`);
 }

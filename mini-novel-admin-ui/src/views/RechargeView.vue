@@ -7,7 +7,10 @@
         <el-radio-button :value="1">已到账</el-radio-button>
         <el-radio-button :value="2">已取消</el-radio-button>
       </el-radio-group>
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
+      <el-input v-model="keyword" placeholder="手机号/昵称" clearable style="width: 150px" @keyup.enter="load" />
+      <el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始" end-placeholder="结束" style="width: 230px" />
+      <el-button type="primary" @click="load">查询</el-button>
+      <el-button @click="resetFilters">重置</el-button>
     </div>
 
     <el-table :data="rows" v-loading="loading">
@@ -28,6 +31,12 @@
         </template>
       </el-table-column>
       <el-table-column prop="remark" label="备注" min-width="120" />
+      <el-table-column label="用户已付款" width="170">
+        <template #default="{ row }">
+          <span v-if="row.paidHintAt" class="paid">{{ formatDateTime(row.paidHintAt) }}</span>
+          <span v-else class="muted">未标记</span>
+        </template>
+      </el-table-column>
       <el-table-column label="创建时间" width="170">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
@@ -57,6 +66,8 @@ import { formatDateTime } from '../utils/date';
 const rows = ref([]);
 const loading = ref(false);
 const statusFilter = ref(-1);
+const keyword = ref('');
+const dateRange = ref(null);
 
 function statusText(status) {
   return { 0: '待确认', 1: '已到账', 2: '已取消' }[status] || String(status);
@@ -69,11 +80,24 @@ function statusTag(status) {
 async function load() {
   loading.value = true;
   try {
-    const params = statusFilter.value === -1 ? {} : { status: statusFilter.value };
+    const params = {};
+    if (statusFilter.value !== -1) params.status = statusFilter.value;
+    if (keyword.value) params.keyword = keyword.value.trim();
+    if (dateRange.value?.length === 2) {
+      params.startDate = dateRange.value[0];
+      params.endDate = dateRange.value[1];
+    }
     rows.value = await adminApi.get('/recharges', { params });
   } finally {
     loading.value = false;
   }
+}
+
+function resetFilters() {
+  keyword.value = '';
+  dateRange.value = null;
+  statusFilter.value = -1;
+  load();
 }
 
 async function confirm(row) {
@@ -102,6 +126,7 @@ onMounted(load);
 </script>
 
 <style scoped>
-.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .muted { color: #c0c4cc; }
+.paid { color: #67c23a; font-weight: 600; }
 </style>

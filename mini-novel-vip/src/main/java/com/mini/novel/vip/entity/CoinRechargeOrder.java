@@ -27,6 +27,7 @@ public class CoinRechargeOrder {
     private String remark;
     private Long confirmedBy;
     private LocalDateTime confirmedAt;
+    private LocalDateTime paidHintAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -52,6 +53,8 @@ public class CoinRechargeOrder {
     public void setConfirmedBy(Long confirmedBy) { this.confirmedBy = confirmedBy; }
     public LocalDateTime getConfirmedAt() { return confirmedAt; }
     public void setConfirmedAt(LocalDateTime confirmedAt) { this.confirmedAt = confirmedAt; }
+    public LocalDateTime getPaidHintAt() { return paidHintAt; }
+    public void setPaidHintAt(LocalDateTime paidHintAt) { this.paidHintAt = paidHintAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

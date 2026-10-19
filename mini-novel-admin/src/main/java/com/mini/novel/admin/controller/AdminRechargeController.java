@@ -6,8 +6,11 @@ import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.vip.entity.CoinRechargeOrder;
 import com.mini.novel.vip.service.RechargeService;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,8 +31,14 @@ public class AdminRechargeController {
     }
 
     @GetMapping
-    public Result<List<RechargeOrderVo>> list(@RequestParam(required = false) Integer status) {
-        return Result.ok(rechargeService.listOrders(status).stream().map(this::toVo).toList());
+    public Result<List<RechargeOrderVo>> list(
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        return Result.ok(rechargeService
+                .listOrders(status, keyword, parseStart(startDate), parseEnd(endDate))
+                .stream().map(this::toVo).toList());
     }
 
     @PostMapping("/{orderNo}/confirm")
@@ -44,6 +53,28 @@ public class AdminRechargeController {
         return Result.ok(toVo(rechargeService.cancelOrder(orderNo, operatorId)));
     }
 
+    private LocalDateTime parseStart(String date) {
+        if (!StringUtils.hasText(date)) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(date.trim()).atStartOfDay();
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
+    private LocalDateTime parseEnd(String date) {
+        if (!StringUtils.hasText(date)) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(date.trim()).plusDays(1).atStartOfDay();
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
     private RechargeOrderVo toVo(CoinRechargeOrder order) {
         AppUser user = appUserMapper.selectById(order.getUserId());
         return new RechargeOrderVo(
@@ -52,12 +83,12 @@ public class AdminRechargeController {
                 user == null ? null : user.getMobile(),
                 order.getPackageId(), order.getAmountYuan(), order.getCoins(),
                 order.getStatus(), order.getPayMethod(), order.getRemark(),
-                order.getConfirmedAt(), order.getCreatedAt());
+                order.getPaidHintAt(), order.getConfirmedAt(), order.getCreatedAt());
     }
 
     public record RechargeOrderVo(Long id, String orderNo, Long userId, String nickname, String mobile,
                                   Long packageId, BigDecimal amountYuan, Long coins, Integer status,
-                                  Integer payMethod, String remark, LocalDateTime confirmedAt,
-                                  LocalDateTime createdAt) {
+                                  Integer payMethod, String remark, LocalDateTime paidHintAt,
+                                  LocalDateTime confirmedAt, LocalDateTime createdAt) {
     }
 }
