@@ -16,6 +16,32 @@ app:
       QUARTER: 800   # 1 季订阅价格
       YEAR: 3000     # 1 年订阅价格
 
+  # 快乐币充值（人工确认到账方案）
+  coin:
+    recharge:
+      # 收款码图片地址：换成你自己的微信/支付宝收款码截图（可放 H5 静态资源或任意可访问 URL）
+      # 微信收款码已内置到 H5 静态资源（mini-novel-h5/public/wx-qr.jpg），部署后通过 /wx-qr.jpg 访问
+      wx-qr-url: "/wx-qr.jpg"
+      alipay-qr-url: ""
+      notice: "转账时请务必在备注中填写订单号，到账后工作人员会尽快确认；未备注可能影响核对。"
+      packages:
+        - id: 1
+          name: "300 快乐币"
+          coins: 300
+          amount-yuan: "3.00"
+        - id: 2
+          name: "1000 快乐币"
+          coins: 1000
+          amount-yuan: "9.90"
+        - id: 3
+          name: "3000 快乐币"
+          coins: 3000
+          amount-yuan: "28.00"
+        - id: 4
+          name: "8000 快乐币"
+          coins: 8000
+          amount-yuan: "68.00"
+
 spring:
   servlet:
     multipart:

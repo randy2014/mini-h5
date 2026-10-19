@@ -11,6 +11,7 @@
         <el-menu-item index="/admin/media-pool">🖼 多媒体池子</el-menu-item>
         <el-menu-item index="/admin/subscribe-channels">订阅频道管理</el-menu-item>
         <el-menu-item index="/admin/coins">快乐币管理</el-menu-item>
+        <el-menu-item index="/admin/recharges">充值确认</el-menu-item>
         <el-menu-item index="/admin/ticket">工单管理</el-menu-item>
         <el-menu-item index="/admin/users">用户管理</el-menu-item>
         <el-menu-item index="/admin/crawler">采集管理</el-menu-item>

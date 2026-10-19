@@ -22,6 +22,7 @@ const routes = [
       { path: 'subscribe-channels/:id', component: () => import('../views/ChannelDetailView.vue'), meta: { title: '频道详情' } },
       { path: 'media-pool', component: () => import('../views/MediaPoolView.vue'), meta: { title: '多媒体池子' } },
       { path: 'coins', component: () => import('../views/CoinView.vue'), meta: { title: '快乐币管理' } },
+      { path: 'recharges', component: () => import('../views/RechargeView.vue'), meta: { title: '充值确认' } },
       { path: 'ticket', component: () => import('../views/TicketView.vue'), meta: { title: '工单管理' } }
     ]
   }

@@ -3,8 +3,11 @@
     <van-nav-bar title="我的快乐币" left-arrow @click-left="$router.back()" />
 
     <div class="balance-card">
-      <div class="bv">{{ balance }}</div>
-      <div class="bl">🪙 当前快乐币余额</div>
+      <div class="balance-info">
+        <div class="bv">{{ balance }}</div>
+        <div class="bl">🪙 当前快乐币余额</div>
+      </div>
+      <van-button type="primary" size="small" round @click="$router.push('/h5/recharge')">充值</van-button>
     </div>
 
     <div class="hist">
@@ -54,7 +57,8 @@ onMounted(async () => {
 
 <style scoped>
 .coin-page { background: #f2f3f7; min-height: 100vh; }
-.balance-card { margin: 14px; background: linear-gradient(135deg, #1f6f64, #2e8b7a); border-radius: 16px; padding: 22px; color: #fff; text-align: left; }
+.balance-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 14px; background: linear-gradient(135deg, #1f6f64, #2e8b7a); border-radius: 16px; padding: 22px; color: #fff; text-align: left; }
+.balance-info { flex: 1; min-width: 0; }
 .bv { font-size: 36px; font-weight: 800; color: #f5c542; }
 .bl { font-size: 11px; color: #cfe8e3; margin-top: 4px; }
 .hist { margin: 0 14px; background: #fff; border-radius: 14px; overflow: hidden; }

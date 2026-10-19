@@ -28,6 +28,7 @@ const routes = [
       { path: 'subscribe/:id', name: 'subscribe-channel', component: () => import('../pages/SubscribeChannelPage.vue'), meta: { title: '频道详情', require: ['AUTH'] } },
       { path: 'subscribe/:channelId/media/:postId', name: 'subscribe-media-post', component: () => import('../pages/SubscribeMediaPostPage.vue'), meta: { title: '图文/视频详情', require: ['AUTH'] } },
       { path: 'coin', name: 'coin', component: () => import('../pages/CoinPage.vue'), meta: { title: '我的快乐币', require: ['AUTH'] } },
+      { path: 'recharge', name: 'recharge', component: () => import('../pages/RechargePage.vue'), meta: { title: '快乐币充值', require: ['AUTH'] } },
       { path: 'ticket', name: 'ticket', component: () => import('../pages/TicketPage.vue'), meta: { title: '工单服务', require: ['AUTH'] } }
     ]
   }
