@@ -14,4 +14,6 @@ public interface RechargeService {
     List<CoinRechargeOrder> listOrders(Integer status);
 
     CoinRechargeOrder confirmOrder(String orderNo, Long operatorId);
+
+    CoinRechargeOrder cancelOrder(String orderNo, Long operatorId);
 }

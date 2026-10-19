@@ -38,6 +38,12 @@ public class AdminRechargeController {
         return Result.ok(toVo(rechargeService.confirmOrder(orderNo, operatorId)));
     }
 
+    @PostMapping("/{orderNo}/cancel")
+    public Result<RechargeOrderVo> cancel(@PathVariable String orderNo,
+                                          @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        return Result.ok(toVo(rechargeService.cancelOrder(orderNo, operatorId)));
+    }
+
     private RechargeOrderVo toVo(CoinRechargeOrder order) {
         AppUser user = appUserMapper.selectById(order.getUserId());
         return new RechargeOrderVo(

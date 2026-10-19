@@ -103,6 +103,7 @@
       <div v-if="orders.length" class="history">
         <div class="recharge-title">
           <h2>我的充值记录</h2>
+          <van-button size="small" plain :loading="refreshing" @click="refreshOrders">刷新状态</van-button>
         </div>
         <div v-for="o in orders" :key="o.id" class="history-row">
           <div>
@@ -134,7 +135,22 @@ const payMethod = ref(2); // 2=支付宝, 1=微信
 const info = ref({ packages: [], wxQrUrl: '', alipayQrUrl: '', notice: '' });
 const order = ref(null);
 const orders = ref([]);
+const refreshing = ref(false);
 let pollTimer = null;
+
+// 手动刷新充值记录状态（待确认订单可能已在后台被确认/取消）
+async function refreshOrders() {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    orders.value = (await fetchMyRechargeOrders()) || [];
+    showToast('已刷新');
+  } catch {
+    // http 层已统一 toast
+  } finally {
+    refreshing.value = false;
+  }
+}
 
 const qrUrl = computed(() => (payMethod.value === 1 ? info.value.wxQrUrl : info.value.alipayQrUrl));
 const currentAmount = computed(() => {
@@ -251,7 +267,7 @@ onBeforeUnmount(stopPolling);
 <style scoped>
 .recharge-page { background: #f2f3f7; min-height: 100vh; }
 .recharge-step { margin-top: 6px; }
-.recharge-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 14px 0 12px; }
+.recharge-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 12px; }
 .recharge-title h2 { margin: 0; font-size: 17px; }
 .recharge-title span { color: #a6adb9; font-size: 12px; }
 

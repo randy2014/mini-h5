@@ -95,6 +95,25 @@ public class RechargeServiceImpl implements RechargeService {
         return order;
     }
 
+    @Override
+    @Transactional
+    public CoinRechargeOrder cancelOrder(String orderNo, Long operatorId) {
+        CoinRechargeOrder order = orderMapper.selectByOrderNoForUpdate(orderNo);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "充值订单不存在");
+        }
+        if (order.getStatus() != null && order.getStatus() != CoinRechargeOrder.STATUS_PENDING) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "订单已处理，无法取消");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        order.setStatus(CoinRechargeOrder.STATUS_CANCELLED);
+        order.setConfirmedBy(operatorId);
+        order.setConfirmedAt(now);
+        order.setUpdatedAt(now);
+        orderMapper.updateById(order);
+        return order;
+    }
+
     private RechargeProperties.RechargePackage findPackage(Long packageId) {
         if (packageId == null) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "请选择充值套餐");

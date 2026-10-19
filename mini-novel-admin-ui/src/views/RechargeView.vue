@@ -31,12 +31,15 @@
       <el-table-column label="创建时间" width="170">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="到账时间" width="170">
+      <el-table-column label="处理时间" width="170">
         <template #default="{ row }">{{ formatDateTime(row.confirmedAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="110" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.status === 0" link type="primary" @click="confirm(row)">确认到账</el-button>
+          <template v-if="row.status === 0">
+            <el-button link type="primary" @click="confirm(row)">确认到账</el-button>
+            <el-button link type="danger" @click="cancel(row)">取消</el-button>
+          </template>
           <span v-else class="muted">-</span>
         </template>
       </el-table-column>
@@ -81,6 +84,17 @@ async function confirm(row) {
   );
   await adminApi.post(`/recharges/${row.orderNo}/confirm`);
   ElMessage.success('已确认到账，快乐币已发放');
+  load();
+}
+
+async function cancel(row) {
+  await ElMessageBox.confirm(
+    `确定取消订单「${row.orderNo}」（用户 ${row.nickname}，${row.coins} 快乐币，¥${row.amountYuan}）？取消后不再发放，用户需重新下单。`,
+    '取消充值订单',
+    { type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '返回' }
+  );
+  await adminApi.post(`/recharges/${row.orderNo}/cancel`);
+  ElMessage.success('订单已取消');
   load();
 }
 
