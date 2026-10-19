@@ -42,6 +42,12 @@ app:
           coins: 8000
           amount-yuan: "68.00"
 
+  # 邮件通知（充值确认 / 新工单）
+  mail:
+    enabled: ${MAIL_ENABLED:true}
+    to: ${MAIL_TO:1247657199@qq.com}
+    from: ${MAIL_FROM:1247657199@qq.com}
+
 spring:
   servlet:
     multipart:
@@ -59,6 +65,19 @@ spring:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
       database: ${REDIS_DATABASE:0}
+  # QQ 邮箱 SMTP（发送通知邮件）；密码为 QQ 邮箱「授权码」，通过环境变量 MAIL_PASSWORD 注入
+  mail:
+    host: ${MAIL_HOST:smtp.qq.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:1247657199@qq.com}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
 
 mybatis-plus:
   configuration:

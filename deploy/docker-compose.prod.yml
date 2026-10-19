@@ -49,6 +49,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       SPRING_DATA_REDIS_HOST: mini-novel-redis
       SPRING_DATA_REDIS_PORT: 6379
+      # QQ 邮箱 SMTP 授权码（GitHub Secret MAIL_PASSWORD 注入；为空则不发邮件）
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
     # 只绑回环：对外统一由 mini-novel-gateway:80 提供入口
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"

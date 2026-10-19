@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
+import com.mini.novel.common.mail.MailService;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.mapper.AppUserMapper;
 import com.mini.novel.vip.config.RechargeProperties;
@@ -24,13 +25,15 @@ public class RechargeServiceImpl implements RechargeService {
     private final RechargeProperties properties;
     private final CoinService coinService;
     private final AppUserMapper appUserMapper;
+    private final MailService mailService;
 
     public RechargeServiceImpl(CoinRechargeOrderMapper orderMapper, RechargeProperties properties,
-                               CoinService coinService, AppUserMapper appUserMapper) {
+                               CoinService coinService, AppUserMapper appUserMapper, MailService mailService) {
         this.orderMapper = orderMapper;
         this.properties = properties;
         this.coinService = coinService;
         this.appUserMapper = appUserMapper;
+        this.mailService = mailService;
     }
 
     @Override
@@ -131,6 +134,12 @@ public class RechargeServiceImpl implements RechargeService {
         order.setConfirmedAt(now);
         order.setUpdatedAt(now);
         orderMapper.updateById(order);
+        AppUser user = appUserMapper.selectById(order.getUserId());
+        String userLabel = user == null
+                ? String.valueOf(order.getUserId())
+                : user.getNickname() + "(" + user.getMobile() + ")";
+        mailService.sendRechargeConfirmed(order.getOrderNo(), order.getCoins(),
+                String.valueOf(order.getAmountYuan()), userLabel);
         return order;
     }
 

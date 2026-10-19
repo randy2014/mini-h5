@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mini.novel.api.support.CurrentUserResolver;
 import com.mini.novel.common.exception.BusinessException;
 import com.mini.novel.common.exception.ErrorCode;
+import com.mini.novel.common.mail.MailService;
 import com.mini.novel.common.result.Result;
 import com.mini.novel.user.entity.AppUser;
 import com.mini.novel.user.entity.Ticket;
@@ -28,12 +29,14 @@ public class TicketController {
     private final TicketMapper ticketMapper;
     private final TicketReplyMapper ticketReplyMapper;
     private final CurrentUserResolver currentUserResolver;
+    private final MailService mailService;
 
     public TicketController(TicketMapper ticketMapper, TicketReplyMapper ticketReplyMapper,
-                            CurrentUserResolver currentUserResolver) {
+                            CurrentUserResolver currentUserResolver, MailService mailService) {
         this.ticketMapper = ticketMapper;
         this.ticketReplyMapper = ticketReplyMapper;
         this.currentUserResolver = currentUserResolver;
+        this.mailService = mailService;
     }
 
     @GetMapping("/list")
@@ -75,6 +78,7 @@ public class TicketController {
         ticket.setCreatedAt(LocalDateTime.now());
         ticket.setUpdatedAt(LocalDateTime.now());
         ticketMapper.insert(ticket);
+        mailService.sendNewTicket(ticket.getId(), title, content);
         return Result.ok(ticket);
     }
 
