@@ -102,11 +102,15 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" << 'EOF'
           set -e
           cd "${{ secrets.VPS_DEPLOY_PATH }}"
+          # 保留服务器上已有的 MAIL_PASSWORD（GitHub Secret 未配置时不被清空）
+          EXISTING_MAIL_PASSWORD="$(grep '^MAIL_PASSWORD=' .env 2>/dev/null | cut -d= -f2- || true)"
+          RESOLVED_MAIL_PASSWORD="${{ secrets.MAIL_PASSWORD }}"
+          [ -n "$RESOLVED_MAIL_PASSWORD" ] || RESOLVED_MAIL_PASSWORD="$EXISTING_MAIL_PASSWORD"
           cat > .env << ENV
           MYSQL_DATABASE=mini_novel
           MYSQL_USERNAME=root
           MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
-          MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
+          MAIL_PASSWORD=${RESOLVED_MAIL_PASSWORD}
           GATEWAY_PORT=80
           HTTPS_PORT=443
           TLS_CERT_DIR=/opt/mini-h5-certs
