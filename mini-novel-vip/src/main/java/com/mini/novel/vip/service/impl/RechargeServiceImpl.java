@@ -15,6 +15,7 @@ import com.mini.novel.vip.service.RechargeService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -26,6 +27,9 @@ public class RechargeServiceImpl implements RechargeService {
     private final CoinService coinService;
     private final AppUserMapper appUserMapper;
     private final MailService mailService;
+
+    @Value("${app.public-h5-base-url:https://xs2026.site}")
+    private String publicBaseUrl;
 
     public RechargeServiceImpl(CoinRechargeOrderMapper orderMapper, RechargeProperties properties,
                                CoinService coinService, AppUserMapper appUserMapper, MailService mailService) {
@@ -110,9 +114,23 @@ public class RechargeServiceImpl implements RechargeService {
             return order;
         }
         LocalDateTime now = LocalDateTime.now();
+        boolean firstMark = order.getPaidHintAt() == null;
         order.setPaidHintAt(now);
+        if (firstMark) {
+            order.setApproveToken(UUID.randomUUID().toString().replace("-", ""));
+        }
         order.setUpdatedAt(now);
         orderMapper.updateById(order);
+        if (firstMark) {
+            AppUser user = appUserMapper.selectById(order.getUserId());
+            String userLabel = user == null
+                    ? String.valueOf(order.getUserId())
+                    : user.getNickname() + "(" + user.getMobile() + ")";
+            String approveUrl = publicBaseUrl + "/api/recharge/approve?token=" + order.getApproveToken();
+            mailService.sendRechargePending(order.getOrderNo(), order.getCoins(),
+                    String.valueOf(order.getAmountYuan()), userLabel,
+                    String.valueOf(order.getPaidHintAt()), approveUrl);
+        }
         return order;
     }
 
@@ -132,14 +150,9 @@ public class RechargeServiceImpl implements RechargeService {
         order.setStatus(CoinRechargeOrder.STATUS_CONFIRMED);
         order.setConfirmedBy(operatorId);
         order.setConfirmedAt(now);
+        order.setApproveToken(null);
         order.setUpdatedAt(now);
         orderMapper.updateById(order);
-        AppUser user = appUserMapper.selectById(order.getUserId());
-        String userLabel = user == null
-                ? String.valueOf(order.getUserId())
-                : user.getNickname() + "(" + user.getMobile() + ")";
-        mailService.sendRechargeConfirmed(order.getOrderNo(), order.getCoins(),
-                String.valueOf(order.getAmountYuan()), userLabel);
         return order;
     }
 
@@ -157,9 +170,29 @@ public class RechargeServiceImpl implements RechargeService {
         order.setStatus(CoinRechargeOrder.STATUS_CANCELLED);
         order.setConfirmedBy(operatorId);
         order.setConfirmedAt(now);
+        order.setApproveToken(null);
         order.setUpdatedAt(now);
         orderMapper.updateById(order);
         return order;
+    }
+
+    @Override
+    public CoinRechargeOrder findByApproveToken(String token) {
+        if (!StringUtils.hasText(token)) {
+            return null;
+        }
+        return orderMapper.selectByApproveToken(token);
+    }
+
+    @Override
+    @Transactional
+    public CoinRechargeOrder approveByToken(String token) {
+        CoinRechargeOrder order = findByApproveToken(token);
+        if (order == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "审批链接无效或已失效");
+        }
+        // 复用 confirmOrder：内部会再次锁单、校验待确认状态、发币并清空审批令牌
+        return confirmOrder(order.getOrderNo(), null);
     }
 
     private List<Long> matchingUserIds(String keyword) {

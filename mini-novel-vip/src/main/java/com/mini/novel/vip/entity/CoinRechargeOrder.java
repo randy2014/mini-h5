@@ -28,6 +28,7 @@ public class CoinRechargeOrder {
     private Long confirmedBy;
     private LocalDateTime confirmedAt;
     private LocalDateTime paidHintAt;
+    private String approveToken;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -55,6 +56,8 @@ public class CoinRechargeOrder {
     public void setConfirmedAt(LocalDateTime confirmedAt) { this.confirmedAt = confirmedAt; }
     public LocalDateTime getPaidHintAt() { return paidHintAt; }
     public void setPaidHintAt(LocalDateTime paidHintAt) { this.paidHintAt = paidHintAt; }
+    public String getApproveToken() { return approveToken; }
+    public void setApproveToken(String approveToken) { this.approveToken = approveToken; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

@@ -20,4 +20,8 @@ public interface RechargeService {
     CoinRechargeOrder confirmOrder(String orderNo, Long operatorId);
 
     CoinRechargeOrder cancelOrder(String orderNo, Long operatorId);
+
+    CoinRechargeOrder findByApproveToken(String token);
+
+    CoinRechargeOrder approveByToken(String token);
 }

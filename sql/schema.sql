@@ -460,6 +460,7 @@ CREATE TABLE IF NOT EXISTS `coin_recharge_order` (
   `confirmed_by` BIGINT NULL COMMENT '确认到账的后台操作人 ID',
   `confirmed_at` DATETIME NULL COMMENT '确认到账时间',
   `paid_hint_at` DATETIME NULL COMMENT '用户点击「我已付款」的时间',
+  `approve_token` VARCHAR(64) NULL COMMENT '审批令牌（充值待审批邮件点击审批用）',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
@@ -2237,6 +2238,14 @@ SET @coin_paid_hint_ddl := IF(@coin_paid_hint_exists = 0,
   'ALTER TABLE mini_novel.coin_recharge_order ADD COLUMN paid_hint_at DATETIME NULL COMMENT ''用户点击我已付款的时间'' AFTER confirmed_at',
   'SELECT 1');
 PREPARE ddl_stmt FROM @coin_paid_hint_ddl; EXECUTE ddl_stmt; DEALLOCATE PREPARE ddl_stmt;
+
+-- ---- 20261020: 充值订单新增审批令牌（邮件点击审批）----
+SET @coin_approve_token_exists := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = 'mini_novel' AND TABLE_NAME = 'coin_recharge_order' AND COLUMN_NAME = 'approve_token');
+SET @coin_approve_token_ddl := IF(@coin_approve_token_exists = 0,
+  'ALTER TABLE mini_novel.coin_recharge_order ADD COLUMN approve_token VARCHAR(64) NULL COMMENT ''审批令牌'' AFTER paid_hint_at',
+  'SELECT 1');
+PREPARE ddl_stmt FROM @coin_approve_token_ddl; EXECUTE ddl_stmt; DEALLOCATE PREPARE ddl_stmt;
 
 -- ============================================================================
 

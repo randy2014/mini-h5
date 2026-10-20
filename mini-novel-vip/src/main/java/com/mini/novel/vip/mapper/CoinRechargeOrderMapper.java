@@ -9,4 +9,7 @@ public interface CoinRechargeOrderMapper extends BaseMapper<CoinRechargeOrder> {
 
     @Select("SELECT * FROM coin_recharge_order WHERE order_no = #{orderNo} FOR UPDATE")
     CoinRechargeOrder selectByOrderNoForUpdate(@Param("orderNo") String orderNo);
+
+    @Select("SELECT * FROM coin_recharge_order WHERE approve_token = #{token} LIMIT 1")
+    CoinRechargeOrder selectByApproveToken(@Param("token") String token);
 }
