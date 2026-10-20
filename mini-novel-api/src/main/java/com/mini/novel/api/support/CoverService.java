@@ -18,8 +18,29 @@ import org.springframework.stereotype.Service;
 @Service
 public class CoverService {
 
-    private static final String FALLBACK_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='150' height='200' viewBox='0 0 150 200'>" +
-        "<rect width='150' height='200' fill='#e2e8f0'/><text x='75' y='100' text-anchor='middle' fill='#94a3b8' font-size='14' font-family='sans-serif'>\u6682\u65e0\u5c01\u9762</text></svg>";
+    // 默认小说封面（占位图）：品牌墨绿书封 + 暖金细框 + 书页徽记。
+    // 与前端 mini-novel-h5/src/utils/cover.js 的 FALLBACK_COVER 保持同一份设计：
+    // 无封面 / 抓取失败的小说统一显示这张，不再是灰底「暂无封面」文字。
+    private static final String FALLBACK_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='150' height='200' viewBox='0 0 150 200'>"
+        + "<defs>"
+        + "<linearGradient id='mnBg' x1='0' y1='0' x2='0.55' y2='1'>"
+        + "<stop offset='0' stop-color='#2a7b6f'/><stop offset='0.5' stop-color='#1d5d55'/><stop offset='1' stop-color='#10403b'/>"
+        + "</linearGradient>"
+        + "<radialGradient id='mnGlow' cx='0.5' cy='0.27' r='0.78'>"
+        + "<stop offset='0' stop-color='#ffffff' stop-opacity='0.15'/><stop offset='1' stop-color='#ffffff' stop-opacity='0'/>"
+        + "</radialGradient>"
+        + "</defs>"
+        + "<rect width='150' height='200' fill='url(#mnBg)'/>"
+        + "<rect width='150' height='200' fill='url(#mnGlow)'/>"
+        + "<rect x='7' y='7' width='136' height='186' rx='3.5' fill='none' stroke='#dcc088' stroke-opacity='0.55'/>"
+        + "<path d='M75 50l4.6 5.6L75 61.2l-4.6-5.6z' fill='#dcc088' fill-opacity='0.9'/>"
+        + "<g fill='none' stroke='#eddeba' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'>"
+        + "<path d='M75 76c-7-4.6-15.5-6.6-23.5-5.6v33c8-1 16.5 1 23.5 5.6z'/>"
+        + "<path d='M75 76c7-4.6 15.5-6.6 23.5-5.6v33c-8-1-16.5 1-23.5 5.6z'/>"
+        + "<path d='M75 76v33'/>"
+        + "</g>"
+        + "<text x='75' y='172' text-anchor='middle' font-family='Georgia,serif' font-size='7.4' letter-spacing='2.6' fill='#eddeba' fill-opacity='0.72'>MINI NOVEL</text>"
+        + "</svg>";
 
     private final NovelMapper novelMapper;
     private final Path cacheDir;
