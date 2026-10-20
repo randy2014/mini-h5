@@ -40,6 +40,7 @@
 | `deploy/README.md` | 现役 | 生产部署说明与 Secrets 清单 |
 | `docs/ops-handbook.md` | 历史快照 | 2026-08-24 ~ 08-31 记录，常用命令仍可用；服务器/内存/磁盘数据以 `incident-log-202609.md` 为准 |
 | `docs/incident-log-202609.md` | 现役 | 9 月事故与问题记录 + 部署后运维核对清单 + 本地环境注意事项；§8–§12 为 09-15 入口网关/HTTPS/413/推送等问题 |
+| `docs/incident-log-202610.md` | 现役 | 10 月问题记录（订阅频道购买后仍提示「订阅后查看」——枚举整数化遗漏 string 比较） |
 | `docs/media-pool-requirements.md` | 现役 | 多媒体池子需求说明书（已上线） |
 | `docs/domain-tls-setup-202609.md` | 现役 | **2026-09-15 域名入口与 HTTPS 配置记录**：访问地址、网关架构、变更清单、证书信息与续期步骤、验收结果、回滚与排查 |
 | `docs/media-pool-design.md` | 现役 | 多媒体池子技术设计 + 实施与验收记录 |
