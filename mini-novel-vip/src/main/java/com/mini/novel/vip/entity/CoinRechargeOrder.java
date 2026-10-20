@@ -1,6 +1,8 @@
 package com.mini.novel.vip.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
@@ -28,6 +30,8 @@ public class CoinRechargeOrder {
     private Long confirmedBy;
     private LocalDateTime confirmedAt;
     private LocalDateTime paidHintAt;
+    // 审批令牌为一次性凭证：确认/取消时需把该字段真正写回 NULL，故显式声明 ALWAYS
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String approveToken;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
