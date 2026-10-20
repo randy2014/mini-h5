@@ -5,8 +5,10 @@ import com.mini.novel.api.model.ChannelFeedVo;
 import com.mini.novel.api.service.ChannelFeedService;
 import com.mini.novel.api.service.SubscribeService;
 import com.mini.novel.book.entity.Novel;
+import com.mini.novel.book.entity.SubscribeChannel;
 import com.mini.novel.book.entity.SubscribeChannelNovel;
 import com.mini.novel.book.mapper.NovelMapper;
+import com.mini.novel.book.mapper.SubscribeChannelMapper;
 import com.mini.novel.book.mapper.SubscribeChannelNovelMapper;
 import com.mini.novel.media.entity.MediaAsset;
 import com.mini.novel.media.entity.MediaPost;
@@ -23,6 +25,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -33,19 +36,26 @@ import org.springframework.stereotype.Service;
 public class ChannelFeedServiceImpl implements ChannelFeedService {
 
     private final SubscribeService subscribeService;
+    private final SubscribeChannelMapper channelMapper;
     private final SubscribeChannelNovelMapper channelNovelMapper;
     private final NovelMapper novelMapper;
     private final MediaPostMapper mediaPostMapper;
     private final MediaPostAssetMapper postAssetMapper;
     private final MediaAssetMapper assetMapper;
 
+    /** 这些频道里的书没有定制封面，频道列表统一显示默认封面（见 application.yml）。 */
+    @Value("${app.subscribe.default-cover-channel-names:精品小说}")
+    private String defaultCoverChannelNames;
+
     public ChannelFeedServiceImpl(SubscribeService subscribeService,
+                                  SubscribeChannelMapper channelMapper,
                                   SubscribeChannelNovelMapper channelNovelMapper,
                                   NovelMapper novelMapper,
                                   MediaPostMapper mediaPostMapper,
                                   MediaPostAssetMapper postAssetMapper,
                                   MediaAssetMapper assetMapper) {
         this.subscribeService = subscribeService;
+        this.channelMapper = channelMapper;
         this.channelNovelMapper = channelNovelMapper;
         this.novelMapper = novelMapper;
         this.mediaPostMapper = mediaPostMapper;
@@ -60,6 +70,7 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
         long safeSize = Math.min(100, Math.max(1, pageSize));
         ChannelFeedVo vo = new ChannelFeedVo();
         vo.setRestricted(!accessible);
+        vo.setForceNovelDefaultCover(shouldForceNovelDefaultCover(channelId));
 
         List<ChannelFeedVo.FeedItem> all = new ArrayList<>();
         if (accessible) {
@@ -74,6 +85,28 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
         int to = (int) Math.min(all.size(), from + safeSize);
         vo.setRecords(all.subList(from, to));
         return vo;
+    }
+
+    /**
+     * 频道在 app.subscribe.default-cover-channel-names 名单里时，说明这些书没有定制封面，
+     * 列表统一显示默认封面（忽略小说自身的封面路径）。只影响该频道的列表，其它频道不受影响。
+     */
+    private boolean shouldForceNovelDefaultCover(Long channelId) {
+        if (channelId == null || defaultCoverChannelNames == null || defaultCoverChannelNames.isBlank()) {
+            return false;
+        }
+        SubscribeChannel channel = channelMapper.selectById(channelId);
+        if (channel == null || channel.getName() == null || channel.getName().isBlank()) {
+            return false;
+        }
+        String channelName = channel.getName().trim();
+        for (String raw : defaultCoverChannelNames.split(",")) {
+            String token = raw == null ? "" : raw.trim();
+            if (!token.isEmpty() && channelName.contains(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 小说：subscribe_channel_novel 关联 + novel(status!=0)，时间=加入频道时间。 */

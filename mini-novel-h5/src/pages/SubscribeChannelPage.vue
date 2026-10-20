@@ -60,6 +60,8 @@ const channelName = ref('频道详情');
 const feed = ref([]);
 const total = ref(0);
 const restricted = ref(false);
+// 该频道里的书没有定制封面（后端 feed 标记）：列表统一显示默认封面，忽略后台封面路径
+const forceNovelDefaultCover = ref(false);
 const loading = ref(false);
 const page = ref(1);
 const pageSize = 20;
@@ -102,6 +104,10 @@ const fallbackCover = FALLBACK_COVER;
 
 function coverSrc(item) {
   if (item.kind === 'NOVEL') {
+    // 频道被标记为「无定制封面」（如精品小说频道）时直接用默认封面，不请求后台封面
+    if (forceNovelDefaultCover.value) {
+      return '';
+    }
     return `/api/cover/${item.id}`; // 小说封面代理（无封面回退像素）
   }
   if (item.coverAssetId) {
@@ -161,6 +167,7 @@ async function load(append = false) {
     feed.value = next;
     total.value = data.total || 0;
     restricted.value = data.restricted;
+    forceNovelDefaultCover.value = !!data.forceNovelDefaultCover;
     const novelItems = incoming.filter((i) => i.kind === 'NOVEL');
     const hidden = novelItems.filter((i) => readIds.value.has(String(i.id))).length;
     readHiddenCount.value = append ? readHiddenCount.value + hidden : hidden;

@@ -10,6 +10,8 @@ public class ChannelFeedVo {
     private List<FeedItem> records;
     private long total;
     private boolean restricted;
+    /** true：该频道里的书没有定制封面，列表统一显示默认封面（前端不请求 /api/cover/{id}）。 */
+    private boolean forceNovelDefaultCover;
 
     /** 单条内容：kind=NOVEL|IMAGE|VIDEO|MIXED。 */
     public static class FeedItem {
@@ -55,4 +57,6 @@ public class ChannelFeedVo {
     public void setTotal(long total) { this.total = total; }
     public boolean isRestricted() { return restricted; }
     public void setRestricted(boolean restricted) { this.restricted = restricted; }
+    public boolean isForceNovelDefaultCover() { return forceNovelDefaultCover; }
+    public void setForceNovelDefaultCover(boolean forceNovelDefaultCover) { this.forceNovelDefaultCover = forceNovelDefaultCover; }
 }
