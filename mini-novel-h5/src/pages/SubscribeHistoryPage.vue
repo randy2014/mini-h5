@@ -4,7 +4,7 @@
       title="阅读历史"
       left-arrow
       :right-text="history.length ? '一键清理' : ''"
-      @click-left="$router.back()"
+      @click-left="goBackToParent"
       @click-right="clearAll"
     />
 
@@ -28,9 +28,15 @@ import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { clearSubscribeRead, subscribeReadList } from '../services/subscribeReadStatus';
+import { goBack } from '../utils/navigation';
 
 const router = useRouter();
 const history = ref([]);
+
+/** 返回上一层；直接打开历史页时兜底回订阅频道列表。 */
+function goBackToParent() {
+  goBack(router, '/h5/subscribe');
+}
 
 function coverClass(id) {
   return ['g1', 'g2', 'g3', 'g4', 'g5', 'g6'][id % 6];
@@ -45,7 +51,22 @@ function formatTime(t) {
 }
 
 function read(h) {
-  router.push(`/h5/read/${h.novelId}`);
+  // 阅读进度由阅读器写进 mini_novel_read_<novelId>：有记录就续读对应章节，没有就进书籍详情
+  const chapterId = readProgressChapterId(h.novelId);
+  if (chapterId) {
+    router.push(`/h5/read/${chapterId}?bookId=${h.novelId}`);
+    return;
+  }
+  router.push(`/h5/book/${h.novelId}`);
+}
+
+function readProgressChapterId(novelId) {
+  try {
+    const progress = JSON.parse(localStorage.getItem(`mini_novel_read_${novelId}`) || '{}');
+    return Number(progress.chapterId || 0) || 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function clearAll() {

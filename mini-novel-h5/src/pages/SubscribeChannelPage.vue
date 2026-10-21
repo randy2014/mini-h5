@@ -1,6 +1,6 @@
 <template>
   <section class="page subscribe-channel-page">
-    <van-nav-bar :title="channelName" left-arrow @click-left="$router.back()" />
+    <van-nav-bar :title="channelName" left-arrow @click-left="goBackToParent" />
 
     <div class="chan-head">
       <div class="nm">{{ channelName }}</div>
@@ -52,9 +52,16 @@ import { showToast } from 'vant';
 import { fetchChannelFeed, mediaFileUrl, subscribeChannel } from '../services/subscribe';
 import { markSubscribeRead, subscribeReadIds } from '../services/subscribeReadStatus';
 import { FALLBACK_COVER, handleImgError } from '../utils/cover';
+import { goBack } from '../utils/navigation';
 
 const route = useRoute();
 const router = useRouter();
+
+/** 返回上一层；直接打开频道页时兜底回订阅频道列表。 */
+function goBackToParent() {
+  goBack(router, '/h5/subscribe');
+}
+
 const channelId = Number(route.params.id);
 const channelName = ref('频道详情');
 const feed = ref([]);

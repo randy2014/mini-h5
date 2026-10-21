@@ -68,6 +68,7 @@ import {
   saveInvitation,
   saveRememberedMobile
 } from '../services/loginPreferences';
+import { goBack as goBackSafe } from '../utils/navigation';
 
 const route = useRoute();
 const router = useRouter();
@@ -142,10 +143,7 @@ onMounted(() => {
 });
 
 function goBack() {
-  if (window.history.length > 1) {
-    router.back();
-    return;
-  }
-  router.replace('/h5/profile');
+  // 有站内上一页就退栈；直接打开登录页时兜底回「我的」
+  goBackSafe(router, '/h5/profile');
 }
 </script>

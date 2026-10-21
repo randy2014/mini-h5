@@ -1,6 +1,6 @@
 <template>
   <section class="page recharge-page">
-    <van-nav-bar title="快乐币充值" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="快乐币充值" left-arrow @click-left="goBackToParent" />
 
     <van-loading v-if="loading" class="center-loading" />
 
@@ -95,7 +95,7 @@
         <van-icon name="passed" class="done-icon" />
         <h2>充值成功</h2>
         <p>已到账 {{ order.coins }} 快乐币</p>
-        <van-button type="primary" block @click="$router.replace('/h5/coin')">查看余额</van-button>
+        <van-button type="primary" block @click="goToCoin">查看余额</van-button>
         <van-button plain block class="rechoose" @click="resetChoose">继续充值</van-button>
       </div>
 
@@ -125,6 +125,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import {
   createRechargeOrder,
@@ -132,6 +133,19 @@ import {
   fetchRechargePackages,
   markOrderPaid
 } from '../services/recharge';
+import { goBack, goBackTo } from '../utils/navigation';
+
+const router = useRouter();
+
+/** 返回上一层；直接打开充值页时兜底回快乐币页。 */
+function goBackToParent() {
+  goBack(router, '/h5/coin');
+}
+
+/** 查看余额：上一页就是快乐币页时退栈，避免压出重复的快乐币页。 */
+function goToCoin() {
+  goBackTo(router, '/h5/coin');
+}
 
 const loading = ref(true);
 const creating = ref(false);

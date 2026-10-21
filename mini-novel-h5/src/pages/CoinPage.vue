@@ -1,6 +1,6 @@
 <template>
   <section class="page coin-page">
-    <van-nav-bar title="我的快乐币" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="我的快乐币" left-arrow @click-left="goBackToProfile" />
 
     <div class="balance-card">
       <div class="balance-info">
@@ -27,10 +27,18 @@
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { fetchBalance, fetchCoinLogs } from '../services/subscribe';
+import { goBack } from '../utils/navigation';
 
+const router = useRouter();
 const balance = ref(0);
 const logs = ref([]);
+
+/** 返回上一层；直接打开本页时兜底回「我的」。 */
+function goBackToProfile() {
+  goBack(router, '/h5/profile');
+}
 
 function bizLabel(log) {
   const map = {

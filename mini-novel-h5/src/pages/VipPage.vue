@@ -1,6 +1,6 @@
 <template>
   <section class="page with-tab vip-page">
-    <van-nav-bar title="VIP 专区" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="VIP 专区" left-arrow @click-left="goBackToParent" />
 
     <van-loading v-if="statusLoading" class="center-loading" />
 
@@ -142,6 +142,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import BookCard from '../components/BookCard.vue';
 import { usePermissionStore } from '../permission';
@@ -150,6 +151,14 @@ import { canRequestVipContent, shouldCheckVipStatus } from '../services/vipAcces
 import { clearVipReadBooks, vipReadIds } from '../services/vipReadStatus';
 import { fetchMySubscribes } from '../services/subscribe';
 import { useUserStore } from '../stores/user';
+import { goBack } from '../utils/navigation';
+
+const router = useRouter();
+
+/** 返回上一层；直接打开 VIP 页时兜底回首页。 */
+function goBackToParent() {
+  goBack(router, '/h5/home');
+}
 
 const adult = ref(false);
 const permissionStore = usePermissionStore();

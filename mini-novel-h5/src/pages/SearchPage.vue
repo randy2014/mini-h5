@@ -1,6 +1,6 @@
 <template>
   <section class="page search-page">
-    <van-nav-bar title="搜索" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="搜索" left-arrow @click-left="goBackToParent" />
     <van-search
       v-model="keyword"
       placeholder="搜索书名或作者"
@@ -33,6 +33,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
 import { searchNovels } from '../services/book';
+import { goBack } from '../utils/navigation';
 
 const route = useRoute();
 const router = useRouter();
@@ -40,6 +41,11 @@ const keyword = ref('');
 const loading = ref(false);
 const searched = ref(false);
 const results = ref([]);
+
+/** 返回上一层；直接打开搜索页时兜底回首页。 */
+function goBackToParent() {
+  goBack(router, '/h5/home');
+}
 
 onMounted(() => {
   const query = String(route.query.q || '').trim();

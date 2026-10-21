@@ -1,6 +1,6 @@
 <template>
   <section class="page detail-page">
-    <van-nav-bar title="书籍详情" left-arrow fixed placeholder @click-left="$router.back()" @click-right="goHome">
+    <van-nav-bar title="书籍详情" left-arrow fixed placeholder @click-left="goBackToParent" @click-right="goHome">
       <template #right>
         <van-icon name="wap-home-o" size="20" />
       </template>
@@ -110,6 +110,7 @@ import { addBookshelf } from '../services/user';
 import { useUserStore } from '../stores/user';
 import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { formatTextLineBreaks } from '../utils/text';
+import { goBack } from '../utils/navigation';
 
 const PAGE_SIZE = 50;
 const route = useRoute();
@@ -131,6 +132,11 @@ const chapterKeyword = ref('');
 const chapterJumpNo = ref('');
 const reverseCatalog = ref(false);
 const fallbackCover = FALLBACK_COVER;
+
+/** 返回上一层；直接打开详情页时兜底回首页。 */
+function goBackToParent() {
+  goBack(router, '/h5/home');
+}
 
 const wordCountLabel = computed(() => {
   const count = Number(book.value.wordCount || 0);

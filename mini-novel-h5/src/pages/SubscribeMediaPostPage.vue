@@ -1,6 +1,6 @@
 <template>
   <section class="page media-post-page">
-    <van-nav-bar :title="typeLabel" left-arrow @click-left="$router.back()" />
+    <van-nav-bar :title="typeLabel" left-arrow @click-left="goBackToChannel" />
 
     <div v-if="loading" class="center-loading"><van-loading /></div>
     <div v-else-if="error" class="error-box">
@@ -10,7 +10,7 @@
         <van-button v-if="gateAction" round color="#1f6f64" :to="gateAction.to">
           {{ gateAction.label }}
         </van-button>
-        <van-button round plain @click="$router.back()">返回</van-button>
+        <van-button round plain @click="goBackToChannel">返回</van-button>
       </div>
     </div>
 
@@ -58,14 +58,21 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { classifyApiError, promptFor } from '../permission';
 import { fetchFeedPostDetail, mediaFileUrl } from '../services/subscribe';
+import { goBack } from '../utils/navigation';
 
 const route = useRoute();
+const router = useRouter();
 const channelId = Number(route.params.channelId);
 const postId = Number(route.params.postId);
+
+/** 返回上一层；直接打开媒体详情时兜底回所属频道。 */
+function goBackToChannel() {
+  goBack(router, `/h5/subscribe/${channelId}`);
+}
 
 const loading = ref(true);
 const error = ref('');

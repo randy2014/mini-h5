@@ -82,7 +82,7 @@ import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } f
 import { GATE, classifyApiError, promptFor } from '../permission';
 import { markVipBookRead } from '../services/vipReadStatus';
 import { formatTextLineBreaks } from '../utils/text';
-import { isSameBookDetailUrl } from '../utils/navigation';
+import { isSameBookDetailUrl, previousEntry } from '../utils/navigation';
 
 const CATALOG_PAGE_SIZE = 50;
 const route = useRoute();
@@ -304,7 +304,7 @@ function goBack() {
     router.back();
     return;
   }
-  const previous = (window.history.state && window.history.state.back) || '';
+  const previous = previousEntry();
   if (isSameBookDetailUrl(previous, bookId)) {
     router.back();
     return;

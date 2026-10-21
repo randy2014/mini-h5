@@ -4,7 +4,7 @@
       title="工单服务"
       left-arrow
       right-text="新增"
-      @click-left="$router.back()"
+      @click-left="goBackToParent"
       @click-right="openCreate"
     />
 
@@ -70,8 +70,17 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { fetchTickets, fetchTicketDetail, createTicket, closeTicket as closeTicketApi } from '../services/ticket';
+import { goBack } from '../utils/navigation';
+
+const router = useRouter();
+
+/** 返回上一层；直接打开工单页时兜底回「我的」。 */
+function goBackToParent() {
+  goBack(router, '/h5/profile');
+}
 
 const tickets = ref([]);
 const createVisible = ref(false);

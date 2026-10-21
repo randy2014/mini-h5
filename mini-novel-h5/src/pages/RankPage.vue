@@ -1,6 +1,6 @@
 <template>
   <section class="page rank-page">
-    <van-nav-bar :title="rankMeta.title" left-arrow @click-left="$router.back()" />
+    <van-nav-bar :title="rankMeta.title" left-arrow @click-left="goBackToParent" />
 
     <div class="rank-hero">
       <strong>{{ rankMeta.title }}</strong>
@@ -26,11 +26,17 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
 import { fetchRankNovels } from '../services/book';
+import { goBack } from '../utils/navigation';
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
 const books = ref([]);
+
+/** 返回上一层；直接打开榜单时兜底回首页。 */
+function goBackToParent() {
+  goBack(router, '/h5/home');
+}
 
 const rankMap = {
   hot: { apiType: 'HOT', title: '热榜精选', subtitle: '近期更新活跃的优质作品' },
