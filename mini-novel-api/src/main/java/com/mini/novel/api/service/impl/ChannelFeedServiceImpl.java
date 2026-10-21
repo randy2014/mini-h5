@@ -44,7 +44,10 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
     private final MediaAssetMapper assetMapper;
 
     /** 这些频道里的书没有定制封面，频道列表统一显示默认封面（见 application.yml）。 */
-    @Value("${app.subscribe.default-cover-channel-names:精品小说}")
+    @Value("${app.subscribe.default-cover-channel-ids:}")
+    private String defaultCoverChannelIds;
+
+    @Value("${app.subscribe.default-cover-channel-names:精品完结小说}")
     private String defaultCoverChannelNames;
 
     public ChannelFeedServiceImpl(SubscribeService subscribeService,
@@ -88,11 +91,21 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
     }
 
     /**
-     * 频道在 app.subscribe.default-cover-channel-names 名单里时，说明这些书没有定制封面，
-     * 列表统一显示默认封面（忽略小说自身的封面路径）。只影响该频道的列表，其它频道不受影响。
+     * 频道命中「无定制封面」名单时，列表统一显示默认封面（忽略小说自身的封面路径）。
+     * 先按频道 id 匹配（最稳，改名不影响），再按频道名包含匹配。只影响名单内频道。
      */
     private boolean shouldForceNovelDefaultCover(Long channelId) {
-        if (channelId == null || defaultCoverChannelNames == null || defaultCoverChannelNames.isBlank()) {
+        if (channelId == null) {
+            return false;
+        }
+        String idText = String.valueOf(channelId);
+        for (String token : csvTokens(defaultCoverChannelIds)) {
+            if (idText.equals(token)) {
+                return true;
+            }
+        }
+        List<String> nameTokens = csvTokens(defaultCoverChannelNames);
+        if (nameTokens.isEmpty()) {
             return false;
         }
         SubscribeChannel channel = channelMapper.selectById(channelId);
@@ -100,13 +113,26 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
             return false;
         }
         String channelName = channel.getName().trim();
-        for (String raw : defaultCoverChannelNames.split(",")) {
-            String token = raw == null ? "" : raw.trim();
-            if (!token.isEmpty() && channelName.contains(token)) {
+        for (String token : nameTokens) {
+            if (channelName.contains(token)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static List<String> csvTokens(String value) {
+        List<String> out = new ArrayList<>();
+        if (value == null || value.isBlank()) {
+            return out;
+        }
+        for (String raw : value.split(",")) {
+            String token = raw == null ? "" : raw.trim();
+            if (!token.isEmpty()) {
+                out.add(token);
+            }
+        }
+        return out;
     }
 
     /** 小说：subscribe_channel_novel 关联 + novel(status!=0)，时间=加入频道时间。 */
