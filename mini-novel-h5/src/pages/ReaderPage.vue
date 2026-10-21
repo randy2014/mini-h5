@@ -7,7 +7,7 @@
       right-text="首页"
       fixed
       placeholder
-      @click-left.stop="goCatalog"
+      @click-left.stop="goBack"
       @click-right.stop="goHome"
     />
 
@@ -82,6 +82,7 @@ import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } f
 import { GATE, classifyApiError, promptFor } from '../permission';
 import { markVipBookRead } from '../services/vipReadStatus';
 import { formatTextLineBreaks } from '../utils/text';
+import { isSameBookDetailUrl } from '../utils/navigation';
 
 const CATALOG_PAGE_SIZE = 50;
 const route = useRoute();
@@ -203,7 +204,8 @@ async function readPrevious() {
   prevLoading.value = true;
   try {
     const previous = await fetchPreviousChapter(route.params.id, { silent: true });
-    router.push(`/h5/read/${previous.id}?bookId=${previous.novelId}`);
+    // 章节切换用 replace：正文始终只占一个历史栈位置，返回时直接回到书籍详情
+    router.replace(`/h5/read/${previous.id}?bookId=${previous.novelId}`);
   } catch (error) {
     showToast(error.message || '已经是第一章');
   } finally {
@@ -215,7 +217,7 @@ async function readNext() {
   nextLoading.value = true;
   try {
     const next = await fetchNextChapter(route.params.id, { silent: true });
-    router.push(`/h5/read/${next.id}?bookId=${next.novelId}`);
+    router.replace(`/h5/read/${next.id}?bookId=${next.novelId}`);
   } catch (error) {
     showToast(error.message || '已经是最后一章');
   } finally {
@@ -288,16 +290,26 @@ function retryCatalog() {
 
 function readCatalog(item) {
   catalogOpen.value = false;
-  router.push(`/h5/read/${item.id}?bookId=${item.novelId}`);
+  router.replace(`/h5/read/${item.id}?bookId=${item.novelId}`);
 }
 
-function goCatalog() {
+/**
+ * 左上角返回：回到书籍详情，且不破坏返回层级。
+ * - 上一页就是本书详情（正常从详情页进来）→ 直接退栈，别再压一份详情页；
+ * - 其它入口（阅读历史 / 搜索 / 直接打开）→ replace 把正文页换成详情页，避免详情↔正文循环。
+ */
+function goBack() {
   const bookId = chapter.value.novelId || route.query.bookId;
   if (!bookId) {
     router.back();
     return;
   }
-  router.push(`/h5/book/${bookId}?chapterId=${chapter.value.id || route.params.id}&chapterNo=${chapter.value.chapterNo || ''}`);
+  const previous = (window.history.state && window.history.state.back) || '';
+  if (isSameBookDetailUrl(previous, bookId)) {
+    router.back();
+    return;
+  }
+  router.replace(`/h5/book/${bookId}?chapterId=${chapter.value.id || route.params.id}&chapterNo=${chapter.value.chapterNo || ''}`);
 }
 
 function goHome() {
