@@ -63,6 +63,26 @@ function checkVue(file) {
   }
 
   checkImports(file, source);
+  checkNavigation(relative, source);
+}
+
+/**
+ * 导航规范（2026-10 全站横展）：
+ * 带 left-arrow 的 nav-bar 必须走统一返回——@click-left 处理器 + utils/navigation 的
+ * goBack/goBackTo；不允许直接写 $router.back()，避免再次出现
+ * 「详情页再返回弹回正文」这类历史栈层级错乱。
+ */
+function checkNavigation(relative, source) {
+  const bars = source.match(/<van-nav-bar\b[\s\S]*?\/>/g) || [];
+  for (const bar of bars) {
+    if (!bar.includes('left-arrow')) continue;
+    if (!/@click-left(\.\w+)*=/.test(bar)) {
+      problems.push(`${relative}: nav-bar 有 left-arrow 但缺少 @click-left 返回处理`);
+    }
+    if (/\$router\.back\(\)/.test(bar)) {
+      problems.push(`${relative}: nav-bar 返回禁止直接写 $router.back()，请改用 utils/navigation 的 goBack`);
+    }
+  }
 }
 
 function checkImports(file, source) {

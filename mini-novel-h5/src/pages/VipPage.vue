@@ -10,7 +10,7 @@
       <p>登录后可验证 VIP 资格，浏览 VIP 专区书单与章节内容。</p>
       <div class="vip-access-actions">
         <van-button type="primary" :to="loginTarget">立即登录</van-button>
-        <van-button plain to="/h5/home">返回首页</van-button>
+        <van-button plain @click="$router.replace('/h5/home')">返回首页</van-button>
       </div>
     </div>
 
@@ -20,7 +20,7 @@
       <p>当前账号暂未开通有效 VIP，可使用邀请码获取资格；专区书单与章节信息不会展示。</p>
       <div class="vip-access-actions">
         <van-button type="primary" :to="loginTarget">使用邀请码</van-button>
-        <van-button plain to="/h5/home">返回首页</van-button>
+        <van-button plain @click="$router.replace('/h5/home')">返回首页</van-button>
       </div>
     </div>
 

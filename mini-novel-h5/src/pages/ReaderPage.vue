@@ -82,7 +82,7 @@ import { fetchChapter, fetchChapters, fetchNextChapter, fetchPreviousChapter } f
 import { GATE, classifyApiError, promptFor } from '../permission';
 import { markVipBookRead } from '../services/vipReadStatus';
 import { formatTextLineBreaks } from '../utils/text';
-import { isSameBookDetailUrl, previousEntry } from '../utils/navigation';
+import { goBack as navigateBack, isSameBookDetailUrl, previousEntry } from '../utils/navigation';
 
 const CATALOG_PAGE_SIZE = 50;
 const route = useRoute();
@@ -166,7 +166,11 @@ async function handleLoadError(error) {
       cancelButtonText: '返回'
     })
       .then(() => router.push(prompt.action?.to || '/h5/vip'))
-      .catch(() => router.back());
+      .catch(() => {
+        // 取消开通：有上一页就退栈，直接打开正文时兜底回书籍详情
+        const bookId = chapter.value.novelId || route.query.bookId;
+        navigateBack(router, bookId ? `/h5/book/${bookId}` : '/h5/home');
+      });
     return;
   }
 
