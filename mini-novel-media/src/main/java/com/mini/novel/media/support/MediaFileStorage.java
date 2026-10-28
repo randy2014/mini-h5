@@ -56,6 +56,14 @@ public class MediaFileStorage {
         Path tmp = dir.resolve(newId() + ".upload");
         try (in) {
             Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            // 上传中断（客户端取消/超限）：不能留下半截文件占盘
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException ignored) {
+                // 清不掉就交给 MediaCleanupJob 兜底
+            }
+            throw e;
         }
         return tmp;
     }

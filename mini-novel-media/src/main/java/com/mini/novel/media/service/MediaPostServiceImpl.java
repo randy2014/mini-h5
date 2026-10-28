@@ -271,10 +271,9 @@ public class MediaPostServiceImpl implements MediaPostService {
             if (asset == null) {
                 throw new BusinessException(ErrorCode.BUSINESS_ERROR, "素材不存在: " + assetId);
             }
-            if (!Objects.equals(MediaAsset.STATUS_READY, asset.getStatus())) {
-                throw new BusinessException(ErrorCode.BUSINESS_ERROR,
-                        "素材未就绪不能加入内容（" + asset.getOriginalName() + " 转码中或失败）");
-            }
+            // 草稿是工作区：允许先挂上仍在转码（PROCESSING）或已失败（FAILED）的素材，
+            // 否则 300MB 视频转码几分钟内什么都存不了、关掉编辑器还会丢素材。
+            // 「必须全部 READY」的门槛放在 publish()，发布前依旧严格校验。
             MediaPostAsset link = new MediaPostAsset();
             link.setPostId(postId);
             link.setAssetId(assetId);

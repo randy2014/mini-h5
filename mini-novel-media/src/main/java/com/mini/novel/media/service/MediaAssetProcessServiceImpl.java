@@ -45,10 +45,6 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
         this.eventPublisher = eventPublisher;
     }
 
-    /** 视频处理异步触发事件（@TransactionalEventListener 在事务提交后执行）。 */
-    public record VideoReadyToProcessEvent(Long assetId) {
-    }
-
     @Override
     @Transactional
     public MediaAsset processImage(InputStream in, String originalName, Long operatorId) throws IOException {
@@ -113,7 +109,7 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
             // 以 assetId 命名暂存原片，供异步任务定位；事务提交后触发异步转码
             Path staged = storage.tmpFile().getParent().resolve(asset.getId() + ".tmp");
             Files.move(tmp, staged, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            eventPublisher.publishEvent(new VideoReadyToProcessEvent(asset.getId()));
+            eventPublisher.publishEvent(new MediaVideoProcessEvent(asset.getId()));
             return asset;
         } finally {
             Files.deleteIfExists(tmp);
@@ -143,6 +139,19 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
             ImageCompressor.Result posterThumb = imageCompressor.thumbnail(Files.readAllBytes(poster));
             Path thumbFile = storage.thumbTarget(uuid);
             Files.write(thumbFile, posterThumb.getJpeg());
+
+            // 转码期间素材可能已被前端删除（运营等不及转码就关闭编辑器/移除视频）。
+            // 此时不能再更新记录，否则产物文件会变成磁盘孤儿（MediaCleanupJob 只扫 DB 记录），
+            // 这里直接把成品/tmp 全部回收。
+            MediaAsset latest = assetMapper.selectById(assetId);
+            if (latest == null || !Objects.equals(MediaAsset.STATUS_PROCESSING, latest.getStatus())) {
+                Files.deleteIfExists(mp4);
+                Files.deleteIfExists(poster);
+                Files.deleteIfExists(thumbFile);
+                Files.deleteIfExists(staged);
+                log.warn("video discarded (asset gone or not processing) assetId={}", assetId);
+                return;
+            }
 
             asset.setWidth(info.width());
             asset.setHeight(info.height());
@@ -176,15 +185,8 @@ public class MediaAssetProcessServiceImpl implements MediaAssetProcessService {
         asset.setStatus(MediaAsset.STATUS_PROCESSING);
         asset.setFailReason(null);
         assetMapper.updateById(asset);
-        eventPublisher.publishEvent(new VideoReadyToProcessEvent(assetId));
+        eventPublisher.publishEvent(new MediaVideoProcessEvent(assetId));
         return asset;
-    }
-
-    /** 事务提交后触发异步转码（规避事务内异步自调用失效）。 */
-    @org.springframework.transaction.event.TransactionalEventListener(
-            phase = org.springframework.transaction.event.TransactionPhase.AFTER_COMMIT)
-    public void onVideoReady(VideoReadyToProcessEvent event) {
-        processVideoAsync(event.assetId());
     }
 
     private Path findStaged(Long assetId) {

@@ -41,10 +41,16 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="110">
+        <el-table-column label="类型" width="130">
           <template #default="{ row }">
             <el-tag size="small" :type="row.type === 2 ? 'primary' : row.type === 3 ? 'warning' : 'success'">
               {{ typeName(row.type) }}
+            </el-tag>
+            <el-tag v-if="tab === 'draft' && row._pending" size="small" type="warning" effect="plain" class="nr-tag">
+              转码中
+            </el-tag>
+            <el-tag v-else-if="tab === 'draft' && row._failed" size="small" type="danger" effect="plain" class="nr-tag">
+              转码失败
             </el-tag>
           </template>
         </el-table-column>
@@ -68,7 +74,9 @@
           <template #default="{ row }">
             <template v-if="tab === 'draft'">
               <el-button link type="primary" @click="openEditor('EDIT', row)">编辑</el-button>
-              <el-button link type="success" @click="openPublish(row)">发布</el-button>
+              <el-button link type="success" :disabled="row._notReady > 0"
+                         :title="row._failed ? '视频转码失败，请在编辑器里重新转码' : (row._pending ? '视频仍在转码，完成后才能发布' : '')"
+                         @click="openPublish(row)">发布</el-button>
               <el-popconfirm title="确认删除该草稿？删除后不可恢复。" @confirm="remove(row)">
                 <template #reference><el-button link type="danger">删除</el-button></template>
               </el-popconfirm>
@@ -88,7 +96,8 @@
     </el-card>
 
     <!-- 新建/编辑抽屉 -->
-    <el-drawer v-model="editorVisible" :title="editorTitle" size="560px" destroy-on-close @closed="onEditorClosed">
+    <el-drawer v-model="editorVisible" :title="editorTitle" size="560px" destroy-on-close
+               :before-close="onEditorClose" @closed="onEditorClosed">
       <div v-loading="saving">
         <el-form label-position="top">
           <el-form-item label="标题（必填）">
@@ -112,18 +121,32 @@
 
           <el-form-item label="视频素材（每帖最多 1 个 · 自动转码+抽封面）">
             <template v-if="!videoAsset">
-              <el-upload :http-request="uploadOne" :show-file-list="false" accept="video/mp4,video/quicktime,video/x-matroska,.mkv">
-                <el-button type="primary" plain>＋ 添加视频</el-button>
+              <el-upload :http-request="uploadOne" :show-file-list="false" :disabled="videoUploading"
+                         accept="video/mp4,video/quicktime,video/x-matroska,.mkv">
+                <el-button type="primary" plain :loading="videoUploading">
+                  {{ videoUploading ? `上传中 ${uploadPercent}%` : '＋ 添加视频' }}
+                </el-button>
               </el-upload>
             </template>
             <div v-else class="media-item video">
-              <video :src="assetUrl(videoAsset, 'main')" controls preload="metadata" style="width:100%;max-height:150px;background:#000" />
-              <div class="v-meta">{{ videoAsset.originalName }}
-                <span v-if="videoAsset.status !== 2">{{ videoAsset.status === 3 ? '(转码失败)' : '(转码中…)' }}</span>
+              <video v-if="videoAsset.status === 2" :src="assetUrl(videoAsset, 'main')" controls preload="metadata"
+                     style="width:100%;max-height:150px;background:#000" />
+              <div v-else class="v-placeholder">
+                <span v-if="videoAsset.status === 3">⚠ 转码失败</span>
+                <span v-else>⏳ 后台转码中…（大视频需要几分钟，可先去传图片/填标题）</span>
               </div>
-              <el-button size="small" @click="removeVideo">移除视频</el-button>
+              <div class="v-meta">{{ videoAsset.originalName }}
+                <span v-if="videoAsset.status === 3 && videoAsset.failReason" class="fail-reason">
+                  {{ videoAsset.failReason }}
+                </span>
+              </div>
+              <div class="v-actions">
+                <el-button size="small" @click="removeVideo">移除视频</el-button>
+                <el-button v-if="videoAsset.status === 3" size="small" type="primary" plain
+                           @click="retryVideo(videoAsset)">重新转码</el-button>
+              </div>
             </div>
-            <div class="hint">mp4/mov/mkv ≤300MB ≤15 分钟；转码完成后才可发布</div>
+            <div class="hint">mp4/mov/mkv ≤300MB ≤15 分钟；上传完即可继续编辑，转码完成后才能保存/发布</div>
           </el-form-item>
         </el-form>
       </div>
@@ -168,9 +191,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
-import { adminApi } from '../services/http';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { adminApi, adminUploadApi } from '../services/http';
 
 const tab = ref('draft');
 const rows = ref([]);
@@ -192,6 +215,11 @@ const editId = ref(null);
 const form = reactive({ title: '' });
 const imageAssets = ref([]);
 const videoAsset = ref(null);
+/** 进行中的上传数量（>0 时禁止保存，避免素材还没入库就提交帖） */
+const uploading = ref(0);
+/** 视频上传进度（%），仅用于按钮文案 */
+const uploadPercent = ref(0);
+const videoUploading = ref(false);
 
 const publishVisible = ref(false);
 const publishRow = ref(null);
@@ -255,6 +283,13 @@ async function loadRows() {
   }
 }
 
+/** 抽屉已关闭时的静默刷新（转码完成后更新草稿列表的可发布状态） */
+async function refreshListQuietly() {
+  try {
+    await loadRows();
+  } catch { /* 忽略：下次操作会再刷 */ }
+}
+
 async function decorate(posts) {
   const out = [];
   for (const post of posts) {
@@ -264,6 +299,10 @@ async function decorate(posts) {
       post._assets = d.assets;
       post.imageCount = d.assets.filter((a) => a.fileType === 1).length;
       post.videoCount = d.assets.filter((a) => a.fileType === 2).length;
+      // 未就绪素材（转码中/失败）：>0 时草稿可保存但不允许发布
+      post._pending = d.assets.filter((a) => a.status === 1).length;
+      post._failed = d.assets.filter((a) => a.status === 3).length;
+      post._notReady = post._pending + post._failed;
     } catch { /* 忽略装饰失败 */ }
     out.push(post);
   }
@@ -271,6 +310,7 @@ async function decorate(posts) {
 }
 
 function openEditor(mode, row) {
+  stopAllPolls(); // 换内容时丢弃上一轮轮询定时器
   editId.value = row?.id || null;
   form.title = row?.title || '';
   imageAssets.value = [];
@@ -299,13 +339,33 @@ async function discardAssets(ids) {
   }
 }
 
+/** 关闭前拦截：视频还在转码时关闭会丢弃素材（白跑一次转码），先确认 */
+function onEditorClose(done) {
+  if (videoAsset.value && videoAsset.value.status === 1) {
+    ElMessageBox.confirm('视频还在后台转码，现在关闭会丢弃该视频，需要重新上传。确认关闭？', '视频转码中', {
+      confirmButtonText: '仍要关闭',
+      cancelButtonText: '继续等待',
+      type: 'warning'
+    })
+      .then(() => done())
+      .catch(() => {});
+    return;
+  }
+  done();
+}
+
 /** 抽屉关闭且未保存 → 回收本次上传的素材（记录 + 磁盘文件） */
 async function onEditorClosed() {
   if (savedThisSession.value) {
     savedThisSession.value = false;
     sessionUploaded.value = [];
+    // 已保存但视频还在转码：保留轮询，转码完成后自动刷新草稿列表（「转码中」→ 可发布）
+    if (!(videoAsset.value && videoAsset.value.status === 1)) {
+      stopAllPolls();
+    }
     return;
   }
+  stopAllPolls();
   const pending = [...sessionUploaded.value];
   sessionUploaded.value = [];
   if (pending.length) {
@@ -314,44 +374,126 @@ async function onEditorClosed() {
 }
 
 async function uploadOne(opt) {
-  const fd = new FormData();
-  fd.append('files', opt.file);
+  const file = opt.file;
+  const isVideo = isVideoFile(file);
+  uploading.value += 1;
+  if (isVideo) {
+    videoUploading.value = true;
+    uploadPercent.value = 0;
+  }
   try {
-    const results = await adminApi.post('/media/assets/upload', fd, { params: { operatorId: operatorId() } });
-    const r = results[0];
+    // 走「流式 + 关闭超时」的上传专用客户端：
+    // 1) 关超时：47MB 视频光传输就可能超过全局 15s；
+    // 2) 不走 multipart：请求体直写媒体卷，省掉容器 /tmp 的那一份重复落盘（300MB 视频省一半写盘）。
+    const r = await adminUploadApi.post('/media/assets/upload-stream', file, {
+      params: { fileName: file.name, operatorId: operatorId() },
+      headers: { 'Content-Type': 'application/octet-stream' },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      onUploadProgress: (e) => {
+        if (isVideo && e.total) {
+          uploadPercent.value = Math.min(99, Math.round((e.loaded / e.total) * 100));
+        }
+      }
+    });
     if (!r || !r.ok) {
       ElMessage.error(r?.reason || '上传失败');
       return;
     }
-    // 图片由后端在非事务线程同步处理完返回 READY；视频为 PROCESSING，轮询
-    const asset = { id: r.assetId, fileType: r.fileType, status: r.status, originalName: opt.file.name };
+    // 图片后端同步压缩完返回 READY；视频返回 PROCESSING，后台转码，按 id 轮询
+    const asset = { id: r.assetId, fileType: r.fileType, status: r.status, originalName: file.name };
     sessionUploaded.value.push(r.assetId);
     if (r.fileType === 2) {
       videoAsset.value = asset;
+      ElMessage.success('视频已上传，正在后台转码，完成后即可保存/发布');
       pollAsset(asset);
     } else {
       imageAssets.value.push(asset);
+      ElMessage.success('图片已上传（自动压缩）');
     }
-    ElMessage.success(`已上传${r.fileType === 2 ? '视频' : '图片'}（自动压缩/转码）`);
   } catch (e) {
     ElMessage.error(e.message || '上传失败');
+  } finally {
+    uploading.value -= 1;
+    if (isVideo) {
+      videoUploading.value = false;
+      uploadPercent.value = 0;
+    }
   }
 }
 
+function isVideoFile(file) {
+  if (!file) return false;
+  if ((file.type || '').startsWith('video/')) return true;
+  return /\.(mp4|mov|mkv|webm|avi|flv|m4v)$/i.test(file.name || '');
+}
+
+/** 转码状态轮询：assetId → intervalId */
+const pollTimers = new Map();
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_TICKS = 600; // 30 分钟兜底，防止页面长期挂着定时器
+
+function stopPoll(assetId) {
+  const t = pollTimers.get(assetId);
+  if (t) {
+    clearInterval(t);
+    pollTimers.delete(assetId);
+  }
+}
+
+function stopAllPolls() {
+  pollTimers.forEach((t) => clearInterval(t));
+  pollTimers.clear();
+}
+
+/**
+ * 按 id 查询单个素材的转码状态。
+ * 旧实现查「素材列表最新一条」再 find，同帖还传了图片时视频状态永远刷不到，
+ * 界面会一直停在「转码中…」并挡住保存。
+ */
 function pollAsset(asset) {
+  stopPoll(asset.id);
+  let ticks = 0;
+  let failures = 0;
   const timer = setInterval(async () => {
+    ticks += 1;
     try {
-      const p = await adminApi.get('/media/assets', { params: { page: 1, pageSize: 1 } });
-      const list = p.records || [];
-      const fresh = list.find((a) => a.id === asset.id);
+      const fresh = await adminApi.get(`/media/assets/${asset.id}`);
+      failures = 0;
       if (fresh) {
         asset.status = fresh.status;
-        if (fresh.status === 2 || fresh.status === 3) {
-          clearInterval(timer);
+        asset.failReason = fresh.failReason;
+        if (fresh.status === 2) {
+          stopPoll(asset.id);
+          ElMessage.success('视频转码完成，可以保存/发布了');
+          if (!editorVisible.value) await refreshListQuietly();
+        } else if (fresh.status === 3) {
+          stopPoll(asset.id);
+          ElMessage.error(`视频转码失败：${fresh.failReason || '原因未知'}`);
+          if (!editorVisible.value) await refreshListQuietly();
         }
       }
-    } catch { /* 下次再查 */ }
-  }, 3000);
+    } catch {
+      failures += 1;
+      if (failures >= 5) stopPoll(asset.id); // 素材可能已被删除，停止无效轮询
+    } finally {
+      if (ticks >= POLL_MAX_TICKS) stopPoll(asset.id);
+    }
+  }, POLL_INTERVAL_MS);
+  pollTimers.set(asset.id, timer);
+}
+
+/** 转码失败后手动重试（后端 reprocess 会重新投递到异步线程池） */
+async function retryVideo(asset) {
+  try {
+    const fresh = await adminApi.post(`/media/assets/${asset.id}/reprocess`);
+    asset.status = fresh?.status ?? 1;
+    asset.failReason = null;
+    ElMessage.success('已重新提交转码');
+    pollAsset(asset);
+  } catch (e) {
+    ElMessage.error(e.message || '重新转码失败');
+  }
 }
 
 function removeAsset(a) {
@@ -368,6 +510,9 @@ function removeAsset(a) {
 function removeVideo() {
   const v = videoAsset.value;
   videoAsset.value = null;
+  if (v?.id) {
+    stopPoll(v.id); // 转码中移除也要停轮询；后端会在转码完成时发现记录已删并回收产物文件
+  }
   if (!editId.value && v?.id) {
     discardAssets([v.id]);
     sessionUploaded.value = sessionUploaded.value.filter((id) => id !== v.id);
@@ -375,16 +520,16 @@ function removeVideo() {
 }
 
 async function saveDraft() {
-  if (!form.title.trim()) {
+  if (form.title.trim() === '') {
     ElMessage.warning('请填写标题');
+    return;
+  }
+  if (uploading.value > 0) {
+    ElMessage.warning('文件仍在上传中，请等上传完成再保存');
     return;
   }
   if (allAssets.value.length === 0) {
     ElMessage.warning('请至少上传一张图片或一个视频');
-    return;
-  }
-  if (allAssets.value.some((a) => a.status !== 2)) {
-    ElMessage.warning('素材仍在处理中（转码/压缩），请稍候再保存');
     return;
   }
   saving.value = true;
@@ -395,7 +540,10 @@ async function saveDraft() {
     } else {
       await adminApi.post('/media/posts', body);
     }
-    ElMessage.success('已保存到草稿');
+    const pending = allAssets.value.filter((a) => a.status !== 2).length;
+    ElMessage.success(pending > 0
+      ? '已保存到草稿（视频仍在后台转码，完成后草稿列表会变可发布）'
+      : '已保存到草稿');
     savedThisSession.value = true;
     // 回收本次上传但未被采用（被移除）的素材，避免磁盘残留
     const usedIds = new Set(allAssets.value.map((a) => a.id));
@@ -416,6 +564,10 @@ async function saveDraft() {
 }
 
 function openPublish(row) {
+  if (row._notReady > 0) {
+    ElMessage.warning(row._failed ? '视频转码失败，请先在编辑器里重新转码' : '视频仍在后台转码，完成后才能发布');
+    return;
+  }
   publishRow.value = row;
   publishChannelId.value = row.channelId || null;
   publishVisible.value = true;
@@ -472,6 +624,8 @@ onMounted(async () => {
   await loadChannels();
   await loadRows();
 });
+
+onUnmounted(() => stopAllPolls());
 </script>
 
 <style scoped>
@@ -491,6 +645,7 @@ onMounted(async () => {
 .type-tag.v { background: #eaf2ff; color: #2f6fd8; }
 .type-tag.m { background: #f6eefe; color: #7a3fe0; }
 .video-note { font-size: 11px; color: #98a5b5; }
+.nr-tag { margin-left: 6px; }
 .muted { color: #98a5b5; font-size: 12px; }
 .pager { justify-content: flex-end; padding: 14px 4px 0; }
 .media-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
@@ -500,7 +655,11 @@ onMounted(async () => {
 .media-item .del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.55); color: #fff; width: 18px; height: 18px; line-height: 17px; text-align: center; border-radius: 50%; font-size: 10px; cursor: pointer; }
 .media-item .proc { position: absolute; top: 4px; left: 4px; background: rgba(230,180,34,.95); color: #5c4300; font-size: 9px; padding: 1px 5px; border-radius: 4px; }
 .media-item.video { width: 100%; }
+.v-placeholder { display: flex; align-items: center; justify-content: center; height: 84px; border-radius: 8px;
+  background: #f3f5f1; border: 1px dashed #cfd9d3; color: #6f7978; font-size: 12px; text-align: center; padding: 0 10px; }
+.v-actions { display: flex; gap: 8px; margin-top: 6px; }
 .v-meta { font-size: 11px; color: #55657a; margin: 6px 0; }
+.v-meta .fail-reason { display: block; color: #c0392b; margin-top: 3px; word-break: break-all; }
 .hint { font-size: 11px; color: #98a5b5; margin-top: 6px; line-height: 1.7; }
 .editor-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 4px 0; }
 .publish-info { background: #f7f9fb; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }

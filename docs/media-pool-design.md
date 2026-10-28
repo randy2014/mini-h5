@@ -144,7 +144,8 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 → 抽帧: 25%~75% 时间窗等距 3 帧 → 选灰阶方差最大帧 → poster + poster 缩略
 → READY(删 tmp) / FAILED(保留 tmp + reason, 支持 reprocess)
 ```
-> 状态机：视频上传后为 `PROCESSING`（转码中），完成后 `READY`；**未 READY 的素材不可被草稿发布引用**（发布接口校验全部素材 READY，见 §6.1）。
+> 状态机：视频上传后为 `PROCESSING`（转码中），完成后 `READY`；**草稿可以先挂上 PROCESSING/FAILED 素材**
+> （草稿是工作区，避免大视频转码几分钟内什么都存不了），但**发布**要求全部素材 `READY`（见 §6.1）。
 
 ### 5.3 防盗下载（D11 · 尽力而为）
 
@@ -175,7 +176,8 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 | POST | `/admin/media/posts/{id}/publish` | 发布（body: channelId；校验：频道存在且 PUBLISHED、标题非空、≥1 素材、**全部素材 READY**、视频≤1） |
 | POST | `/admin/media/posts/{id}/unpublish` | 下架 → 回 DRAFT（保留 channel_id/内容，可再编辑/重发） |
 | DELETE | `/admin/media/posts/{id}` | 删除（**仅 DRAFT**；PUBLISHED 返回 400；解引用后素材无引用即物理删除） |
-| POST | `/admin/media/assets/upload` | multipart 批量上传素材 → asset[]（图同步 READY，视频异步 PROCESSING） |
+| POST | `/admin/media/assets/upload` | multipart 批量上传素材 → asset[]（图同步 READY，视频异步 PROCESSING）；**保留兼容**，前端已改走下面的流式接口 |
+| POST | `/admin/media/assets/upload-stream` | **流式上传（前端默认）**：`Content-Type: application/octet-stream` + `?fileName=`，body=文件原始字节，单文件一次；直写媒体卷 tmp，不经 multipart（省掉容器 /tmp 的重复落盘），上限 300MB |
 | GET | `/admin/media/assets` | 素材查询（复用/进度/去重） |
 | DELETE | `/admin/media/assets/{id}` | 删除未被引用素材 |
 | POST | `/admin/media/assets/{id}/reprocess` | 视频重转码/重抽封面 |
@@ -277,14 +279,15 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 7. **后台可播放**：运营在后台草稿/已发布/编辑器均可直接播放视频、查看图片。
 8. **H5 禁下载**：iOS/Android 浏览器上长按/右键/拖拽无法保存图片与视频；视频无下载按钮、无画中画、右键菜单被禁；媒体 URL 无登录态不可播。
 9. **风格统一（D13）**：后台所有页面与 H5 主色/底色/按钮/标签/侧栏同一品牌色系，无残留 Element Plus 默认蓝与灰蓝黑侧栏。
-10. **素材就绪约束**：视频转码未完成（PROCESSING）或失败（FAILED）时，含该素材的帖不可发布/不可进入已发布；转码完成后可正常发布。
+10. **素材就绪约束**：视频转码未完成（PROCESSING）或失败（FAILED）时，含该素材的帖**可存草稿但不可发布**；
+    草稿列表会标「转码中」并禁用发布按钮，转码完成后可正常发布。
 11. **未订阅/试用过期**：频道媒体区不渲染、列表为空、媒体字节 403；试用期内与已订阅一致。
 
 ## 13. 实施记录（2026-09 代码落地）
 
 **后端（已编译 + 单测通过）**
 - 新模块 `mini-novel-media`：3 entity/mapper + `MediaFileStorage`（volume 路径/防穿越）+ `ImageCompressor`（预算压缩/缩略/EXIF，9 测）+ `VideoProcessor`（ffprobe/ffmpeg 命令）+ `MediaExecutorConfig` + `MediaStreamer`（Range 206 内联流）+ `MediaConfig`；`MediaPostServiceImpl`（草稿/发布状态机/引用清理/READY 校验）。
-- Admin 接口：`AdminMediaAssetController`（multipart 上传/列表/删除/reprocess/流式预览）+ `AdminMediaPostController`（帖 CRUD/发布/下架/channels 下拉）。
+- Admin 接口：`AdminMediaAssetController`（**流式上传**/multipart 兼容上传/列表/删除/reprocess/流式预览）+ `AdminMediaPostController`（帖 CRUD/发布/下架/channels 下拉）。
 - C 端：`SubscribeController./channels/{id}/feed`（小说+媒体统一时间流，restricted 语义）+ `SubscribeMediaController`（媒体分页/帖详情/鉴权流式，full 需订阅+素材属于该频道已发布帖）+ `AuthController` 登录同步种同名 Cookie（<img>/<video> 无头鉴权）。
 - `SubscribeChannelVo.mediaCount`（频道卡片统计）。
 - 表迁移 `sql/migrations/20260915_media_pool.sql`；deploy.sh 已登记；compose 加 `mini-novel-media` volume；Dockerfile 装 ffmpeg；application.yml multipart ≤300MB；admin-ui nginx `client_max_body_size 320m`。
@@ -336,3 +339,11 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - 结果：磁盘与 DB 一一对应，**零孤儿**；测试数据清理后仅剩运营自有素材
 
 > 设计取舍：素材在 md5 命中且仍被其它内容引用时不会被删除（避免破坏其它内容）；该限制由「引用即保留 + 兜底任务回收」共同保证最终不残留。
+
+**2026-10-28 修复与增强（详见 [`docs/incident-log-202610.md`](incident-log-202610.md) §2）**
+
+- 视频转码恢复真异步（监听器独立 bean，`@Async` 代理不再被自调用绕过）→ 上传接口登记完即返回 `PROCESSING`；
+- 上传改走流式接口（`upload-stream`）+ 关闭客户端超时，nginx 两侧 600s 且关闭请求缓冲；
+- 前端按 `assetId` 轮询转码状态（含失败原因与「重新转码」）；
+- 草稿允许挂 PROCESSING/FAILED 素材（发布仍强制 READY），草稿列表标「转码中」并禁用发布；
+- 兜底：转码期间素材被删则回收产物文件；上传中断删除半截 tmp 文件。

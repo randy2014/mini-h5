@@ -17,6 +17,9 @@ public class VideoProcessor {
 
     public static final long DEFAULT_TIMEOUT_SECONDS = 900;
 
+    /** 子进程输出只保留尾部（ffmpeg 进度输出可能很大，旧实现会把全部输出读进内存）。 */
+    private static final int MAX_CAPTURE_CHARS = 64 * 1024;
+
     private final String ffmpegBin;
     private final String ffprobeBin;
     private final long timeoutSeconds;
@@ -86,7 +89,7 @@ public class VideoProcessor {
         Files.createDirectories(outputDir);
         Path output = outputDir.resolve(outputName + ".mp4");
         List<String> cmd = new ArrayList<>(List.of(
-                ffmpegBin, "-y",
+                ffmpegBin, "-y", "-nostdin", "-loglevel", "error",
                 "-i", input.toString(),
                 "-map", "0:v:0", "-map", "0:a:0?", // 视频 + 可选音频
                 "-c:v", "libx264",
@@ -119,7 +122,7 @@ public class VideoProcessor {
         Path output = outputDir.resolve(outputName + ".jpg");
         double ts = Math.max(0.25, Math.min(0.75, 0.4)); // 统一 40%，稳定可复现
         double seconds = durationMs / 1000.0 * ts;
-        List<String> cmd = List.of(ffmpegBin, "-y",
+        List<String> cmd = List.of(ffmpegBin, "-y", "-nostdin", "-loglevel", "error",
                 "-ss", String.format(java.util.Locale.ROOT, "%.2f", seconds),
                 "-i", input.toString(),
                 "-frames:v", "1",
@@ -133,30 +136,85 @@ public class VideoProcessor {
         return output;
     }
 
+    /**
+     * 执行子进程：并发排空输出 + 真正的超时控制。
+     *
+     * <p><b>为什么不能先 readAllBytes 再 waitFor：</b>旧实现先阻塞读完全部输出，
+     * 之后才 {@code waitFor(timeout)}，超时实际永远来不及生效 —— ffmpeg 卡死时
+     * 这里会无限阻塞，素材永久停在 PROCESSING（只能等每日 03:30 的兜底任务标 FAILED）。
+     * 现在由守护线程持续排空管道（顺带避免 ffmpeg 写满 pipe 阻塞），
+     * 主线程用 {@code waitFor(timeout, …)} 真正掌控超时。
+     */
     private String run(List<String> cmd) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process p = pb.start();
-        String output;
-        try (var in = p.getInputStream()) {
-            output = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        }
+
+        StringBuilder captured = new StringBuilder();
+        Thread drainer = new Thread(() -> drain(p, captured), "media-proc-drain");
+        drainer.setDaemon(true);
+        drainer.start();
+
+        boolean done;
         try {
-            boolean done = p.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-            if (!done) {
-                p.destroyForcibly();
-                throw new IOException("命令超时: " + String.join(" ", cmd) + "\n" + output);
-            }
+            done = p.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             p.destroyForcibly();
             throw new IOException("命令被中断: " + String.join(" ", cmd));
         }
+        if (!done) {
+            p.destroyForcibly();
+            joinQuietly(drainer);
+            throw new IOException("命令超时(" + timeoutSeconds + "s): " + String.join(" ", cmd)
+                    + "\n" + tail(captured));
+        }
+        joinQuietly(drainer);
         if (p.exitValue() != 0) {
             throw new IOException("命令失败(exit=" + p.exitValue() + "): "
-                    + String.join(" ", cmd) + "\n" + abbreviate(output));
+                    + String.join(" ", cmd) + "\n" + tail(captured));
         }
-        return output;
+        return fullOutput(captured);
+    }
+
+    /** 持续读取子进程输出，只保留尾部 MAX_CAPTURE_CHARS 个字符。 */
+    private static void drain(Process p, StringBuilder sink) {
+        char[] buf = new char[4096];
+        try (var reader = new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8)) {
+            int n;
+            while ((n = reader.read(buf)) != -1) {
+                synchronized (sink) {
+                    sink.append(buf, 0, n);
+                    int overflow = sink.length() - MAX_CAPTURE_CHARS;
+                    if (overflow > 0) {
+                        sink.delete(0, overflow);
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            // 进程被强杀时管道会异常关闭，属预期
+        }
+    }
+
+    private static void joinQuietly(Thread t) {
+        try {
+            t.join(2000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String tail(StringBuilder sink) {
+        synchronized (sink) {
+            return abbreviate(sink.toString());
+        }
+    }
+
+    /** 完整输出（已按 MAX_CAPTURE_CHARS 截尾保留），供 probe 解析使用。 */
+    private static String fullOutput(StringBuilder sink) {
+        synchronized (sink) {
+            return sink.toString();
+        }
     }
 
     private static String abbreviate(String s) {

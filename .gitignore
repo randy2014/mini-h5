@@ -26,6 +26,11 @@ wsl-msi-install.log
 DockerDesktopInstaller.exe
 wsl.*.msi
 
+# 本地视频下载缓存（体积可达数十 GB，绝不入库；2026-10-22 明确排除）
+video-downloader/
+# DSH 插件本地备份
+.dsh-plugin-backup-*/
+
 # Local environment overrides
 .env
 .env.*

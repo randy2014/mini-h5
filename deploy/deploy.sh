@@ -95,7 +95,9 @@ fi
 
 # 后端容器重建后 IP 变化，前端 nginx 启动时缓存的上游 IP 失效会导致 502；
 # 强制重启前端容器让 nginx 重新解析 mini-novel-app / mini-novel-crawler-service（2026-09-05 事故）
-compose restart mini-novel-h5 mini-novel-admin-ui
+# 网关的 nginx.conf 是 bind mount（config 未变更时 compose 不会重建容器），
+# 一并重启，否则网关侧的超时/请求缓冲改动不会生效（2026-10-22 视频上传超时）。
+compose restart mini-novel-h5 mini-novel-admin-ui mini-novel-gateway
 compose ps
 
 wait_for_http "H5" "http://127.0.0.1:${H5_PORT}/h5/home"
