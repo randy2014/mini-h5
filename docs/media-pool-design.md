@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 > **v1.1 目录批量导入（FR-45）不新增后端接口**：前端逐条调用 `upload-stream`（每个视频一次）+ `POST /admin/media/posts`（每个视频建一条草稿，`assetIds=[该素材]`），失败项单独重试；上传成功但建帖失败时调 `DELETE /admin/media/assets/{id}` 回收素材。理由：视频单文件 ≤300MB 且转码低并发（core 1 / max 2 / queue 50，`CallerRunsPolicy` 兜底），逐条串行对带宽/磁盘/转码队列最友好，且天然支持「部分成功」。
 > **v1.2 视频上传后自动存草稿（FR-46）同样不新增接口**：复用 `POST /admin/media/posts` / `PUT /admin/media/posts/{id}`，草稿阶段允许挂 PROCESSING 素材（发布才强制 READY）。
 > **v1.3 一帖多视频（FR-40/FR-47）仍不新增接口**：`assetIds` 顺序即 seq，前端把多个视频排在数组前面，后端 `syncTypeAndCover` 取第 1 个视频作封面；**唯一后端改动是删掉发布时 `videoCount > 1` 的拒绝**（`MediaPostServiceImpl.publish`），其余校验（素材全部 READY、标题必填、≥1 素材）不变。
+> **v1.4 批量发布（FR-48）也不新增接口**：前端对勾选的每条草稿调用现成 `POST /admin/media/posts/{id}/publish`（同一个 channelId），逐条成败、互不影响；这样做不需要 post-channel 关联表，且沿用既有发布校验。批量逻辑抽在 `utils/mediaPublish.js`（`publishDraftsSequentially` / `splitPublishable`）并有单测。
 
 ### 6.2 C 端
 | 方法 | 路径 | 说明 |
@@ -235,8 +236,14 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 ### 8.2 多媒体池子页面
 
 - `MediaPoolView`（顶部 Tab：草稿 / 已发布）：
-  - 草稿：新建图文、新建视频、编辑、删除、发布（发布选频道弹窗）。
+  - 草稿：新建图文、新建视频、编辑、删除、发布（发布选频道弹窗）、**多选 + 批量发布到同一个频道（v1.4）**。
   - 已发布：按频道筛选、**仅下架**。
+- **批量发布（v1.4 · FR-48）**：
+  - 草稿列表首列 `type="selection"`（`row-key=id`），换页/换 Tab/刷新后 `clearSelection()`，避免对着旧数据发布；
+  - 顶部「📌 批量发布（N）」在无勾选时置灰；弹窗展示「已勾选 N / 可发布 M / 跳过 K」+ 频道单选；
+  - `splitPublishable()` 先按 `row._notReady > 0` 拆出可发布与跳过（转码中/失败），未知状态交给后端校验；
+  - `publishDraftsSequentially()` 逐条调发布接口，`onItemChange` 更新进度文案；单条失败记入 failures 并在弹窗里逐条列出，不影响其余；
+  - 全成功 → 关闭弹窗并跳到「已发布列表」；有失败 → 留在弹窗展示失败原因（草稿列表已刷新）。
 - 新建/编辑抽屉：标题（必填）+ 图片批量上传区（排序/删）+ **视频区（可多个：列表展示封面帧/文件名/状态，支持上移/下移/移除/重新转码，第 1 个为封面）**。
 - 发布弹窗：数据来自订阅频道管理（PUBLISHED）；已下架频道置灰不可选。
 - **素材预览**：列表行/素材卡提供预览——图片弹层查看、视频 `<video controls>` 播放（后台运营不受 H5 禁下载约束，正常内联播放）；编辑器中视频素材同样可播放。
@@ -307,6 +314,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 10. **素材就绪约束**：视频转码未完成（PROCESSING）或失败（FAILED）时，含该素材的帖**可存草稿但不可发布**；
     草稿列表会标「转码中」并禁用发布按钮，转码完成后可正常发布。
 11. **未订阅/试用过期**：频道媒体区不渲染、列表为空、媒体字节 403；试用期内与已订阅一致。
+12. **批量发布（v1.4）**：勾选 N 条草稿 → 选一个频道 → 逐条发布；素材未就绪自动跳过并提示；单条失败不影响其余且失败原因可见；成功后勾选清空、列表刷新（全成功跳已发布列表）。
 
 ## 13. 实施记录（2026-09 代码落地）
 

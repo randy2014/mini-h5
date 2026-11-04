@@ -3,11 +3,15 @@
     <!-- 顶部：Tab 切换 + 新建入口 -->
     <el-card shadow="never" class="pool-card">
       <div class="pool-toolbar">
-        <el-radio-group v-model="tab" size="large">
+        <el-radio-group v-model="tab" size="large" @change="onTabChange">
           <el-radio-button value="draft">草稿列表 <b class="cnt">{{ draftTotal }}</b></el-radio-button>
           <el-radio-button value="published">已发布列表 <b class="cnt ok">{{ publishedTotal }}</b></el-radio-button>
         </el-radio-group>
-        <div>
+        <div class="toolbar-actions">
+          <el-button v-if="tab === 'draft'" type="success" plain :disabled="!selectedRows.length"
+                     @click="openBatchPublish">
+            📌 批量发布{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
+          </el-button>
           <el-button type="primary" @click="openEditor('IMAGE')">＋ 新建图文</el-button>
           <el-button type="primary" plain @click="openEditor('VIDEO')">＋ 新建视频</el-button>
         </div>
@@ -23,7 +27,10 @@
 
     <!-- 列表 -->
     <el-card shadow="never" class="pool-card">
-      <el-table :data="rows" v-loading="loading">
+      <el-table ref="draftTable" :data="rows" v-loading="loading" :row-key="(row) => row.id"
+                @selection-change="onSelectionChange">
+        <!-- 草稿列表支持多选：勾选多条 → 批量发布到同一个频道 -->
+        <el-table-column v-if="tab === 'draft'" type="selection" width="44" />
         <el-table-column label="内容" min-width="300">
           <template #default="{ row }">
             <div class="post-cell">
@@ -200,6 +207,36 @@
       </template>
     </el-dialog>
 
+    <!-- 批量发布：勾选多条草稿 → 全部发到同一个频道 -->
+    <el-dialog v-model="batchVisible" title="📌 批量发布到订阅频道" width="560px"
+               :close-on-click-modal="false" @closed="resetBatch">
+      <div class="publish-info">
+        <b>已勾选 {{ batchRows.length }} 条内容</b>
+        <span class="muted">
+          可发布 {{ batchPublishable.length }} 条<template v-if="batchSkipped.length">，{{ batchSkipped.length }} 条素材未就绪（转码中/失败）将跳过</template>
+        </span>
+        <span class="muted">频道数据源：订阅频道管理（仅已发布频道可选）；每条内容仍只挂这一个频道</span>
+      </div>
+      <el-radio-group v-model="batchChannelId" class="channel-picker" :disabled="batchPublishing">
+        <el-radio v-for="c in channels" :key="c.id" :value="c.id" class="channel-opt">
+          {{ c.name }} <span class="muted">· {{ c.status === 1 ? '已发布' : '已下架' }}</span>
+        </el-radio>
+      </el-radio-group>
+      <div v-if="batchProgress.total" class="batch-progress">
+        <span :class="batchFailures.length ? 'warn' : 'ok'">{{ batchProgress.text }}</span>
+        <ul v-if="batchFailures.length" class="batch-failures">
+          <li v-for="f in batchFailures" :key="f.id"><b>{{ f.title }}</b>：{{ f.reason }}</li>
+        </ul>
+      </div>
+      <template #footer>
+        <el-button :disabled="batchPublishing" @click="batchVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchPublishing" :disabled="!batchPublishable.length"
+                   @click="doBatchPublish">
+          ✔ 发布 {{ batchPublishable.length }} 条
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 素材/帖详情预览（含视频播放） -->
     <el-drawer v-model="detailVisible" title="内容预览" size="480px" destroy-on-close>
       <template v-if="detail">
@@ -219,6 +256,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi, adminUploadApi } from '../services/http';
 import { isVideoFile, resolveDraftTitle, resolveGroupTitle } from '../utils/media';
+import { publishDraftsSequentially, splitPublishable } from '../utils/mediaPublish';
 import VideoDirectoryImportDialog from '../components/VideoDirectoryImportDialog.vue';
 
 const tab = ref('draft');
@@ -232,6 +270,20 @@ const draftTotal = ref(0);
 const publishedTotal = ref(0);
 const channels = ref([]);
 const filterChannelId = ref(null);
+
+/** 草稿列表多选（批量发布到同一个频道） */
+const draftTable = ref(null);
+const selectedRows = ref([]);
+const batchVisible = ref(false);
+/** 打开弹窗时的勾选快照：列表刷新后仍能展示「可发布/跳过」与失败原因 */
+const batchRows = ref([]);
+const batchChannelId = ref(null);
+const batchPublishing = ref(false);
+const batchFailures = ref([]);
+const batchProgress = reactive({ total: 0, done: 0, text: '' });
+const batchSplit = computed(() => splitPublishable(batchRows.value));
+const batchPublishable = computed(() => batchSplit.value.publishable);
+const batchSkipped = computed(() => batchSplit.value.skipped);
 
 const operatorId = () => Number(localStorage.getItem('mini_admin_operator_id') || 1);
 
@@ -317,7 +369,24 @@ async function loadRows() {
     }
   } finally {
     loading.value = false;
+    clearSelection(); // 换页/换 Tab/刷新后清空勾选，避免对着旧数据批量发布
   }
+}
+
+/** 清空草稿列表勾选（「批量发布」按钮随之置灰） */
+function clearSelection() {
+  selectedRows.value = [];
+  draftTable.value?.clearSelection?.();
+}
+
+function onSelectionChange(selection) {
+  selectedRows.value = selection;
+}
+
+/** 手切 Tab：回到第一页并重新拉数据（顺手清掉草稿勾选，避免停在上一个列表的选择上） */
+function onTabChange() {
+  page.value = 1;
+  loadRows();
 }
 
 /** 抽屉已关闭时的静默刷新（转码完成后更新草稿列表的可发布状态） */
@@ -737,6 +806,77 @@ function openPublish(row) {
   publishVisible.value = true;
 }
 
+/** 打开批量发布：把当前勾选快照下来（列表刷新后弹窗仍能展示结果） */
+function openBatchPublish() {
+  if (!selectedRows.value.length) return;
+  batchRows.value = [...selectedRows.value];
+  batchChannelId.value = null;
+  batchFailures.value = [];
+  batchProgress.total = 0;
+  batchProgress.done = 0;
+  batchProgress.text = '';
+  batchVisible.value = true;
+}
+
+function resetBatch() {
+  batchRows.value = [];
+  batchFailures.value = [];
+  batchProgress.total = 0;
+  batchProgress.done = 0;
+  batchProgress.text = '';
+}
+
+/**
+ * 批量发布：勾选的多条草稿逐条发到**同一个频道**（每条内容仍只挂一个频道，接口与单条发布一致）。
+ * 素材未就绪的先跳过并提示；单条失败不影响其余，失败原因在弹窗里逐条列出。
+ */
+async function doBatchPublish() {
+  if (!batchChannelId.value) {
+    ElMessage.warning('请选择挂载频道');
+    return;
+  }
+  const list = batchPublishable.value;
+  if (!list.length) {
+    ElMessage.warning('勾选内容的素材都未就绪（转码中/失败），暂不能发布');
+    return;
+  }
+  const skippedCount = batchSkipped.value.length;
+  batchPublishing.value = true;
+  batchFailures.value = [];
+  batchProgress.total = list.length;
+  batchProgress.done = 0;
+  batchProgress.text = `正在发布 0 / ${list.length}…`;
+  try {
+    const res = await publishDraftsSequentially({
+      items: list,
+      publish: (row) => adminApi.post(`/media/posts/${row.id}/publish`, {
+        channelId: batchChannelId.value, operatorId: operatorId()
+      }),
+      onItemChange: () => {
+        batchProgress.done += 1;
+        batchProgress.text = `正在发布 ${batchProgress.done} / ${batchProgress.total}…`;
+      }
+    });
+    batchFailures.value = res.failures;
+    if (res.failures.length) {
+      batchProgress.text = `发布完成：成功 ${res.published.length} 条，失败 ${res.failures.length} 条（原因见下）`;
+      ElMessage.warning(`批量发布完成：成功 ${res.published.length} 条，失败 ${res.failures.length} 条`);
+    } else {
+      batchProgress.text = `已完成：${res.published.length} 条已发布`;
+      ElMessage.success(`已发布 ${res.published.length} 条 → 已发布列表${skippedCount ? `（跳过 ${skippedCount} 条素材未就绪）` : ''}`);
+      batchVisible.value = false;
+      tab.value = 'published';
+      page.value = 1;
+    }
+    await loadRows();
+    if (res.failures.length && skippedCount) {
+      ElMessage.warning(`另有 ${skippedCount} 条素材未就绪已跳过`);
+    }
+  } finally {
+    batchPublishing.value = false;
+  }
+}
+
 async function doPublish() {
   if (!publishChannelId.value) {
     ElMessage.warning('请选择挂载频道');
@@ -798,6 +938,12 @@ onUnmounted(() => stopAllPolls());
 .pool-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
 .pool-toolbar .cnt { color: #e07b39; }
 .pool-toolbar .cnt.ok { color: #1e8e50; }
+.toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.batch-progress { margin-top: 14px; font-size: 12px; }
+.batch-progress .ok { color: #1e8e50; }
+.batch-progress .warn { color: #a0812d; }
+.batch-failures { margin: 8px 0 0; padding-left: 18px; color: #c0392b; font-size: 12px; line-height: 1.7; max-height: 160px; overflow: auto; }
+.batch-failures b { color: #26384c; }
 .filter-card { margin-top: 0; }
 .post-cell { display: flex; gap: 10px; align-items: center; }
 .cell-cover { width: 58px; height: 78px; border-radius: 6px; flex-shrink: 0; }
