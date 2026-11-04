@@ -52,6 +52,7 @@ import { showToast } from 'vant';
 import { fetchChannelFeed, mediaFileUrl, subscribeChannel } from '../services/subscribe';
 import { markSubscribeRead, subscribeReadIds } from '../services/subscribeReadStatus';
 import { FALLBACK_COVER, handleImgError } from '../utils/cover';
+import { rememberMediaMeta } from '../utils/mediaMetaCache';
 import { goBack } from '../utils/navigation';
 
 const route = useRoute();
@@ -135,7 +136,16 @@ function open(item) {
     router.push(`/h5/book/${item.id}`);
     return;
   }
+  // 进详情前先缓存「视频标题」，详情接口回来前导航栏就能显示正确标题（不再先闪「图文详情」）
+  rememberMediaMeta(item.id, { title: item.title, type: kindToType(item.kind) });
   router.push(`/h5/subscribe/${channelId}/media/${item.id}`);
+}
+
+/** feed 的 kind（IMAGE/VIDEO/MIXED）→ 后端 media_post.type（1/2/3） */
+function kindToType(kind) {
+  if (kind === 'VIDEO') return 2;
+  if (kind === 'MIXED') return 3;
+  return 1;
 }
 
 async function onSubscribe() {

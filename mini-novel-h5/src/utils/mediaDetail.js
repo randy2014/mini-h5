@@ -3,6 +3,26 @@
  */
 
 /**
+ * 后端 `MediaPostService.MediaPostDetail` 是 `{ post: {...}, assets: [...], cover }`，
+ * 而页面需要扁平结构。这里统一归一化，兼容将来后端改成扁平返回（两种形状都能用）。
+ */
+export function normalizeMediaDetail(data) {
+  if (!data || typeof data !== 'object') {
+    return data;
+  }
+  const post = data.post && typeof data.post === 'object' ? data.post : {};
+  const assets = Array.isArray(data.assets)
+    ? data.assets
+    : (Array.isArray(post.assets) ? post.assets : []);
+  return {
+    ...post,
+    ...data,
+    assets,
+    cover: data.cover !== undefined ? data.cover : (post.cover !== undefined ? post.cover : null)
+  };
+}
+
+/**
  * 导航栏标题：
  * - **视频类**（VIDEO / MIXED）→ 动态显示内容标题（即「视频标题」）；
  * - 纯图文 → 保留「图文详情」；

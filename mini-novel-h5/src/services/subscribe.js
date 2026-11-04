@@ -1,4 +1,5 @@
 import http from './http.js';
+import { normalizeMediaDetail } from '../utils/mediaDetail.js';
 
 // 订阅频道（沿用现有）
 export function fetchChannels() {
@@ -13,8 +14,13 @@ export function fetchChannelFeed(channelId, page = 1, pageSize = 20) {
   return http.get(`/subscribe/channels/${channelId}/feed`, { params: { page, pageSize } });
 }
 
-export function fetchFeedPostDetail(channelId, postId, config = {}) {
-  return http.get(`/subscribe/channels/${channelId}/media/posts/${postId}`, config);
+/**
+ * 媒体帖详情：后端返回 `{ post, assets, cover }`，这里归一化成扁平结构再交给页面，
+ * 否则页面读 `detail.title / detail.assets` 会取不到（表现为标题只剩「图文详情」、正文空白）。
+ */
+export async function fetchFeedPostDetail(channelId, postId, config = {}) {
+  const data = await http.get(`/subscribe/channels/${channelId}/media/posts/${postId}`, config);
+  return normalizeMediaDetail(data);
 }
 
 export function subscribeChannel(channelId, periodType = 'MONTH') {

@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 | GET | `/api/subscribe/channels` | 频道列表（现有）；**扩展返回频道内容统计**：`novelCount` + `mediaCount`（已发布图文+视频帖数），或合并 `contentCount`（频道卡片统计用，按用户要求展示频道内容数量）；**v1.6 新增 `todayMediaCount`**（当天已发布媒体帖数，>0 时 H5 显示「今日更新」角标） |
 | GET | `/api/subscribe/channels/{id}/media?page=&pageSize=` | 频道**媒体**内容分页（仅池子发布的图文/视频帖，PUBLISHED 且频道 PUBLISHED，published_at 倒序）——供统一网格/列表中媒体部分合并渲染 |
 | GET | `/api/subscribe/channels/{id}/novels?...` | （现有）频道小说分页（VIP文章管理加入频道）——供统一网格/列表合并渲染 |
-| GET | `/api/media/posts/{id}` | 媒体帖详情（标题 + 有序素材 + 素材封面/缩略）；未订阅或频道已下架 403 |
+| GET | `/api/media/posts/{id}` | 媒体帖详情（标题 + 有序素材 + 素材封面/缩略）；未订阅或频道已下架 403。**实际返回形状是 `{ post:{...}, assets:[...], cover }`（v1.7 修正：前端必须归一化，否则页面取 `detail.title/assets` 全为空）** |
 | GET | `/api/media/assets/{id}/file?kind=full\|thumb\|poster` | 鉴权流式字节（Range） |
 
 - 访问判定统一复用 M1 的 `subscribeService.isAccessible(userId, channelId)`（含 VIP 试用期 7 天全开逻辑）：
@@ -222,6 +222,8 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - 图文详情：图集宫格展示（首图放大布局），常规预览；图片按 §5.3 防盗（禁右键/长按/拖拽/缓存）。
 - 视频详情（v1.3 多视频 / v1.6 标题）：按 seq 顺序**竖向排列**多个视频；每个先显示封面帧占位（带角标「视频 i/N」），**点击才挂 src 播放**；某视频开始播放时自动暂停其余（同屏只播一个）；`<video controls playsinline webkit-playsinline x5-playsinline preload="metadata" :poster>`；**`controlslist="nodownload noremoteplayback"` + 禁用右键/画中画**（§5.3）；原生控件；@error 兜底文案。
   - **导航标题**：视频类（VIDEO/MIXED）显示内容标题（`utils/mediaDetail.detailNavTitle`），纯图文仍显示「图文详情」；视频类正文不再重复大标题（`shouldShowBodyTitle`）。
+  - **数据归一化（v1.7 修复）**：详情接口返回 `{post, assets, cover}`，页面按扁平结构读字段会全取不到（只剩「图文详情」、正文空白）。现在接口层 `normalizeMediaDetail()` 拍平（兼容两种形状），页面标题与素材恢复正常。
+  - **标题动态缓存（v1.7）**：从频道详情点卡片前，把列表里的 `{title, type}` 写入 sessionStorage（`utils/mediaMetaCache.js`，最多 200 条）；详情接口返回前导航栏先用缓存标题，因此**不会先闪「图文详情」再变成视频标题**。
 
 ## 8. 后台 UI
 
@@ -328,6 +330,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 12. **批量发布（v1.4）**：勾选 N 条草稿 → 选一个频道 → 逐条发布；素材未就绪自动跳过并提示；单条失败不影响其余且失败原因可见；成功后勾选清空、列表刷新（全成功跳已发布列表）。
 13. **上传前查重（v1.5）**：同一视频再次「添加视频」/ 同一目录再次导入 → 状态显示「已存在 · 跳过上传」，不再产生上传流量与重复素材；草稿里的视频列表不因重复导入而翻倍；查重不可用时仍能正常上传。
 14. **H5 列表与详情（v1.6）**：频道详情顺序稳定按发布时间倒序（批量发布同秒内新帖在前）；频道列表不显示视频时长；视频类详情页导航标题=内容标题（纯图文=图文详情）；当天有新发布媒体帖的频道，订阅频道列表显示「今日更新」角标。
+15. **H5 详情页（v1.7）**：进入详情页导航栏**立即**显示视频标题（用列表缓存标题，不闪「图文详情」）；正文图片/视频正常渲染（`{post,assets,cover}` 已归一化）。
 
 ## 13. 实施记录（2026-09 代码落地）
 

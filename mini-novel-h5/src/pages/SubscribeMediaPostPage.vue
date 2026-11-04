@@ -72,6 +72,7 @@ import { classifyApiError, promptFor } from '../permission';
 import { fetchFeedPostDetail, mediaFileUrl } from '../services/subscribe';
 import { goBack } from '../utils/navigation';
 import { detailNavTitle, shouldShowBodyTitle } from '../utils/mediaDetail';
+import { readMediaMeta, rememberMediaMeta } from '../utils/mediaMetaCache';
 
 const route = useRoute();
 const router = useRouter();
@@ -92,8 +93,14 @@ const previewIndex = ref(0);
 
 const gateAction = computed(() => gatePrompt.value?.action || null);
 
-/** 视频类（VIDEO/MIXED）导航标题动态换成内容标题；纯图文仍显示「图文详情」 */
-const navTitle = computed(() => detailNavTitle(detail.value));
+/** 视频类（VIDEO/MIXED）导航标题动态换成内容标题；纯图文仍显示「图文详情」。
+ *  详情接口返回前，先用列表页缓存的标题（避免先闪「图文详情」）。 */
+const cachedMeta = readMediaMeta(postId);
+const navTitle = computed(() => {
+  if (detail.value) return detailNavTitle(detail.value);
+  if (cachedMeta) return detailNavTitle({ type: cachedMeta.type, title: cachedMeta.title });
+  return '图文详情';
+});
 const showBodyTitle = computed(() => shouldShowBodyTitle(detail.value));
 
 const images = computed(() => (detail.value?.assets || []).filter((a) => a.fileType === 1));
@@ -153,6 +160,8 @@ async function load() {
   try {
     // silent：本页用自己的错误区块表达门禁原因，避免再叠一层 toast
     detail.value = await fetchFeedPostDetail(channelId, postId, { silent: true });
+    // 详情接口回来后刷新标题缓存，下次进入可直接用缓存标题
+    rememberMediaMeta(postId, { title: detail.value?.title, type: detail.value?.type });
     // 初始化每个视频的播放态（渲染期不写响应式数据）
     videos.value.forEach((v) => {
       videoState[v.id] = videoState[v.id] || { ready: false, error: '' };
