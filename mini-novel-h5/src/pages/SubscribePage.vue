@@ -38,6 +38,7 @@
           <div class="info">
             <div class="nm">
               {{ c.name }}
+              <span v-if="c.todayMediaCount > 0" class="tag today">今日更新</span>
               <span v-if="c.trial" class="tag trial">vip权益-试用中</span>
               <span v-else-if="c.subscribed" class="tag sub">已订阅</span>
               <span v-else class="tag locked">未订阅</span>
@@ -45,6 +46,7 @@
             <div class="desc">{{ c.description || '暂无简介' }}</div>
             <div class="meta">{{ c.novelCount + (c.mediaCount || 0) }} 条内容
               <template v-if="(c.mediaCount || 0) > 0"> · {{ c.mediaCount }} 图文视频</template>
+              <template v-if="c.todayMediaCount > 0"> · 今日新增 {{ c.todayMediaCount }} 条</template>
               <template v-if="c.subscribed && c.endTime"> · 剩余 {{ c.daysLeft }} 天</template>
             </div>
             <div v-if="c.subscribed && c.endTime" class="countdown">{{ formatDate(c.endTime) }} 订阅到期</div>
@@ -172,6 +174,7 @@ onMounted(async () => {
 .countdown { font-size: 10px; color: #e07b39; font-weight: 700; margin-top: 4px; }
 .tag { font-size: 10px; padding: 2px 7px; border-radius: 8px; font-weight: 600; }
 .tag.trial { background: #fdf3d3; color: #a97900; }
+.tag.today { background: #fdecec; color: #d64545; font-weight: 700; }
 .tag.sub { background: #e3f3ea; color: #2f7a4f; }
 .tag.locked { background: #fdeaea; color: #c0392b; }
 .price-box { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 6px; }

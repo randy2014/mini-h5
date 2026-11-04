@@ -23,6 +23,7 @@ import com.mini.novel.vip.entity.UserSubscribe;
 import com.mini.novel.vip.mapper.UserSubscribeMapper;
 import com.mini.novel.vip.service.CoinService;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,6 +85,15 @@ public class SubscribeServiceImpl implements SubscribeService {
             }
         }
         List<SubscribeChannelVo> result = new ArrayList<>();
+        // 当天已发布的媒体帖按频道计数：H5 频道列表的「今日更新」角标（一次查询，避免逐频道 N+1）
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        Map<Long, Long> todayCountByChannel = mediaPostMapper.selectList(new LambdaQueryWrapper<MediaPost>()
+                        .eq(MediaPost::getStatus, MediaPost.STATUS_PUBLISHED)
+                        .ge(MediaPost::getPublishedAt, todayStart)
+                        .select(MediaPost::getChannelId))
+                .stream()
+                .filter(p -> p.getChannelId() != null)
+                .collect(Collectors.groupingBy(MediaPost::getChannelId, Collectors.counting()));
         for (SubscribeChannel channel : channels) {
             SubscribeChannelVo vo = new SubscribeChannelVo();
             vo.setId(channel.getId());
@@ -105,6 +115,7 @@ public class SubscribeServiceImpl implements SubscribeService {
             vo.setMediaCount(mediaPostMapper.selectCount(new LambdaQueryWrapper<MediaPost>()
                     .eq(MediaPost::getChannelId, channel.getId())
                     .eq(MediaPost::getStatus, MediaPost.STATUS_PUBLISHED)));
+            vo.setTodayMediaCount(todayCountByChannel.getOrDefault(channel.getId(), 0L));
             result.add(vo);
         }
         return result;

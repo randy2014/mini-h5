@@ -1,6 +1,6 @@
 <template>
   <section class="page media-post-page">
-    <van-nav-bar :title="typeLabel" left-arrow @click-left="goBackToChannel" />
+    <van-nav-bar :title="navTitle" left-arrow @click-left="goBackToChannel" />
 
     <div v-if="loading" class="center-loading"><van-loading /></div>
     <div v-else-if="error" class="error-box">
@@ -15,8 +15,8 @@
     </div>
 
     <template v-else-if="detail">
-      <!-- 标题 -->
-      <div class="post-title">{{ detail.title }}</div>
+      <!-- 标题（视频类标题已放到导航栏，正文不再重复） -->
+      <div v-if="showBodyTitle" class="post-title">{{ detail.title }}</div>
 
       <!-- 图文（禁用长按/右键/拖拽保存） -->
       <div v-if="images.length" class="gallery" @contextmenu.prevent>
@@ -71,6 +71,7 @@ import { showToast } from 'vant';
 import { classifyApiError, promptFor } from '../permission';
 import { fetchFeedPostDetail, mediaFileUrl } from '../services/subscribe';
 import { goBack } from '../utils/navigation';
+import { detailNavTitle, shouldShowBodyTitle } from '../utils/mediaDetail';
 
 const route = useRoute();
 const router = useRouter();
@@ -91,12 +92,9 @@ const previewIndex = ref(0);
 
 const gateAction = computed(() => gatePrompt.value?.action || null);
 
-const typeLabel = computed(() => {
-  if (!detail.value) return '图文/视频';
-  return detail.value.type === 2 ? '视频详情'
-    : detail.value.type === 3 ? '图文+视频'
-    : '图文详情';
-});
+/** 视频类（VIDEO/MIXED）导航标题动态换成内容标题；纯图文仍显示「图文详情」 */
+const navTitle = computed(() => detailNavTitle(detail.value));
+const showBodyTitle = computed(() => shouldShowBodyTitle(detail.value));
 
 const images = computed(() => (detail.value?.assets || []).filter((a) => a.fileType === 1));
 /** 视频按 seq 顺序返回（第 1 个即封面），一帖可挂多个 */

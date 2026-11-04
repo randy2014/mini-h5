@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 ### 6.2 C 端
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/subscribe/channels` | 频道列表（现有）；**扩展返回频道内容统计**：`novelCount` + `mediaCount`（已发布图文+视频帖数），或合并 `contentCount`（频道卡片统计用，按用户要求展示频道内容数量） |
+| GET | `/api/subscribe/channels` | 频道列表（现有）；**扩展返回频道内容统计**：`novelCount` + `mediaCount`（已发布图文+视频帖数），或合并 `contentCount`（频道卡片统计用，按用户要求展示频道内容数量）；**v1.6 新增 `todayMediaCount`**（当天已发布媒体帖数，>0 时 H5 显示「今日更新」角标） |
 | GET | `/api/subscribe/channels/{id}/media?page=&pageSize=` | 频道**媒体**内容分页（仅池子发布的图文/视频帖，PUBLISHED 且频道 PUBLISHED，published_at 倒序）——供统一网格/列表中媒体部分合并渲染 |
 | GET | `/api/subscribe/channels/{id}/novels?...` | （现有）频道小说分页（VIP文章管理加入频道）——供统一网格/列表合并渲染 |
 | GET | `/api/media/posts/{id}` | 媒体帖详情（标题 + 有序素材 + 素材封面/缩略）；未订阅或频道已下架 403 |
@@ -214,11 +214,14 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
   - **不设 Tabs、不做分区标题**；排序策略见下；
   - 网格卡片=封面缩略（小说封面代理图 / 图文首图 / 视频封面帧）+ 标题；列表行=封面+标题+类型+元信息；
   - 点击行为：媒体帖进媒体详情；小说沿用现有阅读跳转与已读过滤（小说仍按现有"已读隐藏"逻辑过滤；媒体帖不做已读过滤）。
-- 媒体内容列表（网格模式下的封面）：封面缩略图 + 标题 + 类型角标 + 媒体数/时长。
+- 媒体内容列表（网格模式下的封面）：封面缩略图 + 标题 + 类型角标 + 媒体数（**v1.6 起不显示视频时长**）。
 - 排序（C 端，已确认）：小说与媒体帖**统一时间倒序混排**——小说按加入频道时间（subscribe_channel_novel.created_at）、媒体按 published_at，混合成单一时间流。
+  - **v1.6 修「乱序」**：`media_post.published_at` 是 `DATETIME`（秒精度），批量发布一次会把整批帖压在同一秒；同一秒内 SQL 返回顺序不稳定 → 列表看着是乱的。修法是 **SQL 与 Java 排序都加 `id` 倒序兜底**（`ChannelFeedServiceImpl.feed` 的 `thenComparing(id, reverseOrder())` + `collectMedia` 的 `orderByDesc(id)`；`pagePublished/pageChannelPublished` 早已有 id 兜底）。时间口径不变。
+- **今日更新角标（v1.6）**：`GET /api/subscribe/channels` 返回 `todayMediaCount`（当天 00:00 起该频道 `published_at` 的 PUBLISHED 帖数，一次聚合查询避免 N+1）；H5 频道卡片 `todayMediaCount > 0` 时显示「今日更新」红标 + 「今日新增 N 条」。
 - 订阅可见性（混排下）：媒体帖**无未订阅预览**——未订阅/试用过期用户的媒体卡片不渲染（列表直接不含媒体帖，字节接口 403，前端无特殊预览屏）；小说沿用现有 restricted 第一页预览逻辑。已订阅用户看到完整混排内容。
 - 图文详情：图集宫格展示（首图放大布局），常规预览；图片按 §5.3 防盗（禁右键/长按/拖拽/缓存）。
-- 视频详情（v1.3 多视频）：按 seq 顺序**竖向排列**多个视频；每个先显示封面帧占位（带角标「视频 i/N」），**点击才挂 src 播放**；某视频开始播放时自动暂停其余（同屏只播一个）；`<video controls playsinline webkit-playsinline x5-playsinline preload="metadata" :poster>`；**`controlslist="nodownload noremoteplayback"` + 禁用右键/画中画**（§5.3）；原生控件；@error 兜底文案。
+- 视频详情（v1.3 多视频 / v1.6 标题）：按 seq 顺序**竖向排列**多个视频；每个先显示封面帧占位（带角标「视频 i/N」），**点击才挂 src 播放**；某视频开始播放时自动暂停其余（同屏只播一个）；`<video controls playsinline webkit-playsinline x5-playsinline preload="metadata" :poster>`；**`controlslist="nodownload noremoteplayback"` + 禁用右键/画中画**（§5.3）；原生控件；@error 兜底文案。
+  - **导航标题**：视频类（VIDEO/MIXED）显示内容标题（`utils/mediaDetail.detailNavTitle`），纯图文仍显示「图文详情」；视频类正文不再重复大标题（`shouldShowBodyTitle`）。
 
 ## 8. 后台 UI
 
@@ -324,6 +327,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 11. **未订阅/试用过期**：频道媒体区不渲染、列表为空、媒体字节 403；试用期内与已订阅一致。
 12. **批量发布（v1.4）**：勾选 N 条草稿 → 选一个频道 → 逐条发布；素材未就绪自动跳过并提示；单条失败不影响其余且失败原因可见；成功后勾选清空、列表刷新（全成功跳已发布列表）。
 13. **上传前查重（v1.5）**：同一视频再次「添加视频」/ 同一目录再次导入 → 状态显示「已存在 · 跳过上传」，不再产生上传流量与重复素材；草稿里的视频列表不因重复导入而翻倍；查重不可用时仍能正常上传。
+14. **H5 列表与详情（v1.6）**：频道详情顺序稳定按发布时间倒序（批量发布同秒内新帖在前）；频道列表不显示视频时长；视频类详情页导航标题=内容标题（纯图文=图文详情）；当天有新发布媒体帖的频道，订阅频道列表显示「今日更新」角标。
 
 ## 13. 实施记录（2026-09 代码落地）
 

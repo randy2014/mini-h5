@@ -80,9 +80,15 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
             all.addAll(collectMedia(channelId));
         }
         all.addAll(collectNovels(channelId));
-        // 统一时间倒序
-        all.sort(Comparator.comparing(ChannelFeedVo.FeedItem::getSortTime,
-                Comparator.nullsFirst(Comparator.reverseOrder())));
+        // 统一时间倒序；
+        // 注意 published_at 是 DATETIME（只到秒），批量发布会把一整批帖压在同一秒里，
+        // 只按时间排会让同秒内容顺序不稳定（实测：一次批量发布 20 条后列表顺序看着是乱的）。
+        // 因此同时间用 id 倒序兜底：同一秒内后发布（id 更大）的排在前面。
+        all.sort(Comparator
+                .comparing(ChannelFeedVo.FeedItem::getSortTime,
+                        Comparator.nullsFirst(Comparator.reverseOrder()))
+                .thenComparing(ChannelFeedVo.FeedItem::getId,
+                        Comparator.nullsLast(Comparator.<Long>reverseOrder())));
         vo.setTotal(all.size());
         int from = (int) Math.min(all.size(), (safePage - 1) * safeSize);
         int to = (int) Math.min(all.size(), from + safeSize);
@@ -164,12 +170,13 @@ public class ChannelFeedServiceImpl implements ChannelFeedService {
         return out;
     }
 
-    /** 媒体：频道已发布帖（published_at 倒序）+ 有序素材统计与封面。 */
+    /** 媒体：频道已发布帖（published_at 倒序，同秒按 id 倒序）+ 有序素材统计与封面。 */
     private List<ChannelFeedVo.FeedItem> collectMedia(Long channelId) {
         List<MediaPost> posts = mediaPostMapper.selectList(new LambdaQueryWrapper<MediaPost>()
                 .eq(MediaPost::getChannelId, channelId)
                 .eq(MediaPost::getStatus, MediaPost.STATUS_PUBLISHED)
-                .orderByDesc(MediaPost::getPublishedAt));
+                .orderByDesc(MediaPost::getPublishedAt)
+                .orderByDesc(MediaPost::getId));
         if (posts.isEmpty()) {
             return new ArrayList<>();
         }

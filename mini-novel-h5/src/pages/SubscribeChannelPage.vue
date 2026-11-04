@@ -92,7 +92,6 @@ function mediaDesc(item) {
   const parts = [];
   if (item.imageCount) parts.push(`${item.imageCount} 图`);
   if (item.videoCount) parts.push(`${item.videoCount} 视频`);
-  if (item.videoDurationMs) parts.push(fmtDur(item.videoDurationMs));
   return parts.join(' · ');
 }
 
@@ -121,14 +120,6 @@ function coverSrc(item) {
     return mediaFileUrl(channelId, item.coverAssetId, item.coverKind === 'poster' ? 'poster' : 'thumb');
   }
   return '';
-}
-
-function fmtDur(ms) {
-  if (!ms) return '';
-  const s = Math.round(ms / 1000);
-  const m = Math.floor(s / 60);
-  const sec = String(s % 60).padStart(2, '0');
-  return `${m}:${sec}`;
 }
 
 function open(item) {

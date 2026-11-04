@@ -17,6 +17,8 @@ public class SubscribeChannelVo {
     private long novelCount;
     /** 多媒体内容（图文+视频帖）数量。 */
     private long mediaCount;
+    /** 当天（服务器时区，即北京时间）该频道新发布的媒体帖数量；>0 时 H5 频道列表显示「今日更新」角标。 */
+    private long todayMediaCount;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -44,4 +46,6 @@ public class SubscribeChannelVo {
     public void setNovelCount(long novelCount) { this.novelCount = novelCount; }
     public long getMediaCount() { return mediaCount; }
     public void setMediaCount(long mediaCount) { this.mediaCount = mediaCount; }
+    public long getTodayMediaCount() { return todayMediaCount; }
+    public void setTodayMediaCount(long todayMediaCount) { this.todayMediaCount = todayMediaCount; }
 }
