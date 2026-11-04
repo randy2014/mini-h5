@@ -111,10 +111,18 @@
             <el-input v-model="form.title" maxlength="120" show-word-limit placeholder="请输入内容标题" />
           </el-form-item>
 
-          <el-form-item label="图片素材（批量 · 自动压缩 ≈1MB/张 · 数量不限）">
-            <el-upload :http-request="uploadOne" multiple :show-file-list="false" accept="image/jpeg,image/png,image/gif,image/bmp">
-              <el-button>＋ 上传图片</el-button>
-            </el-upload>
+          <el-form-item :label="`图片素材（批量 · 自动压缩 ≈1MB/张 · 单帖最多 ${MAX_IMAGES_PER_POST} 张）`">
+            <div class="video-add-row">
+              <el-upload :http-request="uploadOne" multiple :show-file-list="false"
+                         :disabled="imageAssets.length >= MAX_IMAGES_PER_POST"
+                         accept="image/jpeg,image/png,image/gif,image/bmp">
+                <el-button :loading="imageUploading">＋ 上传图片</el-button>
+              </el-upload>
+              <el-button type="success" plain :disabled="imageSlotsLeft <= 0" @click="imageDirImportVisible = true">
+                📁 选择目录上传
+              </el-button>
+              <span class="muted">已挂 {{ imageAssets.length }} / {{ MAX_IMAGES_PER_POST }} 张</span>
+            </div>
             <div v-if="imageAssets.length" class="media-grid">
               <div v-for="(a, i) in imageAssets" :key="a.id" class="media-item">
                 <img :src="assetUrl(a, 'thumb')" />
@@ -123,7 +131,7 @@
                 <span v-if="a.status !== 2" class="proc">{{ a.status === 3 ? '失败' : '处理中' }}</span>
               </div>
             </div>
-            <div class="hint">第 1 张为封面（若同时挂了视频，则封面取第 1 个视频）；可上传 GIF（取首帧静态图）、不支持 WebP</div>
+            <div class="hint">第 1 张为封面（若同时挂了视频，则封面取第 1 个视频）；可上传 GIF（取首帧静态图）、不支持 WebP；<b>目录导入超出 {{ MAX_IMAGES_PER_POST }} 张的部分自动跳过</b></div>
           </el-form-item>
 
           <el-form-item label="视频素材（可多个 · 第 1 个为封面 · 自动转码+抽封面）">
@@ -179,9 +187,11 @@
       </template>
     </el-drawer>
 
-    <!-- 目录批量导入视频：视频全部加入当前内容（同一标题，第 1 个为封面） -->
-    <VideoDirectoryImportDialog v-model="dirImportVisible" :operator-id="operatorId()"
+    <!-- 目录导入：视频 / 图片 都走同一个弹窗（kind 区分），全部加入当前内容 -->
+    <MediaDirectoryImportDialog v-model="dirImportVisible" kind="video" :operator-id="operatorId()"
                                 @uploaded="onDirVideoUploaded" @finished="onDirFinished" />
+    <MediaDirectoryImportDialog v-model="imageDirImportVisible" kind="image" :operator-id="operatorId()"
+                                :max-count="imageSlotsLeft" @uploaded="onDirImageUploaded" @finished="onDirImageFinished" />
 
     <!-- 编辑器中单个视频预览（运营校对用） -->
     <el-dialog v-model="previewVideoVisible" title="视频预览" width="640px" destroy-on-close>
@@ -255,10 +265,10 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi, adminUploadApi } from '../services/http';
-import { isVideoFile, resolveDraftTitle, resolveGroupTitle } from '../utils/media';
+import { isVideoFile, MAX_IMAGES_PER_POST, resolveDraftTitle, resolveGroupTitle } from '../utils/media';
 import { publishDraftsSequentially, splitPublishable } from '../utils/mediaPublish';
 import { findExistingAssetByFile } from '../utils/uploadDedupe';
-import VideoDirectoryImportDialog from '../components/VideoDirectoryImportDialog.vue';
+import MediaDirectoryImportDialog from '../components/MediaDirectoryImportDialog.vue';
 
 const tab = ref('draft');
 const rows = ref([]);
@@ -293,15 +303,21 @@ const editorTitle = ref('');
 const editId = ref(null);
 /** 目录批量导入视频弹窗（视频全部加入当前内容，同一标题） */
 const dirImportVisible = ref(false);
+/** 目录批量导入图片弹窗 */
+const imageDirImportVisible = ref(false);
 /** 编辑器内视频预览弹窗（切封面/校对用） */
 const previewVideoVisible = ref(false);
 const previewVideo = ref(null);
 const form = reactive({ title: '' });
 const imageAssets = ref([]);
+/** 图片还能再加几张（单帖上限 MAX_IMAGES_PER_POST，目录导入按剩余名额截断） */
+const imageSlotsLeft = computed(() => Math.max(0, MAX_IMAGES_PER_POST - imageAssets.value.length));
 /** 视频素材：顺序=内容内的 seq，第 1 个为封面；数量不限 */
 const videos = ref([]);
 /** 进行中的上传数量（>0 时禁止保存，避免素材还没入库就提交帖） */
 const uploading = ref(0);
+/** 图片上传中（按钮 loading；图片很快，不显示百分比） */
+const imageUploading = ref(false);
 /** 视频上传进度（%），仅用于按钮文案 */
 const uploadPercent = ref(0);
 const videoUploading = ref(false);
@@ -497,10 +513,17 @@ async function uploadOne(opt) {
   const file = opt.file;
   const isVideo = isVideoFile(file);
   const session = editorSession; // 上传是异步的：回来时要确认还是同一个编辑器会话
+  // 图片：单帖上限拦截（手工逐张/多选都算上；目录导入按剩余名额在弹窗里截断）
+  if (!isVideo && imageAssets.value.length + imageUploading.value >= MAX_IMAGES_PER_POST) {
+    ElMessage.warning(`单帖最多 ${MAX_IMAGES_PER_POST} 张图片，已到上限`);
+    return;
+  }
   uploading.value += 1;
   if (isVideo) {
     videoUploading.value = true;
     uploadPercent.value = 0;
+  } else {
+    imageUploading.value += 1;
   }
   /** 视频就绪素材：finally 之后自动存草稿（此时 uploading 已归零，不会再被"上传中"拦住） */
   let uploadedVideo = null;
@@ -579,6 +602,8 @@ async function uploadOne(opt) {
       videoUploading.value = false;
       hashChecking.value = false;
       uploadPercent.value = 0;
+    } else {
+      imageUploading.value = Math.max(0, imageUploading.value - 1);
     }
   }
   // 视频上传成功 → 自动保存草稿（标题留空则取文件名），不把素材悬在编辑器里等运营点保存
@@ -837,6 +862,32 @@ async function onDirFinished({ uploaded, failed, dirName }) {
   }
   await persistDraft(resolveGroupTitle(form.title, dirName));
   ElMessage.success(`已将 ${uploaded} 个视频加入本内容并保存草稿${failed ? `（${failed} 个失败）` : ''}`);
+}
+
+/** 图片目录导入：每成功一张就挂进图片列表（顺序=导入顺序，第 1 张为封面） */
+function onDirImageUploaded(asset) {
+  imageAssets.value.push({
+    id: asset.id,
+    fileType: 1,
+    status: 2,
+    originalName: asset.originalName
+  });
+  // 只有本次真正上传的素材才记入「待回收」；复用的已有素材关闭编辑器时绝不能删
+  if (!asset.reused) {
+    sessionUploaded.value.push(asset.id);
+  }
+}
+
+/**
+ * 图片目录导入结束：图片已全部加入 → 自动存一次草稿（与视频导入一致）。
+ * 图片同步压缩完就是 READY，不用等转码。
+ */
+async function onDirImageFinished({ uploaded, failed, dirName }) {
+  if (!uploaded) {
+    return;
+  }
+  await persistDraft(resolveGroupTitle(form.title, dirName));
+  ElMessage.success(`已将 ${uploaded} 张图片加入本内容并保存草稿${failed ? `（${failed} 张失败）` : ''}`);
 }
 
 function openPublish(row) {

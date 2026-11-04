@@ -10,8 +10,14 @@
 /** 与后端 VIDEO_EXT 对齐（小写）。 */
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'flv', 'm4v'];
 
+/** 与后端图片压缩支持对齐（webp 不支持）。 */
+export const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp'];
+
 /** 单文件 300MB 上限。 */
 export const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
+
+/** 单条内容图片数量上限（前端拦截：手工上传 + 目录导入都按这个口径）。 */
+export const MAX_IMAGES_PER_POST = 100;
 
 /** 标题最长 120 字（后端硬校验）。 */
 export const MAX_TITLE_CHARS = 120;
@@ -29,6 +35,23 @@ export function isVideoFile(file) {
   if (!file) return false;
   if ((file.type || '').startsWith('video/')) return true;
   return isVideoFileName(file.name);
+}
+
+/** 文件名是否为支持的图片（webp 不在白名单）。 */
+export function isImageFileName(name) {
+  const n = String(name || '');
+  const dot = n.lastIndexOf('.');
+  if (dot < 0 || dot === n.length - 1) return false;
+  return IMAGE_EXTENSIONS.includes(n.slice(dot + 1).toLowerCase());
+}
+
+/** 浏览器 File 是否按图片处理：MIME 命中或扩展名命中。 */
+export function isImageFile(file) {
+  if (!file) return false;
+  if ((file.type || '').startsWith('image/')) {
+    return !/\.webp$/i.test(file.name || '');
+  }
+  return isImageFileName(file.name);
 }
 
 /**
@@ -84,31 +107,42 @@ export function formatFileSize(bytes) {
 }
 
 /**
- * 把「选择目录」拿到的文件列表整理成可上传清单。
+ * 把「选择目录」拿到的文件列表整理成可上传清单（视频/图片通用）。
  *
  * 规则：
- * - 非视频文件直接忽略（计入 skippedNonVideo），不报错、不中断整批；
- * - 单个视频 >300MB 标记为 skip 并给出原因（该条不导入，其余照常）；
- * - 其余标记 idle，等待逐条上传后加入当前内容（一条内容可挂多个视频，第 1 个为封面）；
- * - **按相对路径自然序排序**（第2集排在第10集前），目录导入后第一条通常就是「第01集」，直接当封面。
+ * - 只保留 kind 对应的文件（video/image），其余忽略并计入 skippedOther；
+ * - 视频单文件 >300MB 标记 skip 并给出原因；
+ * - 图片按 `maxCount`（剩余名额）截断，超出部分标 skip「超过单帖上限」；
+ * - 其余标记 idle，等待逐条上传后加入当前内容；
+ * - **按相对路径自然序排序**（第2集排在第10集前 / 图片按 001、002…），保证顺序可预期。
  *
  * 纯函数：只读 name / size / webkitRelativePath，单测可直接传普通对象。
+ *
+ * @param {Array} files 目录选择结果
+ * @param {{kind?: 'video'|'image', maxCount?: number|null}} [options]
+ * @returns {{items: Array, skippedOther: number, overCap: number}}
  */
-export function buildDirectoryImportItems(files) {
+export function buildDirectoryImportItems(files, options = {}) {
+  const kind = options.kind === 'image' ? 'image' : 'video';
+  const accept = kind === 'image' ? isImageFile : isVideoFile;
+  const maxCount = Number.isFinite(Number(options.maxCount))
+    ? Math.max(0, Math.floor(Number(options.maxCount)))
+    : null;
+  const capReason = `超过单帖上限（最多 ${maxCount} 张）`;
+
   const items = [];
-  let skippedNonVideo = 0;
+  let skippedOther = 0;
   for (const f of files || []) {
-    if (!isVideoFile(f)) {
-      skippedNonVideo += 1;
+    if (!accept(f)) {
+      skippedOther += 1;
       continue;
     }
     const name = String(f.name || '');
-    const path = String(f.webkitRelativePath || name);
     const size = Number(f.size) || 0;
-    const oversize = size > MAX_VIDEO_BYTES;
+    const oversize = kind === 'video' && size > MAX_VIDEO_BYTES;
     items.push({
       file: f,
-      path,
+      path: String(f.webkitRelativePath || name),
       name,
       title: titleFromFileName(name),
       size,
@@ -120,5 +154,20 @@ export function buildDirectoryImportItems(files) {
     });
   }
   items.sort((a, b) => a.path.localeCompare(b.path, 'zh-CN', { numeric: true, sensitivity: 'base' }));
-  return { items, skippedNonVideo };
+
+  let importable = 0;
+  let overCap = 0;
+  if (maxCount != null) {
+    for (const item of items) {
+      if (item.status === 'skip') continue;
+      if (importable >= maxCount) {
+        item.status = 'skip';
+        item.reason = capReason;
+        overCap += 1;
+        continue;
+      }
+      importable += 1;
+    }
+  }
+  return { items, skippedOther, overCap };
 }

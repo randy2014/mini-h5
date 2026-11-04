@@ -1,22 +1,20 @@
 <template>
-  <el-dialog v-model="visible" title="📁 选择目录（视频加入当前内容）" width="820px"
+  <el-dialog v-model="visible" :title="dialogTitle" width="820px"
              :close-on-click-modal="false" :before-close="onBeforeClose" @closed="resetAll">
     <div class="dir-import">
       <div class="pick-row">
         <!-- 目录选择必须用原生 input：el-upload 不透传 webkitdirectory -->
         <input ref="dirInput" class="dir-input" type="file" webkitdirectory directory multiple @change="onDirPicked" />
         <el-button type="primary" :disabled="running" @click="pickDir">选择目录…</el-button>
-        <template v-if="items.length || skippedNonVideo">
+        <template v-if="items.length || skippedOther">
           <span class="dir-name" :title="dirName">📂 {{ dirName || '已选目录' }}</span>
           <span class="muted">
-            视频 <b>{{ items.length }}</b> 个 · {{ formatFileSize(totalBytes) }}
-            <template v-if="skippedNonVideo"> · 忽略 {{ skippedNonVideo }} 个非视频文件</template>
-            <template v-if="oversizeCount"> · 超限跳过 {{ oversizeCount }} 个</template>
+            {{ noun }} <b>{{ items.length }}</b> 个 · {{ formatFileSize(totalBytes) }}
+            <template v-if="skippedOther"> · 忽略 {{ skippedOther }} 个非{{ noun }}</template>
+            <template v-if="skippedCount"> · 跳过 {{ skippedCount }} 个</template>
           </span>
         </template>
-        <span v-else class="muted">
-          选一个本地目录：里面每个视频都会<b>加进当前这条内容</b>（同一个标题，第 1 个为封面）
-        </span>
+        <span v-else class="muted">{{ emptyHint }}</span>
       </div>
 
       <el-table v-if="items.length" :data="items" height="300" size="small" class="file-table">
@@ -27,30 +25,32 @@
         <el-table-column label="大小" width="92">
           <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="180" show-overflow-tooltip>
+        <el-table-column label="状态" width="190" show-overflow-tooltip>
           <template #default="{ row }">
             <span :class="['st', row.status]" :title="row.reason || ''">{{ statusText(row) }}</span>
-            <el-progress v-if="row.status === 'uploading'" :percentage="row.percent" :show-text="false"
-                         :stroke-width="4" class="st-bar" />
+            <el-progress v-if="row.status === 'hashing' || row.status === 'uploading'" :percentage="row.percent"
+                         :show-text="false" :stroke-width="4" class="st-bar" />
           </template>
         </el-table-column>
       </el-table>
 
       <div v-else class="empty">
-        <p>{{ dirName ? '该目录内没有可加入的视频' : '还没有选择目录' }}</p>
-        <p class="muted">支持 mp4 / mov / mkv / webm / avi / flv / m4v；单文件 ≤300MB；非视频文件自动忽略</p>
+        <p>{{ dirName ? `该目录内没有可加入的${noun}` : '还没有选择目录' }}</p>
+        <p class="muted">{{ acceptHint }}</p>
       </div>
 
       <div v-if="items.length" class="overall">
         <el-progress :percentage="overallPercent" :status="overallStatus" :stroke-width="8" />
         <span class="muted">{{ progressText }}</span>
-        <span class="muted">序号即这支内容里的顺序（按文件名自然排序），第 1 个视频为封面</span>
+        <span class="muted">{{ orderHint }}</span>
       </div>
     </div>
 
     <template #footer>
       <div class="dir-footer">
-        <span class="muted tip">加入后会自动保存为草稿；<b>已上传过的视频会先查重并跳过上传</b>，转码完成后即可发布</span>
+        <span class="muted tip">
+          加入后会自动保存为草稿；<b>已上传过的{{ noun }}会先查重并跳过上传</b><template v-if="isVideo">，转码完成后即可发布</template>
+        </span>
         <div class="dir-actions">
           <el-button :disabled="running" @click="visible = false">关闭</el-button>
           <el-button v-if="!running && failedItems" type="warning" plain @click="retryFailed">
@@ -70,13 +70,17 @@
 import { computed, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminUploadApi } from '../services/http';
-import { buildDirectoryImportItems, formatFileSize } from '../utils/media';
+import { buildDirectoryImportItems, formatFileSize, MAX_IMAGES_PER_POST } from '../utils/media';
 import { uploadDirectoryItems } from '../utils/mediaImport';
 import { findExistingAssetByFile } from '../utils/uploadDedupe';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  operatorId: { type: Number, default: 1 }
+  operatorId: { type: Number, default: 1 },
+  /** 'video' | 'image'：同一个弹窗服务两种目录导入 */
+  kind: { type: String, default: 'video' },
+  /** 还能加入多少条（图片=单帖剩余名额）；null/undefined 表示不限 */
+  maxCount: { type: Number, default: null }
 });
 const emit = defineEmits(['update:modelValue', 'uploaded', 'finished']);
 
@@ -85,17 +89,30 @@ const visible = computed({
   set: (v) => emit('update:modelValue', v)
 });
 
+const isVideo = computed(() => props.kind !== 'image');
+const noun = computed(() => (isVideo.value ? '视频' : '图片'));
+const dialogTitle = computed(() => `📁 选择目录（${noun.value}加入当前内容）`);
+const emptyHint = computed(() => (isVideo.value
+  ? '选一个本地目录：里面每个视频都会加进当前这条内容（同一个标题，第 1 个为封面）'
+  : `选一个本地目录：里面每张图片都会加进当前这条内容（单帖最多 ${MAX_IMAGES_PER_POST} 张）`));
+const acceptHint = computed(() => (isVideo.value
+  ? '支持 mp4 / mov / mkv / webm / avi / flv / m4v；单文件 ≤300MB；非视频文件自动忽略'
+  : `支持 jpg / png / gif / bmp（不支持 WebP）；单帖最多 ${MAX_IMAGES_PER_POST} 张，超出自动跳过`));
+const orderHint = computed(() => (isVideo.value
+  ? '序号即这支内容里的顺序（按文件名自然排序），第 1 个视频为封面'
+  : '序号即内容内图片顺序（按文件名自然排序），第 1 张为封面（若同时挂了视频则以第 1 个视频为封面）'));
+
 const dirInput = ref(null);
 /** 待上传清单：[{ path, name, size, status, percent, reason, assetId, assetStatus }] */
 const items = ref([]);
-const skippedNonVideo = ref(0);
+const skippedOther = ref(0);
 const dirName = ref('');
 const running = ref(false);
 const stopRequested = ref(false);
 
 const pendingCount = computed(() => items.value.filter((i) => i.status === 'idle').length);
 const failedItems = computed(() => items.value.filter((i) => i.status === 'failed').length);
-const oversizeCount = computed(() => items.value.filter((i) => i.status === 'skip').length);
+const skippedCount = computed(() => items.value.filter((i) => i.status === 'skip').length);
 /** 已在素材库、直接复用（没重传）的条数 */
 const reusedCount = computed(() => items.value.filter((i) => i.status === 'done' && i.reused).length);
 const settledCount = computed(() => items.value.filter((i) => ['done', 'failed', 'skip'].includes(i.status)).length);
@@ -124,7 +141,7 @@ const progressText = computed(() => {
   const parts = [`成功 ${done} 个`];
   if (reusedCount.value) parts.push(`其中 ${reusedCount.value} 个已在素材库（跳过上传）`);
   if (failed) parts.push(`失败 ${failed} 个`);
-  if (oversizeCount.value) parts.push(`跳过 ${oversizeCount.value} 个`);
+  if (skippedCount.value) parts.push(`跳过 ${skippedCount.value} 个`);
   return `上传结束：${parts.join('，')}`;
 });
 
@@ -139,11 +156,16 @@ function onDirPicked(event) {
   if (!picked.length) return;
   const firstPath = picked[0].webkitRelativePath || '';
   dirName.value = firstPath.includes('/') ? firstPath.split('/')[0] : '';
-  const { items: list, skippedNonVideo: skipped } = buildDirectoryImportItems(picked);
-  items.value = list;
-  skippedNonVideo.value = skipped;
-  if (!list.length) {
-    ElMessage.warning(`这个目录里没有可加入的视频${skipped ? `（已忽略 ${skipped} 个非视频文件）` : ''}`);
+  const result = buildDirectoryImportItems(picked, {
+    kind: props.kind,
+    maxCount: Number.isFinite(Number(props.maxCount)) ? Number(props.maxCount) : null
+  });
+  items.value = result.items;
+  skippedOther.value = result.skippedOther;
+  if (!result.items.length) {
+    ElMessage.warning(`这个目录里没有可加入的${noun.value}${result.skippedOther ? `（已忽略 ${result.skippedOther} 个其它文件）` : ''}`);
+  } else if (result.overCap) {
+    ElMessage.warning(`单帖最多 ${MAX_IMAGES_PER_POST} 张，超出 ${result.overCap} 张已自动跳过`);
   }
 }
 
@@ -155,7 +177,7 @@ function statusText(row) {
       return `上传中 ${row.percent}%`;
     case 'done':
       if (row.reused) return '已存在 · 跳过上传';
-      return row.assetStatus === 1 ? '已加入 · 转码中' : '已加入';
+      return isVideo.value && row.assetStatus === 1 ? '已加入 · 转码中' : '已加入';
     case 'failed':
       return `失败：${row.reason || '未知原因'}`;
     case 'skip':
@@ -171,6 +193,7 @@ async function start() {
   if (!todo.length) return;
   // 目录名快照：用户中途关弹窗会 resetAll 清空 dirName，标题兜底还要用
   const dirNameSnapshot = dirName.value;
+  const fileType = isVideo.value ? 2 : 1;
   running.value = true;
   stopRequested.value = false;
   let counts = { uploaded: 0, failed: 0 };
@@ -178,7 +201,7 @@ async function start() {
     counts = await uploadDirectoryItems({
       items: todo,
       shouldStop: () => stopRequested.value,
-      // 每支视频先算 md5 查重：素材库已有（READY）就复用，跳过整包上传；否则走流式上传
+      // 每个文件先算 md5 查重：素材库已有（READY）就复用，跳过整包上传；否则走流式上传
       upload: async (item, onPercent) => {
         item.status = 'hashing';
         item.percent = 0;
@@ -187,14 +210,14 @@ async function start() {
             item.percent = Math.min(99, Math.round(ratio * 100));
           }
         });
-        if (existing && existing.fileType === 2) {
+        if (existing && existing.fileType === fileType) {
           item.reused = true;
           item.posterPath = existing.posterPath || null;
           return { ok: true, assetId: existing.id, status: existing.status, reused: true };
         }
         item.status = 'uploading';
         item.percent = 0;
-        // 与「添加视频」共用流式上传入口：关超时 + 请求体直写媒体卷（只写一遍盘）
+        // 与「添加素材」共用流式上传入口：关超时 + 请求体直写媒体卷（只写一遍盘）
         return adminUploadApi.post('/media/assets/upload-stream', item.file, {
           params: { fileName: item.name, operatorId: props.operatorId },
           headers: { 'Content-Type': 'application/octet-stream' },
@@ -208,10 +231,10 @@ async function start() {
         });
       },
       onUploaded: (item) => {
-        // 交给父级挂进当前内容（父级负责建草稿：同一标题，第 1 个视频为封面）
+        // 交给父级挂进当前内容（父级负责建草稿：同一标题，视频第 1 个为封面）
         emit('uploaded', {
           id: item.assetId,
-          fileType: 2,
+          fileType,
           status: item.assetStatus,
           originalName: item.name,
           posterPath: item.posterPath || null,
@@ -226,7 +249,7 @@ async function start() {
   if (counts.uploaded) {
     emit('finished', { uploaded: counts.uploaded, failed: counts.failed, dirName: dirNameSnapshot });
   } else if (counts.failed) {
-    ElMessage.warning(`${counts.failed} 个视频上传失败，可点「重试失败项」再试`);
+    ElMessage.warning(`${counts.failed} 个${noun.value}上传失败，可点「重试失败项」再试`);
   }
 }
 
@@ -246,7 +269,7 @@ function onBeforeClose(done) {
     done();
     return;
   }
-  ElMessageBox.confirm('正在上传，关闭会中断剩余文件（已加入的视频已保存）。确认关闭？', '上传进行中', {
+  ElMessageBox.confirm(`正在上传，关闭会中断剩余文件（已加入的${noun.value}已保存）。确认关闭？`, '上传进行中', {
     confirmButtonText: '中断并关闭',
     cancelButtonText: '继续上传',
     type: 'warning'
@@ -262,7 +285,7 @@ function resetAll() {
   // 只清展示数据：running / stopRequested 归 start() 与「中断并关闭」管，
   // 否则弹窗一关就把中断标记抹掉，后台循环会继续把剩余文件全传完。
   items.value = [];
-  skippedNonVideo.value = 0;
+  skippedOther.value = 0;
   dirName.value = '';
 }
 </script>

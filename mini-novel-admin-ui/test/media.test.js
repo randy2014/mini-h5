@@ -1,9 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  MAX_IMAGES_PER_POST,
   MAX_VIDEO_BYTES,
   buildDirectoryImportItems,
   formatFileSize,
+  isImageFile,
+  isImageFileName,
   isVideoFile,
   isVideoFileName,
   resolveDraftTitle,
@@ -19,6 +22,19 @@ test('视频扩展名判定', () => {
   for (const n of ['a.jpg', 'a.mp3', 'noext', 'a.', '', null, undefined]) {
     assert.equal(isVideoFileName(n), false, String(n))
   }
+})
+
+test('图片扩展名判定：支持 jpg/png/gif/bmp，不支持 webp', () => {
+  for (const n of ['a.jpg', 'b.JPEG', 'c.png', 'd.gif', 'e.bmp']) {
+    assert.equal(isImageFileName(n), true, n)
+  }
+  for (const n of ['a.webp', 'b.mp4', 'noext', 'a.', '', null]) {
+    assert.equal(isImageFileName(n), false, String(n))
+  }
+  assert.equal(isImageFile({ name: 'x.webp', type: 'image/webp' }), false)
+  assert.equal(isImageFile({ name: 'x.png', type: 'image/png' }), true)
+  assert.equal(isImageFile({ name: 'x.bin', type: 'image/gif' }), true)
+  assert.equal(isImageFile(null), false)
 })
 
 test('MIME 或扩展名命中即视为视频', () => {
@@ -43,13 +59,13 @@ test('标题取文件名：去扩展名、去目录、压空白、超长截断',
 
 test('目录导入清单：只留视频、超限标 skip、标题取文件名', () => {
   const big = MAX_VIDEO_BYTES + 1
-  const { items, skippedNonVideo } = buildDirectoryImportItems([
+  const { items, skippedOther } = buildDirectoryImportItems([
     { name: '1.mp4', size: 1024, webkitRelativePath: '剧集/1.mp4' },
     { name: '封面.jpg', size: 2048, webkitRelativePath: '剧集/封面.jpg' },
     { name: '2.MKV', size: big, webkitRelativePath: '剧集/子目录/2.MKV' },
     { name: '无扩展名', size: 10, webkitRelativePath: '剧集/无扩展名' }
   ])
-  assert.equal(skippedNonVideo, 2)
+  assert.equal(skippedOther, 2)
   assert.equal(items.length, 2)
   assert.deepEqual(items.map((i) => [i.title, i.path, i.status]), [
     ['1', '剧集/1.mp4', 'idle'],
@@ -67,10 +83,59 @@ test('目录导入清单按路径自然序排序（第2集在第10集前，第�
   assert.deepEqual(items.map((i) => i.title), ['第1集', '第2集', '第10集'])
 })
 
+test('图片目录导入：只留图片、忽略视频/webp、按文件名自然排序', () => {
+  const { items, skippedOther } = buildDirectoryImportItems([
+    { name: '10.jpg', size: 100, webkitRelativePath: '图集/10.jpg' },
+    { name: '2.png', size: 100, webkitRelativePath: '图集/2.png' },
+    { name: '1.gif', size: 100, webkitRelativePath: '图集/1.gif' },
+    { name: 'a.webp', size: 100, webkitRelativePath: '图集/a.webp' },
+    { name: 'v.mp4', size: 100, webkitRelativePath: '图集/v.mp4' }
+  ], { kind: 'image' })
+  assert.equal(skippedOther, 2)
+  assert.deepEqual(items.map((i) => i.name), ['1.gif', '2.png', '10.jpg'])
+  assert.ok(items.every((i) => i.status === 'idle'))
+})
+
+test('图片目录导入：超出单帖上限的部分自动跳过并给原因', () => {
+  const files = Array.from({ length: MAX_IMAGES_PER_POST + 5 }, (_, i) => ({
+    name: `${String(i + 1).padStart(3, '0')}.jpg`,
+    size: 10,
+    webkitRelativePath: `图集/${String(i + 1).padStart(3, '0')}.jpg`
+  }))
+  const { items, overCap } = buildDirectoryImportItems(files, { kind: 'image', maxCount: MAX_IMAGES_PER_POST })
+  assert.equal(overCap, 5)
+  assert.equal(items.filter((i) => i.status === 'idle').length, MAX_IMAGES_PER_POST)
+  const skipped = items.filter((i) => i.status === 'skip')
+  assert.equal(skipped.length, 5)
+  assert.match(skipped[0].reason, new RegExp(`最多 ${MAX_IMAGES_PER_POST} 张`))
+  // 截断发生在排序之后：留下的是文件名靠前的前 100 张
+  assert.equal(items[0].name, '001.jpg')
+  assert.equal(items[MAX_IMAGES_PER_POST - 1].name, '100.jpg')
+})
+
+test('图片目录导入：剩余名额为 0 时全部跳过', () => {
+  const { items, overCap } = buildDirectoryImportItems(
+    [{ name: '1.jpg', size: 1, webkitRelativePath: 'a/1.jpg' }],
+    { kind: 'image', maxCount: 0 }
+  )
+  assert.equal(overCap, 1)
+  assert.equal(items[0].status, 'skip')
+})
+
+test('视频目录导入不受图片上限影响（默认不限条数）', () => {
+  const files = Array.from({ length: MAX_IMAGES_PER_POST + 3 }, (_, i) => ({
+    name: `e${i}.mp4`,
+    size: 10,
+    webkitRelativePath: `剧/e${i}.mp4`
+  }))
+  const { items } = buildDirectoryImportItems(files)
+  assert.equal(items.filter((i) => i.status === 'idle').length, MAX_IMAGES_PER_POST + 3)
+})
+
 test('空目录选择', () => {
   const r = buildDirectoryImportItems([])
-  assert.deepEqual(r, { items: [], skippedNonVideo: 0 })
-  assert.deepEqual(buildDirectoryImportItems(null), { items: [], skippedNonVideo: 0 })
+  assert.deepEqual(r, { items: [], skippedOther: 0, overCap: 0 })
+  assert.deepEqual(buildDirectoryImportItems(null), { items: [], skippedOther: 0, overCap: 0 })
 })
 
 test('自动保存草稿的标题：已填标题优先，留空取文件名', () => {
