@@ -123,6 +123,15 @@ public class AdminMediaAssetController {
     }
 
     /**
+     * 上传前查重（v1.5）：前端先算文件 md5 问一次，命中（READY）就直接复用素材、跳过整包重传。
+     * 未命中返回 data=null（HTTP 200），前端照常上传。
+     */
+    @GetMapping("/by-md5")
+    public Result<MediaAsset> byMd5(@RequestParam("md5") String md5) {
+        return Result.ok(postService.findAssetByMd5(md5));
+    }
+
+    /**
      * 单个素材详情：前端上传视频后按 id 轮询转码状态（PROCESSING → READY/FAILED）。
      * 不能靠列表接口「最新一条」猜，否则同时上传图片时视频状态永远刷不到。
      */

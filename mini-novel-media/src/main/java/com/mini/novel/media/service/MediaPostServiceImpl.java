@@ -225,6 +225,21 @@ public class MediaPostServiceImpl implements MediaPostService {
     }
 
     @Override
+    public MediaAsset findAssetByMd5(String md5) {
+        if (!StringUtils.hasText(md5)) {
+            return null;
+        }
+        // 同一 md5 理论上只该有一条；历史上「上传中/失败」也会落同 md5 记录，所以只认 READY，
+        // 多条 READY 时取最新（id 最大）。
+        List<MediaAsset> candidates = assetMapper.selectList(new LambdaQueryWrapper<MediaAsset>()
+                .eq(MediaAsset::getMd5, md5.trim().toLowerCase(java.util.Locale.ROOT))
+                .eq(MediaAsset::getStatus, MediaAsset.STATUS_READY)
+                .orderByDesc(MediaAsset::getId)
+                .last("LIMIT 1"));
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    @Override
     public boolean isAssetInPublishedPostOfChannel(Long assetId, Long channelId) {
         List<MediaPostAsset> links = postAssetMapper.selectList(new LambdaQueryWrapper<MediaPostAsset>()
                 .eq(MediaPostAsset::getAssetId, assetId));

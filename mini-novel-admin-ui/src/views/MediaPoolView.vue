@@ -131,7 +131,7 @@
               <el-upload :http-request="uploadOne" :show-file-list="false" :disabled="videoUploading"
                          accept="video/mp4,video/quicktime,video/x-matroska,.mkv">
                 <el-button type="primary" plain :loading="videoUploading">
-                  {{ videoUploading ? `上传中 ${uploadPercent}%` : '＋ 添加视频' }}
+                  {{ videoUploading ? (hashChecking ? `校验中 ${uploadPercent}%` : `上传中 ${uploadPercent}%`) : '＋ 添加视频' }}
                 </el-button>
               </el-upload>
               <el-button type="success" plain @click="dirImportVisible = true">📁 选择目录批量导入</el-button>
@@ -164,7 +164,7 @@
               </div>
             </div>
 
-            <div class="hint">mp4/mov/mkv ≤300MB ≤15 分钟；<b>上传成功后自动保存为草稿</b>（标题留空则取文件名），封面取第 1 个视频，全部转码完成后才能发布</div>
+            <div class="hint">mp4/mov/mkv ≤300MB ≤15 分钟；<b>上传成功后自动保存为草稿</b>（标题留空则取文件名），封面取第 1 个视频，全部转码完成后才能发布；<b>已上传过的文件会自动跳过</b>（先校验 md5 再决定是否上传）</div>
             <div class="hint dir-hint">
               📁 目录导入：文件夹里每个视频都<b>加进当前这条内容</b>（同一个标题，序号即内容内顺序，第 1 个为封面），非视频文件自动忽略
             </div>
@@ -257,6 +257,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi, adminUploadApi } from '../services/http';
 import { isVideoFile, resolveDraftTitle, resolveGroupTitle } from '../utils/media';
 import { publishDraftsSequentially, splitPublishable } from '../utils/mediaPublish';
+import { findExistingAssetByFile } from '../utils/uploadDedupe';
 import VideoDirectoryImportDialog from '../components/VideoDirectoryImportDialog.vue';
 
 const tab = ref('draft');
@@ -304,6 +305,8 @@ const uploading = ref(0);
 /** 视频上传进度（%），仅用于按钮文案 */
 const uploadPercent = ref(0);
 const videoUploading = ref(false);
+/** 是否正在算 md5 查重（大视频按块校验，按钮文案显示「校验中」） */
+const hashChecking = ref(false);
 
 const publishVisible = ref(false);
 const publishRow = ref(null);
@@ -499,46 +502,74 @@ async function uploadOne(opt) {
     videoUploading.value = true;
     uploadPercent.value = 0;
   }
-  /** 视频上传成功的素材：finally 之后自动存草稿（此时 uploading 已归零，不会再被"上传中"拦住） */
+  /** 视频就绪素材：finally 之后自动存草稿（此时 uploading 已归零，不会再被"上传中"拦住） */
   let uploadedVideo = null;
   try {
-    // 走「流式 + 关闭超时」的上传专用客户端：
-    // 1) 关超时：47MB 视频光传输就可能超过全局 15s；
-    // 2) 不走 multipart：请求体直写媒体卷，省掉容器 /tmp 的那一份重复落盘（300MB 视频省一半写盘）。
-    const r = await adminUploadApi.post('/media/assets/upload-stream', file, {
-      params: { fileName: file.name, operatorId: operatorId() },
-      headers: { 'Content-Type': 'application/octet-stream' },
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-      onUploadProgress: (e) => {
-        if (isVideo && e.total) {
-          uploadPercent.value = Math.min(99, Math.round((e.loaded / e.total) * 100));
+    // 视频先算 md5 查重：素材库里已有同文件（READY）就直接复用，省掉整包重传
+    if (isVideo) {
+      hashChecking.value = true;
+      const existing = await findExistingAssetByFile(file, {
+        onProgress: (ratio) => {
+          uploadPercent.value = Math.min(99, Math.round(ratio * 100));
         }
+      });
+      hashChecking.value = false;
+      if (existing && existing.fileType === 2) {
+        // 校验期间抽屉被关闭/已换会话 → 不改变界面，也不产生草稿
+        if (session !== editorSession || !editorVisible.value) {
+          return;
+        }
+        videos.value.push({
+          id: existing.id,
+          fileType: 2,
+          status: existing.status,
+          originalName: file.name,
+          posterPath: existing.posterPath || null
+        });
+        // 取数组里的响应式代理（后续轮询/排序才响应）
+        uploadedVideo = videos.value[videos.value.length - 1];
+        ElMessage.success(`《${file.name}》已在素材库中，跳过重复上传`);
       }
-    });
-    if (!r || !r.ok) {
-      ElMessage.error(r?.reason || '上传失败');
-      return;
     }
-    // 上传期间抽屉被关闭或已换到别的编辑会话 → 按「取消编辑」处理：
-    // 回收这次上传的素材，避免凭空多出一条草稿（自动存草稿）或磁盘孤儿
-    if (session !== editorSession || !editorVisible.value) {
-      await discardAssets([r.assetId]);
-      return;
-    }
-    // 图片后端同步压缩完返回 READY；视频返回 PROCESSING，后台转码，按 id 轮询
-    const asset = { id: r.assetId, fileType: r.fileType, status: r.status, originalName: file.name };
-    sessionUploaded.value.push(r.assetId);
-    if (r.fileType === 2) {
-      videos.value.push(asset);
-      // 取数组里的响应式代理再轮询：直接改原始对象不会触发视图更新
-      const added = videos.value[videos.value.length - 1];
-      uploadedVideo = added;
-      ElMessage.success('视频已上传，正在后台转码，完成后即可发布');
-      pollAsset(added);
-    } else {
-      imageAssets.value.push(asset);
-      ElMessage.success('图片已上传（自动压缩）');
+    if (!uploadedVideo) {
+      // 走「流式 + 关闭超时」的上传专用客户端：
+      // 1) 关超时：47MB 视频光传输就可能超过全局 15s；
+      // 2) 不走 multipart：请求体直写媒体卷，省掉容器 /tmp 的那一份重复落盘（300MB 视频省一半写盘）。
+      const r = await adminUploadApi.post('/media/assets/upload-stream', file, {
+        params: { fileName: file.name, operatorId: operatorId() },
+        headers: { 'Content-Type': 'application/octet-stream' },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        onUploadProgress: (e) => {
+          if (isVideo && e.total) {
+            uploadPercent.value = Math.min(99, Math.round((e.loaded / e.total) * 100));
+          }
+        }
+      });
+      if (!r || !r.ok) {
+        ElMessage.error(r?.reason || '上传失败');
+        return;
+      }
+      // 上传期间抽屉被关闭或已换到别的编辑会话 → 按「取消编辑」处理：
+      // 回收这次上传的素材，避免凭空多出一条草稿（自动存草稿）或磁盘孤儿
+      if (session !== editorSession || !editorVisible.value) {
+        await discardAssets([r.assetId]);
+        return;
+      }
+      // 图片后端同步压缩完返回 READY；视频返回 PROCESSING，后台转码，按 id 轮询
+      const asset = { id: r.assetId, fileType: r.fileType, status: r.status, originalName: file.name };
+      sessionUploaded.value.push(r.assetId);
+      if (r.fileType === 2) {
+        videos.value.push(asset);
+        // 取数组里的响应式代理再轮询：直接改原始对象不会触发视图更新
+        const added = videos.value[videos.value.length - 1];
+        uploadedVideo = added;
+        ElMessage.success('视频已上传，正在后台转码，完成后即可发布');
+        pollAsset(added);
+      } else {
+        imageAssets.value.push(asset);
+        ElMessage.success('图片已上传（自动压缩）');
+      }
     }
   } catch (e) {
     ElMessage.error(e.message || '上传失败');
@@ -546,6 +577,7 @@ async function uploadOne(opt) {
     uploading.value -= 1;
     if (isVideo) {
       videoUploading.value = false;
+      hashChecking.value = false;
       uploadPercent.value = 0;
     }
   }
@@ -775,10 +807,21 @@ async function saveDraft() {
   }
 }
 
-/** 目录导入：每上传成功一个视频就挂进当前内容（顺序=上传顺序，第 1 个为封面） */
+/** 目录导入：每上传成功/命中复用 一个视频就挂进当前内容（顺序=上传顺序，第 1 个为封面） */
 function onDirVideoUploaded(asset) {
-  videos.value.push({ ...asset, posterPath: null, failReason: null });
+  videos.value.push({
+    id: asset.id,
+    fileType: 2,
+    status: asset.status,
+    originalName: asset.originalName,
+    posterPath: asset.posterPath || null,
+    failReason: null
+  });
   const added = videos.value[videos.value.length - 1];
+  // 只有本次真正上传的素材才记入「待回收」；复用的已有素材关闭编辑器时绝不能删
+  if (!asset.reused) {
+    sessionUploaded.value.push(asset.id);
+  }
   if (added.status === 1) {
     pollAsset(added);
   }

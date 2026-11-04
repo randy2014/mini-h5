@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 | POST | `/admin/media/assets/upload` | multipart 批量上传素材 → asset[]（图同步 READY，视频异步 PROCESSING）；**保留兼容**，前端已改走下面的流式接口 |
 | POST | `/admin/media/assets/upload-stream` | **流式上传（前端默认）**：`Content-Type: application/octet-stream` + `?fileName=`，body=文件原始字节，单文件一次；直写媒体卷 tmp，不经 multipart（省掉容器 /tmp 的重复落盘），上限 300MB |
 | GET | `/admin/media/assets` | 素材查询（复用/进度/去重） |
+| GET | `/admin/media/assets/by-md5` | **上传前查重（v1.5）**：`?md5=` → 命中返回 READY 素材（JSON），未命中 `data=null`；前端据此跳过整包上传 |
 | DELETE | `/admin/media/assets/{id}` | 删除未被引用素材 |
 | POST | `/admin/media/assets/{id}/reprocess` | 视频重转码/重抽封面 |
 | GET | `/admin/media/channels` | 可挂载频道下拉（**订阅频道管理中 PUBLISHED 的频道**） |
@@ -188,6 +189,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 > **v1.2 视频上传后自动存草稿（FR-46）同样不新增接口**：复用 `POST /admin/media/posts` / `PUT /admin/media/posts/{id}`，草稿阶段允许挂 PROCESSING 素材（发布才强制 READY）。
 > **v1.3 一帖多视频（FR-40/FR-47）仍不新增接口**：`assetIds` 顺序即 seq，前端把多个视频排在数组前面，后端 `syncTypeAndCover` 取第 1 个视频作封面；**唯一后端改动是删掉发布时 `videoCount > 1` 的拒绝**（`MediaPostServiceImpl.publish`），其余校验（素材全部 READY、标题必填、≥1 素材）不变。
 > **v1.4 批量发布（FR-48）也不新增接口**：前端对勾选的每条草稿调用现成 `POST /admin/media/posts/{id}/publish`（同一个 channelId），逐条成败、互不影响；这样做不需要 post-channel 关联表，且沿用既有发布校验。批量逻辑抽在 `utils/mediaPublish.js`（`publishDraftsSequentially` / `splitPublishable`）并有单测。
+> **v1.5 上传前查重（FR-49）**：新增只读接口 `GET /admin/media/assets/by-md5?md5=`（`MediaPostService.findAssetByMd5`，只认 READY、多条取最新），前端 `utils/fileFingerprint.js`（md5 + localStorage 缓存）→ `utils/uploadDedupe.js`（查重，失败回退正常上传）。服务端原有 md5 去重（上传后命中 READY 直接复用记录）保留不变，两者互补：前者省传输，后者保证存储不重复。
 
 ### 6.2 C 端
 | 方法 | 路径 | 说明 |
@@ -248,6 +250,11 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - 发布弹窗：数据来自订阅频道管理（PUBLISHED）；已下架频道置灰不可选。
 - **素材预览**：列表行/素材卡提供预览——图片弹层查看、视频 `<video controls>` 播放（后台运营不受 H5 禁下载约束，正常内联播放）；编辑器中视频素材同样可播放。
 - **一帖多视频（v1.3 · FR-40/47）**：`videos` 数组即 seq 顺序，`allAssets = [...videos, ...images]`；后端封面规则「有视频取第 1 个视频」天然复用；**移除/上移/下移都会自动落草稿**（避免界面顺序变了但草稿没变）。
+- **上传前查重、重复文件跳过（v1.5 · FR-49）**：「添加视频」与目录导入都会先算文件 md5（4MB 分块 + 进度）→ `GET /media/assets/by-md5`：
+  - 命中 READY **视频** → 直接把已有素材挂进 `videos`，**跳过整包上传**，提示「《xxx》已在素材库中，跳过重复上传」；命中素材**不记入 `sessionUploaded`**（那是本次新上传、关闭时要回收的），避免误删别人的素材；
+  - 目录导入里该行状态显示「校验中 x%」→「已存在 · 跳过上传」，整批结束统计「其中 N 个已在素材库（跳过上传）」；
+  - 查重是优化不是前置条件：算哈希失败、请求失败、未命中，一律静默回退到正常上传（服务端 md5 去重仍兜底）。
+  - 实现：`utils/md5.js`（增量 MD5，单测对齐 node crypto）+ `utils/fileFingerprint.js`（md5 + localStorage 缓存）+ `utils/uploadDedupe.js`（按 md5 查后端）。
 - **视频上传后自动存草稿（v1.2 · FR-46，v1.3 扩展为每次视频变更都自动保存）**：编辑器里「添加视频」上传成功即自动落草稿，不必再点「保存草稿」。
   - 新建态 → `POST /admin/media/posts`；已有草稿/编辑态 → `PUT /admin/media/posts/{id}`（不会重复建帖）；自动保存走 `saveQueue` 串行排队，避免并发写同一条帖；
   - 标题口径：单视频 `resolveDraftTitle(已填标题, 文件名)`；目录导入 `resolveGroupTitle(已填标题, 目录名)`（目录名不截扩展名）；
@@ -285,6 +292,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - R6 **GIF 动图**：动图仅保留首帧静态成品（动画能力本期不做）；运营需动图时提示转视频或静态图。
 - R7 **"清晰度上限"**：因 D9 不保留原图，全站最大可见档 = 压缩成品（长边≤2400px / ≤1MB）。若运营要求印刷级原图细节（壁纸/设定集用途），需改 D9 保留原图（存储翻倍），属后续可选增强。
 - R8 **目录批量导入的转码排队（v1.1）**：一次导入 N 个视频会即时入队 N 个转码任务（queue 50，超出后 `CallerRunsPolicy` 在请求线程执行，不会丢任务但会拖慢该次请求）。表现为「草稿早已生成、转码陆续完成」，发布前必须等 READY（FR-39 既有约束）。首次使用建议先导 10-20 个观察转码耗时，再决定批量规模；避免一次性导入上千条。
+- R9 **前端 md5 校验成本（v1.5）**：上传前要算整文件 md5（浏览器没有 WebCrypto MD5，DB 也只存 md5）。47MB 视频在正常 PC 上约 1s；低功耗/被降频的机器可能数秒（本仓库开发机实测 JS MD5 仅 ≈5MB/s，属异常慢环境）。对策：md5 结果按「文件名+大小+修改时间」缓存进 localStorage，重复导入同一目录不再重算；校验失败/超时静默回退正常上传。若后续要更快，可改用浏览器 SHA-256 + 服务端新增 `sha256` 列（需 DB 迁移与历史素材回填），本期不做。
 
 ## 11. 任务排期（建议实施顺序）
 
@@ -315,6 +323,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
     草稿列表会标「转码中」并禁用发布按钮，转码完成后可正常发布。
 11. **未订阅/试用过期**：频道媒体区不渲染、列表为空、媒体字节 403；试用期内与已订阅一致。
 12. **批量发布（v1.4）**：勾选 N 条草稿 → 选一个频道 → 逐条发布；素材未就绪自动跳过并提示；单条失败不影响其余且失败原因可见；成功后勾选清空、列表刷新（全成功跳已发布列表）。
+13. **上传前查重（v1.5）**：同一视频再次「添加视频」/ 同一目录再次导入 → 状态显示「已存在 · 跳过上传」，不再产生上传流量与重复素材；草稿里的视频列表不因重复导入而翻倍；查重不可用时仍能正常上传。
 
 ## 13. 实施记录（2026-09 代码落地）
 

@@ -47,6 +47,13 @@ public interface MediaPostService {
     /** 按 id 查素材（不存在抛业务异常），供流式/详情使用。 */
     MediaAsset requireAsset(Long assetId);
 
+    /**
+     * 按 md5 查**已就绪（READY）**素材，供「上传前查重」使用：
+     * 前端先算文件 md5 问一次，命中就直接复用，省掉整包重传（视频动辄几十上百 MB）。
+     * 未命中返回 null。
+     */
+    MediaAsset findAssetByMd5(String md5);
+
     /** 素材是否被「该频道的已发布帖」引用（C 端流式越权校验）。 */
     boolean isAssetInPublishedPostOfChannel(Long assetId, Long channelId);
 

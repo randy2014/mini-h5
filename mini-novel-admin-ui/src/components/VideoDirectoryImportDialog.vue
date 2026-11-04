@@ -50,7 +50,7 @@
 
     <template #footer>
       <div class="dir-footer">
-        <span class="muted tip">加入后会自动保存为草稿；视频转码在后台进行，全部就绪后即可发布</span>
+        <span class="muted tip">加入后会自动保存为草稿；<b>已上传过的视频会先查重并跳过上传</b>，转码完成后即可发布</span>
         <div class="dir-actions">
           <el-button :disabled="running" @click="visible = false">关闭</el-button>
           <el-button v-if="!running && failedItems" type="warning" plain @click="retryFailed">
@@ -72,6 +72,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminUploadApi } from '../services/http';
 import { buildDirectoryImportItems, formatFileSize } from '../utils/media';
 import { uploadDirectoryItems } from '../utils/mediaImport';
+import { findExistingAssetByFile } from '../utils/uploadDedupe';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -95,6 +96,8 @@ const stopRequested = ref(false);
 const pendingCount = computed(() => items.value.filter((i) => i.status === 'idle').length);
 const failedItems = computed(() => items.value.filter((i) => i.status === 'failed').length);
 const oversizeCount = computed(() => items.value.filter((i) => i.status === 'skip').length);
+/** 已在素材库、直接复用（没重传）的条数 */
+const reusedCount = computed(() => items.value.filter((i) => i.status === 'done' && i.reused).length);
 const settledCount = computed(() => items.value.filter((i) => ['done', 'failed', 'skip'].includes(i.status)).length);
 const totalBytes = computed(() => items.value.reduce((sum, i) => sum + i.size, 0));
 const overallPercent = computed(() =>
@@ -110,7 +113,7 @@ const progressText = computed(() => {
   const done = items.value.filter((i) => i.status === 'done').length;
   const failed = failedItems.value;
   if (running.value) {
-    return `上传中：已完成 ${settledCount.value} / ${items.value.length}（成功 ${done}，失败 ${failed}）`;
+    return `校验/上传中：已完成 ${settledCount.value} / ${items.value.length}（成功 ${done}，失败 ${failed}）`;
   }
   if (settledCount.value !== items.value.length) {
     if (done || failed) {
@@ -119,6 +122,7 @@ const progressText = computed(() => {
     return `待加入 ${pendingCount.value} 个`;
   }
   const parts = [`成功 ${done} 个`];
+  if (reusedCount.value) parts.push(`其中 ${reusedCount.value} 个已在素材库（跳过上传）`);
   if (failed) parts.push(`失败 ${failed} 个`);
   if (oversizeCount.value) parts.push(`跳过 ${oversizeCount.value} 个`);
   return `上传结束：${parts.join('，')}`;
@@ -145,9 +149,12 @@ function onDirPicked(event) {
 
 function statusText(row) {
   switch (row.status) {
+    case 'hashing':
+      return `校验中 ${row.percent}%`;
     case 'uploading':
       return `上传中 ${row.percent}%`;
     case 'done':
+      if (row.reused) return '已存在 · 跳过上传';
       return row.assetStatus === 1 ? '已加入 · 转码中' : '已加入';
     case 'failed':
       return `失败：${row.reason || '未知原因'}`;
@@ -171,18 +178,35 @@ async function start() {
     counts = await uploadDirectoryItems({
       items: todo,
       shouldStop: () => stopRequested.value,
-      // 与「添加视频」共用流式上传入口：关超时 + 请求体直写媒体卷（只写一遍盘）
-      upload: (item, onPercent) => adminUploadApi.post('/media/assets/upload-stream', item.file, {
-        params: { fileName: item.name, operatorId: props.operatorId },
-        headers: { 'Content-Type': 'application/octet-stream' },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-        onUploadProgress: (e) => {
-          if (e.total) {
-            onPercent(Math.round((e.loaded / e.total) * 100));
+      // 每支视频先算 md5 查重：素材库已有（READY）就复用，跳过整包上传；否则走流式上传
+      upload: async (item, onPercent) => {
+        item.status = 'hashing';
+        item.percent = 0;
+        const existing = await findExistingAssetByFile(item.file, {
+          onProgress: (ratio) => {
+            item.percent = Math.min(99, Math.round(ratio * 100));
           }
+        });
+        if (existing && existing.fileType === 2) {
+          item.reused = true;
+          item.posterPath = existing.posterPath || null;
+          return { ok: true, assetId: existing.id, status: existing.status, reused: true };
         }
-      }),
+        item.status = 'uploading';
+        item.percent = 0;
+        // 与「添加视频」共用流式上传入口：关超时 + 请求体直写媒体卷（只写一遍盘）
+        return adminUploadApi.post('/media/assets/upload-stream', item.file, {
+          params: { fileName: item.name, operatorId: props.operatorId },
+          headers: { 'Content-Type': 'application/octet-stream' },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          onUploadProgress: (e) => {
+            if (e.total) {
+              onPercent(Math.round((e.loaded / e.total) * 100));
+            }
+          }
+        });
+      },
       onUploaded: (item) => {
         // 交给父级挂进当前内容（父级负责建草稿：同一标题，第 1 个视频为封面）
         emit('uploaded', {
@@ -190,8 +214,9 @@ async function start() {
           fileType: 2,
           status: item.assetStatus,
           originalName: item.name,
-          posterPath: null,
-          failReason: null
+          posterPath: item.posterPath || null,
+          failReason: null,
+          reused: !!item.reused
         });
       }
     });
@@ -252,6 +277,7 @@ function resetAll() {
 .st.failed { color: #c0392b; font-weight: 600; }
 .st.skip { color: #a0812d; }
 .st.uploading { color: #2f6fd8; }
+.st.hashing { color: #8a6d3b; }
 .st-bar { margin-top: 3px; }
 .empty { padding: 26px 0; text-align: center; color: #55657a; }
 .empty p { margin: 4px 0; }
