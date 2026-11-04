@@ -276,6 +276,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - 目录选择用原生 `<input type="file" webkitdirectory multiple>`：`el-upload` 不透传 `webkitdirectory`，且目录选择必须在浏览器端才有相对路径信息；
 - 只保留对应类型（视频白名单同后端 `VIDEO_EXT`；图片 jpg/png/gif/bmp，**webp 不支持**），其它文件忽略并计数；视频单文件 >300MB 直接标「跳过」；
 - **图片上限（v1.8）**：单帖最多 **100 张**（`MAX_IMAGES_PER_POST`），传 `maxCount=剩余名额` 给弹窗，超出部分标「超过单帖上限」跳过；手工逐张/多选上传同样按此拦截；
+  - 视频目录导入**不设张数上限**：`maxCount` 传 null/不传。**坑（已修）**：不能用 `Number.isFinite(Number(v))` 判断——`Number(null) === 0`，会把视频全部误判成「超过上限（最多 0 张）」。统一走 `coerceMaxCount()`：null/''/非数字 → 不限，数字才截断（有回归单测）。
 - **v1.3：目录内视频全部加入当前这条内容**（不是一条内容一个视频，也不是每条视频建一条帖）：按相对路径**自然排序**（第2集在第10集前），顺序即内容内 seq，**第 1 个为封面**；标题已填则沿用、留空取**目录名**；
 - 弹窗内表格逐行展示 **序号 / 文件相对路径 / 大小 / 状态（待上传→上传中 x%→已加入·转码中/失败原因）**，底部总进度、**停止**（当前文件传完即停）与**重试失败项**；
 - 每传成功一个就 `emit('uploaded')` 给父级挂进 `videos` 并开始轮询；整批结束 `emit('finished')` → 父级自动保存一次草稿（`persistDraft(resolveGroupTitle(...))`）；

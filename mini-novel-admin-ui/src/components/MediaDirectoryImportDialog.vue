@@ -158,7 +158,9 @@ function onDirPicked(event) {
   dirName.value = firstPath.includes('/') ? firstPath.split('/')[0] : '';
   const result = buildDirectoryImportItems(picked, {
     kind: props.kind,
-    maxCount: Number.isFinite(Number(props.maxCount)) ? Number(props.maxCount) : null
+    // 直接透传：null/未传 = 不限（视频目录导入不设张数上限）。
+    // 注意别在这里 Number(null)→0，会把视频全判成「超过上限」。
+    maxCount: props.maxCount
   });
   items.value = result.items;
   skippedOther.value = result.skippedOther;

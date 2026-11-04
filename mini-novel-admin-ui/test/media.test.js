@@ -4,6 +4,7 @@ import {
   MAX_IMAGES_PER_POST,
   MAX_VIDEO_BYTES,
   buildDirectoryImportItems,
+  coerceMaxCount,
   formatFileSize,
   isImageFile,
   isImageFileName,
@@ -130,6 +131,34 @@ test('视频目录导入不受图片上限影响（默认不限条数）', () =>
   }))
   const { items } = buildDirectoryImportItems(files)
   assert.equal(items.filter((i) => i.status === 'idle').length, MAX_IMAGES_PER_POST + 3)
+})
+
+test('回归：maxCount 为 null/undefined/空串时视为不限（视频目录不能被当成 0 张上限）', () => {
+  const videos = [
+    { name: '1.mp4', size: 10, webkitRelativePath: '剧/1.mp4' },
+    { name: '2.mp4', size: 10, webkitRelativePath: '剧/2.mp4' }
+  ]
+  for (const maxCount of [null, undefined, '']) {
+    const { items, overCap } = buildDirectoryImportItems(videos, { maxCount })
+    assert.equal(overCap, 0, `maxCount=${String(maxCount)}`)
+    assert.ok(items.every((i) => i.status === 'idle'), `maxCount=${String(maxCount)} 不应被跳过`)
+    assert.ok(items.every((i) => !/上限/.test(i.reason || '')), `maxCount=${String(maxCount)} 不应出现上限原因`)
+  }
+  // 显式 0 才是「没有名额」
+  const zero = buildDirectoryImportItems(videos, { maxCount: 0 })
+  assert.equal(zero.overCap, 2)
+})
+
+test('coerceMaxCount：只认有效数字，其余视为不限', () => {
+  assert.equal(coerceMaxCount(null), null)
+  assert.equal(coerceMaxCount(undefined), null)
+  assert.equal(coerceMaxCount(''), null)
+  assert.equal(coerceMaxCount('abc'), null)
+  assert.equal(coerceMaxCount(NaN), null)
+  assert.equal(coerceMaxCount(0), 0)
+  assert.equal(coerceMaxCount('5'), 5)
+  assert.equal(coerceMaxCount(3.7), 3)
+  assert.equal(coerceMaxCount(-3), 0)
 })
 
 test('空目录选择', () => {

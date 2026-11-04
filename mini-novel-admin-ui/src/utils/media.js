@@ -107,12 +107,29 @@ export function formatFileSize(bytes) {
 }
 
 /**
+ * 上限归一化：`null / undefined / 空串 / 非数字` 一律视为**不限**（返回 null）。
+ *
+ * 注意 `Number(null) === 0`：之前这里直接 `Number.isFinite(Number(maxCount))` 判断，
+ * 视频目录导入没传 maxCount（null）会被当成 0，导致「超过单帖上限（最多 0 张）」把所有视频全跳过。
+ */
+export function coerceMaxCount(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  return Math.max(0, Math.floor(n));
+}
+
+/**
  * 把「选择目录」拿到的文件列表整理成可上传清单（视频/图片通用）。
  *
  * 规则：
  * - 只保留 kind 对应的文件（video/image），其余忽略并计入 skippedOther；
  * - 视频单文件 >300MB 标记 skip 并给出原因；
- * - 图片按 `maxCount`（剩余名额）截断，超出部分标 skip「超过单帖上限」；
+ * - 图片按 `maxCount`（剩余名额）截断，超出部分标 skip「超过单帖上限」；null/未传表示不限；
  * - 其余标记 idle，等待逐条上传后加入当前内容；
  * - **按相对路径自然序排序**（第2集排在第10集前 / 图片按 001、002…），保证顺序可预期。
  *
@@ -125,9 +142,7 @@ export function formatFileSize(bytes) {
 export function buildDirectoryImportItems(files, options = {}) {
   const kind = options.kind === 'image' ? 'image' : 'video';
   const accept = kind === 'image' ? isImageFile : isVideoFile;
-  const maxCount = Number.isFinite(Number(options.maxCount))
-    ? Math.max(0, Math.floor(Number(options.maxCount)))
-    : null;
+  const maxCount = coerceMaxCount(options.maxCount);
   const capReason = `超过单帖上限（最多 ${maxCount} 张）`;
 
   const items = [];
