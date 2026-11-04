@@ -27,7 +27,7 @@ import org.springframework.util.StringUtils;
 /**
  * 内容帖领域服务实现。规则见 docs/media-pool-design.md D3-D5：
  * - 编辑/删除仅 DRAFT；PUBLISHED 先下架；
- * - 发布校验：频道(调用方校验) + 标题 + ≥1 素材 + 素材 READY + 视频 ≤1；
+ * - 发布校验：频道(调用方校验) + 标题 + ≥1 素材 + 素材 READY（视频数量不限，封面取第一个视频）；
  * - 删除帖解引用，素材无任何引用时物理删除。
  */
 @Service
@@ -94,10 +94,7 @@ public class MediaPostServiceImpl implements MediaPostService {
         if (assets.isEmpty()) {
             throw new BusinessException(ErrorCode.BUSINESS_ERROR, "内容至少需要一个图片或视频素材");
         }
-        long videoCount = assets.stream().filter(a -> Objects.equals(MediaAsset.TYPE_VIDEO, a.getFileType())).count();
-        if (videoCount > 1) {
-            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "每条内容最多 1 个视频");
-        }
+        // 视频数量不限：一条内容可挂多个视频（封面取第一个视频，见 syncTypeAndCover）。
         boolean allReady = assets.stream().allMatch(a -> Objects.equals(MediaAsset.STATUS_READY, a.getStatus()));
         if (!allReady) {
             MediaAsset pending = assets.stream()

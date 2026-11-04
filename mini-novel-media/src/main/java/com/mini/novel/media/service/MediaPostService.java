@@ -17,7 +17,7 @@ public interface MediaPostService {
     /** 编辑草稿（仅 DRAFT；PUBLISHED 抛业务异常）。素材必须全部 READY。 */
     MediaPost updateDraft(Long postId, String title, List<Long> assetIds, Long operatorId);
 
-    /** 发布：挂载频道。校验 DRAFT、标题非空、≥1 素材、素材全部 READY、视频 ≤1。 */
+    /** 发布：挂载频道。校验 DRAFT、标题非空、≥1 素材、素材全部 READY；视频数量不限（封面取第一个视频）。 */
     MediaPost publish(Long postId, Long channelId, Long operatorId);
 
     /** 下架：PUBLISHED → DRAFT，保留 channel_id。 */

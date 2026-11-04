@@ -7,6 +7,7 @@ import {
   isVideoFile,
   isVideoFileName,
   resolveDraftTitle,
+  resolveGroupTitle,
   titleFromFileName
 } from '../src/utils/media.js'
 
@@ -57,6 +58,15 @@ test('目录导入清单：只留视频、超限标 skip、标题取文件名', 
   assert.match(items[1].reason, /300MB/)
 })
 
+test('目录导入清单按路径自然序排序（第2集在第10集前，第一条=封面）', () => {
+  const { items } = buildDirectoryImportItems([
+    { name: '第10集.mp4', size: 1, webkitRelativePath: '剧/第10集.mp4' },
+    { name: '第2集.mp4', size: 1, webkitRelativePath: '剧/第2集.mp4' },
+    { name: '第1集.mp4', size: 1, webkitRelativePath: '剧/第1集.mp4' }
+  ])
+  assert.deepEqual(items.map((i) => i.title), ['第1集', '第2集', '第10集'])
+})
+
 test('空目录选择', () => {
   const r = buildDirectoryImportItems([])
   assert.deepEqual(r, { items: [], skippedNonVideo: 0 })
@@ -69,6 +79,12 @@ test('自动保存草稿的标题：已填标题优先，留空取文件名', ()
   assert.equal(resolveDraftTitle('   ', '第01集.mp4'), '第01集')
   assert.equal(resolveDraftTitle(null, 'a.b.mkv'), 'a.b')
   assert.equal(resolveDraftTitle(undefined, ''), '未命名视频')
+})
+
+test('目录导入标题：已填优先，留空取目录名（目录名不截扩展名）', () => {
+  assert.equal(resolveGroupTitle('  剧场版  ', '剧集'), '剧场版')
+  assert.equal(resolveGroupTitle('', '短剧.第一季'), '短剧.第一季')
+  assert.equal(resolveGroupTitle(null, '  '), '未命名视频')
 })
 
 test('体积展示', () => {

@@ -116,45 +116,50 @@
                 <span v-if="a.status !== 2" class="proc">{{ a.status === 3 ? '失败' : '处理中' }}</span>
               </div>
             </div>
-            <div class="hint">第 1 张为封面；可上传 GIF（取首帧静态图）、不支持 WebP</div>
+            <div class="hint">第 1 张为封面（若同时挂了视频，则封面取第 1 个视频）；可上传 GIF（取首帧静态图）、不支持 WebP</div>
           </el-form-item>
 
-          <el-form-item label="视频素材（每帖最多 1 个 · 自动转码+抽封面）">
-            <template v-if="!videoAsset">
-              <div class="video-add-row">
-                <el-upload :http-request="uploadOne" :show-file-list="false" :disabled="videoUploading"
-                           accept="video/mp4,video/quicktime,video/x-matroska,.mkv">
-                  <el-button type="primary" plain :loading="videoUploading">
-                    {{ videoUploading ? `上传中 ${uploadPercent}%` : '＋ 添加视频' }}
-                  </el-button>
-                </el-upload>
-                <el-button v-if="!editId" type="success" plain @click="dirImportVisible = true">
-                  📁 选择目录批量导入
+          <el-form-item label="视频素材（可多个 · 第 1 个为封面 · 自动转码+抽封面）">
+            <div class="video-add-row">
+              <el-upload :http-request="uploadOne" :show-file-list="false" :disabled="videoUploading"
+                         accept="video/mp4,video/quicktime,video/x-matroska,.mkv">
+                <el-button type="primary" plain :loading="videoUploading">
+                  {{ videoUploading ? `上传中 ${uploadPercent}%` : '＋ 添加视频' }}
                 </el-button>
-              </div>
-            </template>
-            <div v-else class="media-item video">
-              <video v-if="videoAsset.status === 2" :src="assetUrl(videoAsset, 'main')" controls preload="metadata"
-                     style="width:100%;max-height:150px;background:#000" />
-              <div v-else class="v-placeholder">
-                <span v-if="videoAsset.status === 3">⚠ 转码失败</span>
-                <span v-else>⏳ 后台转码中…（大视频需要几分钟，可先去传图片/填标题）</span>
-              </div>
-              <div class="v-meta">{{ videoAsset.originalName }}
-                <span v-if="videoAsset.status === 3 && videoAsset.failReason" class="fail-reason">
-                  {{ videoAsset.failReason }}
-                </span>
-              </div>
-              <div class="v-actions">
-                <el-button size="small" @click="removeVideo">移除视频</el-button>
-                <el-button v-if="videoAsset.status === 3" size="small" type="primary" plain
-                           @click="retryVideo(videoAsset)">重新转码</el-button>
+              </el-upload>
+              <el-button type="success" plain @click="dirImportVisible = true">📁 选择目录批量导入</el-button>
+              <span v-if="videos.length" class="muted">已挂 {{ videos.length }} 个视频 · 第 1 个为封面</span>
+            </div>
+
+            <div v-if="videos.length" class="video-list">
+              <div v-for="(v, i) in videos" :key="v.id" class="video-row">
+                <div class="vthumb">
+                  <img v-if="v.status === 2 && v.posterPath" :src="assetUrl(v, 'poster')" alt="" class="no-drag" />
+                  <span v-else-if="v.status === 3" class="vt-badge err">失败</span>
+                  <span v-else class="vt-badge wait">转码中</span>
+                </div>
+                <div class="vmain">
+                  <div class="vname" :title="v.originalName">{{ v.originalName }}</div>
+                  <div class="vstate">
+                    <el-tag v-if="i === 0" size="small" type="warning" effect="plain">封面</el-tag>
+                    <span v-if="v.status === 2" class="ok">已就绪</span>
+                    <span v-else-if="v.status === 3" class="bad">转码失败：{{ v.failReason || '原因未知' }}</span>
+                    <span v-else class="wait">后台转码中…（可继续添加其它视频/图片）</span>
+                  </div>
+                </div>
+                <div class="vops">
+                  <el-button v-if="v.status === 2" link size="small" type="primary" @click="openVideoPreview(v)">播放</el-button>
+                  <el-button link size="small" :disabled="i === 0" @click="moveVideo(i, -1)">上移</el-button>
+                  <el-button link size="small" :disabled="i === videos.length - 1" @click="moveVideo(i, 1)">下移</el-button>
+                  <el-button v-if="v.status === 3" link size="small" type="primary" @click="retryVideo(v)">重新转码</el-button>
+                  <el-button link size="small" type="danger" @click="removeVideo(v)">移除</el-button>
+                </div>
               </div>
             </div>
-            <div class="hint">mp4/mov/mkv ≤300MB ≤15 分钟；<b>上传成功后会自动保存为草稿</b>（标题留空则取文件名），转码完成后才能发布</div>
-            <div v-if="!editId" class="hint dir-hint">
-              📁 目录导入：选中文件夹后，里面每个视频<b>各自生成一条视频草稿</b>（标题取文件名，非视频文件自动忽略），
-              不会加入当前这条内容，可直接去草稿列表批量发布
+
+            <div class="hint">mp4/mov/mkv ≤300MB ≤15 分钟；<b>上传成功后自动保存为草稿</b>（标题留空则取文件名），封面取第 1 个视频，全部转码完成后才能发布</div>
+            <div class="hint dir-hint">
+              📁 目录导入：文件夹里每个视频都<b>加进当前这条内容</b>（同一个标题，序号即内容内顺序，第 1 个为封面），非视频文件自动忽略
             </div>
           </el-form-item>
         </el-form>
@@ -167,8 +172,15 @@
       </template>
     </el-drawer>
 
-    <!-- 目录批量导入视频：文件夹内每个视频拆成一条独立内容（标题取文件名） -->
-    <VideoDirectoryImportDialog v-model="dirImportVisible" :operator-id="operatorId()" @imported="onDirImported" />
+    <!-- 目录批量导入视频：视频全部加入当前内容（同一标题，第 1 个为封面） -->
+    <VideoDirectoryImportDialog v-model="dirImportVisible" :operator-id="operatorId()"
+                                @uploaded="onDirVideoUploaded" @finished="onDirFinished" />
+
+    <!-- 编辑器中单个视频预览（运营校对用） -->
+    <el-dialog v-model="previewVideoVisible" title="视频预览" width="640px" destroy-on-close>
+      <video v-if="previewVideo" :src="assetUrl(previewVideo, 'main')" controls autoplay
+             style="width:100%;max-height:420px;background:#000;border-radius:8px" />
+    </el-dialog>
 
     <!-- 发布弹窗：挂载订阅频道管理中的已发布频道 -->
     <el-dialog v-model="publishVisible" title="📌 发布到订阅频道" width="520px">
@@ -206,7 +218,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminApi, adminUploadApi } from '../services/http';
-import { isVideoFile, resolveDraftTitle } from '../utils/media';
+import { isVideoFile, resolveDraftTitle, resolveGroupTitle } from '../utils/media';
 import VideoDirectoryImportDialog from '../components/VideoDirectoryImportDialog.vue';
 
 const tab = ref('draft');
@@ -226,11 +238,15 @@ const operatorId = () => Number(localStorage.getItem('mini_admin_operator_id') |
 const editorVisible = ref(false);
 const editorTitle = ref('');
 const editId = ref(null);
-/** 目录批量导入视频弹窗（每个视频拆成一条独立内容，标题取文件名） */
+/** 目录批量导入视频弹窗（视频全部加入当前内容，同一标题） */
 const dirImportVisible = ref(false);
+/** 编辑器内视频预览弹窗（切封面/校对用） */
+const previewVideoVisible = ref(false);
+const previewVideo = ref(null);
 const form = reactive({ title: '' });
 const imageAssets = ref([]);
-const videoAsset = ref(null);
+/** 视频素材：顺序=内容内的 seq，第 1 个为封面；数量不限 */
+const videos = ref([]);
 /** 进行中的上传数量（>0 时禁止保存，避免素材还没入库就提交帖） */
 const uploading = ref(0);
 /** 视频上传进度（%），仅用于按钮文案 */
@@ -251,7 +267,8 @@ const savedThisSession = ref(false);
 /** 编辑器会话序号（非响应式）：上传是异步的，回来时要确认还是同一个会话、抽屉还开着 */
 let editorSession = 0;
 
-const allAssets = computed(() => (videoAsset.value ? [...imageAssets.value, videoAsset.value] : imageAssets.value));
+/** 全部素材：视频在前（封面取第 1 个视频）→ 图片按上传顺序 */
+const allAssets = computed(() => [...videos.value, ...imageAssets.value]);
 
 function typeName(t) {
   return { 1: '图文', 2: '视频', 3: '图文+视频' }[t] || '未知';
@@ -335,16 +352,18 @@ function openEditor(mode, row) {
   editId.value = row?.id || null;
   form.title = row?.title || '';
   imageAssets.value = [];
-  videoAsset.value = null;
+  videos.value = [];
   sessionUploaded.value = []; // 本次编辑器会话上传的素材（取消/未采用时回收，避免磁盘残留）
   persistedIds.value = new Set(); // 已被某次保存写进帖子的素材（关闭时无需回收）
   if (row) {
-    // 编辑：复用 detail 数据装载素材
+    // 编辑：复用 detail 数据装载素材（视频顺序=seq，第 1 个即封面）
     adminApi.get(`/media/posts/${row.id}`).then((d) => {
       form.title = d.post?.title || row.title;
+      videos.value = [];
+      imageAssets.value = [];
       d.assets.forEach((a) => {
         if (a.fileType === 1) imageAssets.value.push(a);
-        else videoAsset.value = a;
+        else videos.value.push(a);
       });
       persistedIds.value = new Set(d.assets.map((a) => a.id));
     });
@@ -369,8 +388,8 @@ function onEditorClose(done) {
     done();
     return;
   }
-  if (videoAsset.value && videoAsset.value.status === 1) {
-    ElMessageBox.confirm('视频还在后台转码，现在关闭会丢弃该视频，需要重新上传。确认关闭？', '视频转码中', {
+  if (videos.value.some((v) => v.status === 1)) {
+    ElMessageBox.confirm('视频还在后台转码，现在关闭会丢弃这些视频，需要重新上传。确认关闭？', '视频转码中', {
       confirmButtonText: '仍要关闭',
       cancelButtonText: '继续等待',
       type: 'warning'
@@ -390,8 +409,8 @@ async function onEditorClosed() {
   persistedIds.value = new Set();
   if (savedThisSession.value) {
     savedThisSession.value = false;
-    // 已保存但视频还在转码：保留轮询，转码完成后自动刷新草稿列表（「转码中」→ 可发布）
-    if (!(videoAsset.value && videoAsset.value.status === 1)) {
+    // 已保存但仍有视频在转码：保留轮询，转码完成后自动刷新草稿列表（「转码中」→ 可发布）
+    if (!videos.value.some((v) => v.status === 1)) {
       stopAllPolls();
     }
   } else {
@@ -442,10 +461,12 @@ async function uploadOne(opt) {
     const asset = { id: r.assetId, fileType: r.fileType, status: r.status, originalName: file.name };
     sessionUploaded.value.push(r.assetId);
     if (r.fileType === 2) {
-      videoAsset.value = asset;
-      uploadedVideo = asset;
+      videos.value.push(asset);
+      // 取数组里的响应式代理再轮询：直接改原始对象不会触发视图更新
+      const added = videos.value[videos.value.length - 1];
+      uploadedVideo = added;
       ElMessage.success('视频已上传，正在后台转码，完成后即可发布');
-      pollAsset(asset);
+      pollAsset(added);
     } else {
       imageAssets.value.push(asset);
       ElMessage.success('图片已上传（自动压缩）');
@@ -461,25 +482,35 @@ async function uploadOne(opt) {
   }
   // 视频上传成功 → 自动保存草稿（标题留空则取文件名），不把素材悬在编辑器里等运营点保存
   if (uploadedVideo) {
-    await autoSaveAfterVideo(uploadedVideo);
+    await persistDraft(resolveDraftTitle(form.title, uploadedVideo.originalName));
   }
 }
 
 /**
- * 视频上传成功后自动存草稿。
+ * 保存草稿（自动保存统一入口）：串行排队，避免并发写同一条帖。
+ * 手动点「保存草稿」走 saveDraft()，自动触发（上传完/移除/排序）走这里。
+ */
+let saveQueue = Promise.resolve();
+function persistDraft(resolvedTitle) {
+  saveQueue = saveQueue.catch(() => {}).then(() => doPersistDraft(resolvedTitle));
+  return saveQueue;
+}
+
+/**
+ * 自动保存草稿的实际动作。
  *
- * - 标题：已填优先，留空取文件名（回填到输入框，运营可见可改）；
- * - 新建模式保存成功 → 抽屉切到「编辑」态（editId 指向刚建的草稿），继续补图片/改标题只需再点保存草稿；
+ * - 标题：调用方已按「已填优先、留空取兜底」算好（单视频取文件名，目录导入取目录名）；
+ * - 新建态 → POST；已有草稿/编辑态 → PUT（不会重复建帖）；
  * - 视频此刻可能还在 PROCESSING：草稿允许挂未就绪素材（发布时才强制 READY），所以能立刻存；
  * - 失败不吞素材：素材仍留在编辑器里，提示手动点「保存草稿」重试。
  */
-async function autoSaveAfterVideo(video) {
-  if (saving.value) return; // 已有保存请求在跑，避免并发写同一条帖
+async function doPersistDraft(resolvedTitle) {
+  if (saving.value || !allAssets.value.length) return false;
   saving.value = true;
   try {
-    form.title = resolveDraftTitle(form.title, video.originalName);
+    form.title = String(resolvedTitle || form.title || '').trim() || '未命名视频';
     const usedIds = allAssets.value.map((a) => a.id);
-    const body = { title: form.title.trim(), assetIds: usedIds, operatorId: operatorId() };
+    const body = { title: form.title, assetIds: usedIds, operatorId: operatorId() };
     let postId = editId.value;
     if (postId) {
       await adminApi.put(`/media/posts/${postId}`, body);
@@ -496,11 +527,10 @@ async function autoSaveAfterVideo(video) {
     tab.value = 'draft';
     page.value = 1;
     loadRows().catch(() => { /* 列表刷新失败不影响本次保存 */ });
-    ElMessage.success(video.status === 2
-      ? '已自动保存为草稿，可继续补充图片或修改标题'
-      : '已自动保存为草稿（视频转码中，完成后即可发布），可继续补充图片或修改标题');
+    return true;
   } catch (e) {
     ElMessage.warning(`自动保存草稿失败：${e.message || '未知原因'}，请点「保存草稿」重试`);
+    return false;
   } finally {
     saving.value = false;
   }
@@ -541,11 +571,19 @@ function pollAsset(asset) {
       if (fresh) {
         asset.status = fresh.status;
         asset.failReason = fresh.failReason;
+        // 转码完成才有封面帧：补上 posterPath，列表里的视频缩略图才会出现
+        asset.posterPath = fresh.posterPath || asset.posterPath;
         if (fresh.status === 2) {
           stopPoll(asset.id);
-          // 自动存过草稿的场景：素材已在草稿里，只说可以发布，避免让运营以为还要再保存一次
-          ElMessage.success(savedThisSession.value ? '视频转码完成，可以发布了' : '视频转码完成，可以保存/发布了');
-          if (!editorVisible.value) await refreshListQuietly();
+          if (editorVisible.value) {
+            const total = videos.value.length;
+            const ready = videos.value.filter((v) => v.status === 2).length;
+            ElMessage.success(total > 1
+              ? `视频转码完成（${ready}/${total}）${ready >= total ? '，全部就绪可以发布了' : '，其余仍在转码'}`
+              : '视频转码完成，可以发布了');
+          } else {
+            await refreshListQuietly();
+          }
         } else if (fresh.status === 3) {
           stopPoll(asset.id);
           ElMessage.error(`视频转码失败：${fresh.failReason || '原因未知'}`);
@@ -585,17 +623,42 @@ function removeAsset(a) {
   }
 }
 
-/** 移除已选视频（同上：新建模式立即回收） */
-function removeVideo() {
-  const v = videoAsset.value;
-  videoAsset.value = null;
-  if (v?.id) {
-    stopPoll(v.id); // 转码中移除也要停轮询；后端会在转码完成时发现记录已删并回收产物文件
-  }
-  if (!editId.value && v?.id) {
+/**
+ * 移除某个视频：未保存过的新素材立即回收；已保存过的交给下次自动保存（PUT 解引用）去回收。
+ * 封面随第 1 个视频变化，所以移除/排序后都自动落草稿。
+ */
+function removeVideo(v) {
+  const i = videos.value.indexOf(v);
+  if (i < 0) return;
+  videos.value.splice(i, 1);
+  stopPoll(v.id); // 转码中移除也要停轮询；后端会在转码完成时发现记录已不可用并回收产物文件
+  if (!persistedIds.value.has(v.id)) {
     discardAssets([v.id]);
     sessionUploaded.value = sessionUploaded.value.filter((id) => id !== v.id);
+    return;
   }
+  if (editId.value) {
+    persistDraft();
+  }
+}
+
+/** 调整视频顺序（第 1 个为封面）：自动保存，避免「界面顺序变了但草稿没变」。 */
+function moveVideo(index, delta) {
+  const target = index + delta;
+  if (target < 0 || target >= videos.value.length) return;
+  const next = [...videos.value];
+  const [item] = next.splice(index, 1);
+  next.splice(target, 0, item);
+  videos.value = next;
+  if (editId.value) {
+    persistDraft();
+  }
+}
+
+/** 编辑器内播放某个视频（运营校对/确认封面） */
+function openVideoPreview(video) {
+  previewVideo.value = video;
+  previewVideoVisible.value = true;
 }
 
 async function saveDraft() {
@@ -643,18 +706,25 @@ async function saveDraft() {
   }
 }
 
-/**
- * 目录批量导入完成：每个视频已各自生成一条草稿，刷新草稿列表。
- * 若是在「新建视频」抽屉里发起的，导入完成后关掉该抽屉（本次并未创建单条内容）。
- */
-async function onDirImported({ created }) {
-  if (!created) return;
-  if (editorVisible.value) {
-    editorVisible.value = false;
+/** 目录导入：每上传成功一个视频就挂进当前内容（顺序=上传顺序，第 1 个为封面） */
+function onDirVideoUploaded(asset) {
+  videos.value.push({ ...asset, posterPath: null, failReason: null });
+  const added = videos.value[videos.value.length - 1];
+  if (added.status === 1) {
+    pollAsset(added);
   }
-  tab.value = 'draft';
-  page.value = 1;
-  await loadRows();
+}
+
+/**
+ * 目录导入结束：视频已全部加入当前内容 → 自动存一次草稿。
+ * 标题口径：已填标题优先，留空取目录名（同一批视频共用这个标题）。
+ */
+async function onDirFinished({ uploaded, failed, dirName }) {
+  if (!uploaded) {
+    return;
+  }
+  await persistDraft(resolveGroupTitle(form.title, dirName));
+  ElMessage.success(`已将 ${uploaded} 个视频加入本内容并保存草稿${failed ? `（${failed} 个失败）` : ''}`);
 }
 
 function openPublish(row) {
@@ -749,13 +819,25 @@ onUnmounted(() => stopAllPolls());
 .media-item .del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.55); color: #fff; width: 18px; height: 18px; line-height: 17px; text-align: center; border-radius: 50%; font-size: 10px; cursor: pointer; }
 .media-item .proc { position: absolute; top: 4px; left: 4px; background: rgba(230,180,34,.95); color: #5c4300; font-size: 9px; padding: 1px 5px; border-radius: 4px; }
 .media-item.video { width: 100%; }
-.v-placeholder { display: flex; align-items: center; justify-content: center; height: 84px; border-radius: 8px;
-  background: #f3f5f1; border: 1px dashed #cfd9d3; color: #6f7978; font-size: 12px; text-align: center; padding: 0 10px; }
-.v-actions { display: flex; gap: 8px; margin-top: 6px; }
-.v-meta { font-size: 11px; color: #55657a; margin: 6px 0; }
-.v-meta .fail-reason { display: block; color: #c0392b; margin-top: 3px; word-break: break-all; }
 .hint { font-size: 11px; color: #98a5b5; margin-top: 6px; line-height: 1.7; }
 .video-add-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 视频清单（可多个，顺序=内容内顺序，第 1 个为封面） */
+.video-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; width: 100%; }
+.video-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e5eaf0; border-radius: 8px; background: #fbfcfd; }
+.vthumb { width: 64px; height: 44px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: #eef1f5;
+  display: flex; align-items: center; justify-content: center; }
+.vthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vthumb .vt-badge { font-size: 10px; padding: 1px 5px; border-radius: 4px; }
+.vthumb .vt-badge.wait { background: rgba(230,180,34,.95); color: #5c4300; }
+.vthumb .vt-badge.err { background: #fdecea; color: #c0392b; }
+.vmain { flex: 1; min-width: 0; }
+.vname { font-size: 12px; color: #26384c; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vstate { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; }
+.vstate .ok { color: #1e8e50; }
+.vstate .wait { color: #a0812d; }
+.vstate .bad { color: #c0392b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vops { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.no-drag { -webkit-user-drag: none; user-select: none; }
 .dir-hint { color: #8a7a4a; }
 .editor-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 4px 0; }
 .publish-info { background: #f7f9fb; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }

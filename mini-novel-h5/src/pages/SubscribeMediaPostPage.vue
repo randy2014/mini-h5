@@ -26,27 +26,35 @@
         </div>
       </div>
 
-      <!-- 视频（禁下载/禁右键/禁画中画） -->
-      <div v-if="video" class="video-box" @contextmenu.prevent>
-        <video
-          v-if="videoReady"
-          :src="videoUrl(video)"
-          class="player no-save"
-          controls
-          playsinline
-          webkit-playsinline
-          x5-playsinline
-          preload="metadata"
-          controlslist="nodownload noremoteplayback"
-          disablepictureinpicture
-          :poster="videoPosterUrl(video)"
-          @error="onVideoError"
-        />
-        <div v-else class="video-placeholder" @click="playVideo">
-          <div class="bigplay">
-            <van-icon name="play" size="22" color="#1f6f64" />
+      <!-- 视频：可多个，竖向顺序，点哪个播哪个（同时只播一个）；
+           播放时才加载字节，禁下载/禁右键/禁画中画 -->
+      <div v-if="videos.length" class="video-list">
+        <div v-for="(v, i) in videos" :key="v.id" class="video-box" @contextmenu.prevent>
+          <div v-if="videos.length > 1" class="video-index">视频 {{ i + 1 }} / {{ videos.length }}</div>
+          <video
+            v-if="stateOf(v.id).ready"
+            :ref="(el) => setVideoEl(v.id, el)"
+            :src="videoUrl(v)"
+            class="player no-save"
+            controls
+            playsinline
+            webkit-playsinline
+            x5-playsinline
+            preload="metadata"
+            controlslist="nodownload noremoteplayback"
+            disablepictureinpicture
+            :poster="videoPosterUrl(v)"
+            @play="pauseOthers(v.id)"
+            @error="onVideoError(v)"
+          />
+          <div v-else class="video-placeholder" @click="playVideo(v)">
+            <img v-if="v.posterPath" :src="videoPosterUrl(v)" class="poster no-save" draggable="false" alt="" />
+            <div class="poster-mask"></div>
+            <div class="bigplay">
+              <van-icon name="play" size="22" color="#1f6f64" />
+            </div>
+            <div class="vhint">{{ stateOf(v.id).error || '点击播放视频' }}</div>
           </div>
-          <div class="vhint">{{ videoError || '点击播放视频' }}</div>
         </div>
       </div>
     </template>
@@ -57,7 +65,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { classifyApiError, promptFor } from '../permission';
@@ -83,9 +91,6 @@ const previewIndex = ref(0);
 
 const gateAction = computed(() => gatePrompt.value?.action || null);
 
-const videoReady = ref(false);
-const videoError = ref('');
-
 const typeLabel = computed(() => {
   if (!detail.value) return '图文/视频';
   return detail.value.type === 2 ? '视频详情'
@@ -94,8 +99,43 @@ const typeLabel = computed(() => {
 });
 
 const images = computed(() => (detail.value?.assets || []).filter((a) => a.fileType === 1));
-const video = computed(() => (detail.value?.assets || []).find((a) => a.fileType === 2));
+/** 视频按 seq 顺序返回（第 1 个即封面），一帖可挂多个 */
+const videos = computed(() => (detail.value?.assets || []).filter((a) => a.fileType === 2));
 const previewImages = computed(() => images.value.map((a) => imgUrl(a)));
+
+/** 每个视频的播放态：{ [assetId]: { ready, error } }；点开才挂 src 播放，避免多视频同时拉流 */
+const videoState = reactive({});
+const videoEls = ref({});
+
+function stateOf(id) {
+  return videoState[id] || { ready: false, error: '' };
+}
+
+function setVideoEl(id, el) {
+  if (el) {
+    videoEls.value[id] = el;
+  } else {
+    delete videoEls.value[id];
+  }
+}
+
+function playVideo(asset) {
+  videoState[asset.id] = { ready: true, error: '' };
+}
+
+/** 同时只播一个：某个视频开始播放时暂停其余 */
+function pauseOthers(activeId) {
+  Object.entries(videoEls.value).forEach(([id, el]) => {
+    if (String(id) !== String(activeId) && el && !el.paused) {
+      el.pause();
+    }
+  });
+}
+
+function onVideoError(asset) {
+  videoState[asset.id] = { ready: false, error: '视频加载失败，请检查网络或稍后重试' };
+  showToast(videoState[asset.id].error);
+}
 
 function imgUrl(asset) {
   return mediaFileUrl(channelId, asset.id, 'full');
@@ -109,22 +149,16 @@ function videoPosterUrl(asset) {
   return asset.posterPath ? mediaFileUrl(channelId, asset.id, 'poster') : '';
 }
 
-function playVideo() {
-  videoReady.value = true;
-}
-
-function onVideoError() {
-  videoReady.value = false;
-  videoError.value = '视频加载失败，请检查网络或稍后重试';
-  showToast(videoError.value);
-}
-
 async function load() {
   loading.value = true;
   error.value = '';
   try {
     // silent：本页用自己的错误区块表达门禁原因，避免再叠一层 toast
     detail.value = await fetchFeedPostDetail(channelId, postId, { silent: true });
+    // 初始化每个视频的播放态（渲染期不写响应式数据）
+    videos.value.forEach((v) => {
+      videoState[v.id] = videoState[v.id] || { ready: false, error: '' };
+    });
   } catch (e) {
     gatePrompt.value = promptFor(classifyApiError(e, { scope: 'CHANNEL' }).gate, { message: e.message });
     error.value = gatePrompt.value.text;
@@ -148,9 +182,22 @@ onMounted(load);
 .gallery .gi { position: relative; overflow: hidden; aspect-ratio: 1; }
 .gallery .gi.big { grid-column: span 2; grid-row: span 2; aspect-ratio: auto; height: 100%; }
 .gallery img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.video-box { margin: 10px 12px 0; border-radius: 12px; overflow: hidden; background: #000; }
+.video-list { display: flex; flex-direction: column; gap: 10px; margin: 10px 12px 0; }
+.video-box { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
 .video-box .player { width: 100%; max-height: 320px; background: #000; display: block; }
-.video-placeholder { height: 190px; background: linear-gradient(160deg, #1c2c3b, #0b1218); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #fff; }
+.video-index {
+  position: absolute; z-index: 2; top: 8px; left: 8px; padding: 1px 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px; pointer-events: none;
+}
+.video-placeholder {
+  position: relative; height: 190px; background: linear-gradient(160deg, #1c2c3b, #0b1218);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  color: #fff; overflow: hidden;
+}
+.video-placeholder .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.video-placeholder .poster-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .28); }
+.video-placeholder .bigplay { position: relative; z-index: 1; }
+.video-placeholder .vhint { position: relative; z-index: 1; }
 .bigplay { width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.94); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
 .vhint { font-size: 11px; color: rgba(255,255,255,.75); }
 .no-save {
