@@ -157,7 +157,8 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
   - 关键内容可叠透明层拦截长按/手势（按需，防误触时取舍）；
   - 服务端响应头 `Content-Disposition: inline`（明确内联而非附件）、`X-Content-Type-Options: nosniff`、`Cache-Control: private`（仅私有缓存，禁止公共/CDN 缓存扩散；与 §6.2 的 thumb 私有短缓存口径一致）。
 - **视频（H5）**：
-  - `<video controlslist="nodownload noremoteplayback" disablepictureinpicture>`（Android/桌面 Chrome 隐藏下载按钮）；
+  - **v1.9 起改用自定义控件播放器**（`src/components/MediaVideoPlayer.vue`）：**不渲染原生 `controls`**，因此下载 / 分享 / AirPlay / 画中画入口在页面层面不存在；另保留 `x-webkit-airplay="deny"`、`disableRemotePlayback`、`disablepictureinpicture`、`controlslist="nodownload noplaybackrate noremoteplayback"` 作为兜底；自定义控制条只做播放/暂停、进度、时间、全屏（仅容器全屏 API 可用时显示）；
+  - 旧方案 `<video controls controlslist="nodownload noremoteplayback" disablepictureinpicture>` 只在 Chromium 生效，iOS Safari / 微信 X5 仍会带出原生菜单，故弃用；
   - `oncontextmenu` 返回 false；屏蔽右键菜单"视频另存为"；
   - 不暴露直链：全部走鉴权流式接口（Range），URL 带登录态，直接复制 URL 到别处无法播放；
   - 不加下载按钮、不提供解析接口。水印/分段切片属高阶方案，本期不做。
@@ -221,7 +222,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - **今日更新角标（v1.6）**：`GET /api/subscribe/channels` 返回 `todayMediaCount`（当天 00:00 起该频道 `published_at` 的 PUBLISHED 帖数，一次聚合查询避免 N+1）；H5 频道卡片 `todayMediaCount > 0` 时显示「今日更新」红标 + 「今日新增 N 条」。
 - 订阅可见性（混排下）：媒体帖**无未订阅预览**——未订阅/试用过期用户的媒体卡片不渲染（列表直接不含媒体帖，字节接口 403，前端无特殊预览屏）；小说沿用现有 restricted 第一页预览逻辑。已订阅用户看到完整混排内容。
 - 图文详情：图集宫格展示（首图放大布局），常规预览；图片按 §5.3 防盗（禁右键/长按/拖拽/缓存）。
-- 视频详情（v1.3 多视频 / v1.6 标题）：按 seq 顺序**竖向排列**多个视频；每个先显示封面帧占位（带角标「视频 i/N」），**点击才挂 src 播放**；某视频开始播放时自动暂停其余（同屏只播一个）；`<video controls playsinline webkit-playsinline x5-playsinline preload="metadata" :poster>`；**`controlslist="nodownload noremoteplayback"` + 禁用右键/画中画**（§5.3）；原生控件；@error 兜底文案。
+- 视频详情（v1.3 多视频 / v1.6 标题 / v1.9 自定义播放器）：按 seq 顺序**竖向排列**多个视频；每个先显示封面帧占位（带角标「视频 i/N」），**点击才挂 src 播放**（`preload="none"`，避免多视频同时拉流）；某视频开始播放时自动暂停其余（同屏只播一个，组件暴露 `pause()`）；播放器为**自定义控件**（`MediaVideoPlayer.vue`）：封面 + 播放按钮 → 播放中点击画面暂停/继续，底部控制条含播放/暂停、进度拖动、时间、全屏（仅容器全屏可用时）；无原生控件 → 无下载/分享/AirPlay/画中画入口；@error 显示「视频加载失败」并可点击重试；禁用右键/长按/拖拽（§5.3）。
   - **导航标题**：视频类（VIDEO/MIXED）显示内容标题（`utils/mediaDetail.detailNavTitle`），纯图文仍显示「图文详情」；视频类正文不再重复大标题（`shouldShowBodyTitle`）。
   - **数据归一化（v1.7 修复）**：详情接口返回 `{post, assets, cover}`，页面按扁平结构读字段会全取不到（只剩「图文详情」、正文空白）。现在接口层 `normalizeMediaDetail()` 拍平（兼容两种形状），页面标题与素材恢复正常。
   - **标题动态缓存（v1.7）**：从频道详情点卡片前，把列表里的 `{title, type}` 写入 sessionStorage（`utils/mediaMetaCache.js`，最多 200 条）；详情接口返回前导航栏先用缓存标题，因此**不会先闪「图文详情」再变成视频标题**。
@@ -336,6 +337,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 14. **H5 列表与详情（v1.6）**：频道详情顺序稳定按发布时间倒序（批量发布同秒内新帖在前）；频道列表不显示视频时长；视频类详情页导航标题=内容标题（纯图文=图文详情）；当天有新发布媒体帖的频道，订阅频道列表显示「今日更新」角标。
 15. **H5 详情页（v1.7）**：进入详情页导航栏**立即**显示视频标题（用列表缓存标题，不闪「图文详情」）；正文图片/视频正常渲染（`{post,assets,cover}` 已归一化）。
 16. **图片目录导入（v1.8）**：新建图文选一个图片目录 → 图片全部加入（自然排序、第 1 张封面、webp 忽略）；超过 100 张的部分自动跳过并提示；导入完成自动存草稿；重复导入不重复上传。
+17. **H5 播放器禁下载/禁分享（v1.9）**：视频用自定义控件播放，页面/控件里不存在下载、分享、AirPlay、画中画入口；长按/右键/拖拽无法保存视频；多视频仍同屏只播一个；播放失败可点击重试。
 
 ## 13. 实施记录（2026-09 代码落地）
 

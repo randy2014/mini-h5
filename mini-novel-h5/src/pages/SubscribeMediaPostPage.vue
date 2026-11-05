@@ -26,35 +26,18 @@
         </div>
       </div>
 
-      <!-- 视频：可多个，竖向顺序，点哪个播哪个（同时只播一个）；
-           播放时才加载字节，禁下载/禁右键/禁画中画 -->
+      <!-- 视频：可多个，竖向顺序，点哪个播哪个（同时只播一个）。
+           用自定义控件播放器：不渲染原生控件 → 没有下载/分享/AirPlay/画中画入口；
+           点击才加载字节，禁右键/禁长按/禁拖拽 -->
       <div v-if="videos.length" class="video-list">
         <div v-for="(v, i) in videos" :key="v.id" class="video-box" @contextmenu.prevent>
           <div v-if="videos.length > 1" class="video-index">视频 {{ i + 1 }} / {{ videos.length }}</div>
-          <video
-            v-if="stateOf(v.id).ready"
-            :ref="(el) => setVideoEl(v.id, el)"
+          <MediaVideoPlayer
+            :ref="(el) => setVideoRef(v.id, el)"
             :src="videoUrl(v)"
-            class="player no-save"
-            controls
-            playsinline
-            webkit-playsinline
-            x5-playsinline
-            preload="metadata"
-            controlslist="nodownload noremoteplayback"
-            disablepictureinpicture
             :poster="videoPosterUrl(v)"
             @play="pauseOthers(v.id)"
-            @error="onVideoError(v)"
           />
-          <div v-else class="video-placeholder" @click="playVideo(v)">
-            <img v-if="v.posterPath" :src="videoPosterUrl(v)" class="poster no-save" draggable="false" alt="" />
-            <div class="poster-mask"></div>
-            <div class="bigplay">
-              <van-icon name="play" size="22" color="#1f6f64" />
-            </div>
-            <div class="vhint">{{ stateOf(v.id).error || '点击播放视频' }}</div>
-          </div>
         </div>
       </div>
     </template>
@@ -65,14 +48,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { showToast } from 'vant';
 import { classifyApiError, promptFor } from '../permission';
 import { fetchFeedPostDetail, mediaFileUrl } from '../services/subscribe';
 import { goBack } from '../utils/navigation';
 import { detailNavTitle, shouldShowBodyTitle } from '../utils/mediaDetail';
 import { readMediaMeta, rememberMediaMeta } from '../utils/mediaMetaCache';
+import MediaVideoPlayer from '../components/MediaVideoPlayer.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -108,38 +91,24 @@ const images = computed(() => (detail.value?.assets || []).filter((a) => a.fileT
 const videos = computed(() => (detail.value?.assets || []).filter((a) => a.fileType === 2));
 const previewImages = computed(() => images.value.map((a) => imgUrl(a)));
 
-/** 每个视频的播放态：{ [assetId]: { ready, error } }；点开才挂 src 播放，避免多视频同时拉流 */
-const videoState = reactive({});
-const videoEls = ref({});
+/** 自定义播放器实例：{ [assetId]: 组件实例 }，用于「同屏只播一个」 */
+const videoRefs = ref({});
 
-function stateOf(id) {
-  return videoState[id] || { ready: false, error: '' };
-}
-
-function setVideoEl(id, el) {
+function setVideoRef(id, el) {
   if (el) {
-    videoEls.value[id] = el;
+    videoRefs.value[id] = el;
   } else {
-    delete videoEls.value[id];
+    delete videoRefs.value[id];
   }
 }
 
-function playVideo(asset) {
-  videoState[asset.id] = { ready: true, error: '' };
-}
-
-/** 同时只播一个：某个视频开始播放时暂停其余 */
+/** 同时只播一个：某个视频开始播放时暂停其余（播放器暴露 pause()） */
 function pauseOthers(activeId) {
-  Object.entries(videoEls.value).forEach(([id, el]) => {
-    if (String(id) !== String(activeId) && el && !el.paused) {
-      el.pause();
+  Object.entries(videoRefs.value).forEach(([id, player]) => {
+    if (String(id) !== String(activeId)) {
+      player?.pause?.();
     }
   });
-}
-
-function onVideoError(asset) {
-  videoState[asset.id] = { ready: false, error: '视频加载失败，请检查网络或稍后重试' };
-  showToast(videoState[asset.id].error);
 }
 
 function imgUrl(asset) {
@@ -162,10 +131,6 @@ async function load() {
     detail.value = await fetchFeedPostDetail(channelId, postId, { silent: true });
     // 详情接口回来后刷新标题缓存，下次进入可直接用缓存标题
     rememberMediaMeta(postId, { title: detail.value?.title, type: detail.value?.type });
-    // 初始化每个视频的播放态（渲染期不写响应式数据）
-    videos.value.forEach((v) => {
-      videoState[v.id] = videoState[v.id] || { ready: false, error: '' };
-    });
   } catch (e) {
     gatePrompt.value = promptFor(classifyApiError(e, { scope: 'CHANNEL' }).gate, { message: e.message });
     error.value = gatePrompt.value.text;
@@ -191,22 +156,13 @@ onMounted(load);
 .gallery img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .video-list { display: flex; flex-direction: column; gap: 10px; margin: 10px 12px 0; }
 .video-box { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
-.video-box .player { width: 100%; max-height: 320px; background: #000; display: block; }
+.video-box :deep(.mvp) { border-radius: 12px; }
+
 .video-index {
   position: absolute; z-index: 2; top: 8px; left: 8px; padding: 1px 8px; border-radius: 999px;
   background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px; pointer-events: none;
 }
-.video-placeholder {
-  position: relative; height: 190px; background: linear-gradient(160deg, #1c2c3b, #0b1218);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  color: #fff; overflow: hidden;
-}
-.video-placeholder .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.video-placeholder .poster-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .28); }
-.video-placeholder .bigplay { position: relative; z-index: 1; }
-.video-placeholder .vhint { position: relative; z-index: 1; }
-.bigplay { width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.94); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
-.vhint { font-size: 11px; color: rgba(255,255,255,.75); }
+
 .no-save {
   -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
