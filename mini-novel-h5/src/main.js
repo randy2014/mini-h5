@@ -5,6 +5,7 @@ import 'vant/lib/index.css';
 import App from './App.vue';
 import router from './router';
 import { installPermission } from './permission';
+import { suppressBrowserVideoBars } from './utils/browserOverlay';
 import './styles.css';
 
 const app = createApp(App);
@@ -16,3 +17,5 @@ app.use(router);
 app.use(Vant);
 
 app.mount('#app');
+// 隐藏第三方（UC/夸克/网盘插件等）注入在视频上的「下载 / 存网盘 / 分享」悬浮条
+suppressBrowserVideoBars();

@@ -8,6 +8,8 @@
       playsinline
       webkit-playsinline
       x5-playsinline
+      x5-video-player-type="h5-page"
+      x5-video-player-fullscreen="false"
       x-webkit-airplay="deny"
       disablepictureinpicture
       disableRemotePlayback

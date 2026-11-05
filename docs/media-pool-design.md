@@ -159,6 +159,8 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 - **视频（H5）**：
   - **v1.9 起改用自定义控件播放器**（`src/components/MediaVideoPlayer.vue`）：**不渲染原生 `controls`**，因此下载 / 分享 / AirPlay / 画中画入口在页面层面不存在；另保留 `x-webkit-airplay="deny"`、`disableRemotePlayback`、`disablepictureinpicture`、`controlslist="nodownload noplaybackrate noremoteplayback"` 作为兜底；自定义控制条只做播放/暂停、进度、时间、全屏（仅容器全屏 API 可用时显示）；
   - 旧方案 `<video controls controlslist="nodownload noremoteplayback" disablepictureinpicture>` 只在 Chromium 生效，iOS Safari / 微信 X5 仍会带出原生菜单，故弃用；
+  - **第三方悬浮条（v1.10）**：UC / 夸克 / 网盘助手这类会往页面里注入「下载 / 存网盘 / 分享」悬浮条。`utils/browserOverlay.js` 在应用启动后装 `MutationObserver`：对**悬浮定位（fixed/absolute/sticky）+ z-index ≥ 1000 + 文本命中关键词** 的节点直接 `display:none !important`；`.van-*`（自家弹层/提示）与静态正文跳过，避免误伤。局限：原生层渲染或 closed shadow DOM 内的工具条网页隐藏不了；
+  - X5 系（微信/QQ 浏览器）另加 `x5-video-player-type="h5-page"` + `x5-video-player-fullscreen="false"`，尽量走 H5 播放器而不是 X5 原生播放器；
   - `oncontextmenu` 返回 false；屏蔽右键菜单"视频另存为"；
   - 不暴露直链：全部走鉴权流式接口（Range），URL 带登录态，直接复制 URL 到别处无法播放；
   - 不加下载按钮、不提供解析接口。水印/分段切片属高阶方案，本期不做。
@@ -338,6 +340,7 @@ CREATE TABLE IF NOT EXISTS media_post_asset (
 15. **H5 详情页（v1.7）**：进入详情页导航栏**立即**显示视频标题（用列表缓存标题，不闪「图文详情」）；正文图片/视频正常渲染（`{post,assets,cover}` 已归一化）。
 16. **图片目录导入（v1.8）**：新建图文选一个图片目录 → 图片全部加入（自然排序、第 1 张封面、webp 忽略）；超过 100 张的部分自动跳过并提示；导入完成自动存草稿；重复导入不重复上传。
 17. **H5 播放器禁下载/禁分享（v1.9）**：视频用自定义控件播放，页面/控件里不存在下载、分享、AirPlay、画中画入口；长按/右键/拖拽无法保存视频；多视频仍同屏只播一个；播放失败可点击重试。
+18. **第三方悬浮条隐藏（v1.10）**：UC/夸克/网盘助手等注入的「下载 / 存网盘 / 分享 / 投屏 / 倍速」悬浮条在视频页不再出现；自家弹层/正文不受影响。
 
 ## 13. 实施记录（2026-09 代码落地）
 
