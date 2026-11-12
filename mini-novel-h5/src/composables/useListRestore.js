@@ -40,10 +40,8 @@ export function useListRestore(options = {}) {
     ? readSnapshot(keyOf(), { ttl, account: currentAccount(), path: route.fullPath })
     : null;
   const restored = Boolean(snapshot) && restoreSnapshot(snapshot) !== false;
-  let saved = false;
   // 静默刷新是异步的：期间用户可能已经点进详情页，卸载后不要再动新页面的滚动
   let disposed = false;
-
   function restoreSnapshot(entry) {
     if (!restore) {
       return undefined;
@@ -98,15 +96,15 @@ export function useListRestore(options = {}) {
   }
 
   /**
-   * 保存快照：必须赶在路由切换之前（onBeforeRouteLeave 里 route 仍是本页、DOM 与滚动位置都还在），
-   * 所以不能只在 onBeforeUnmount 里做 —— 那时 currentRoute 已经指向新页面，path 会存错。
+   * 保存快照：只能在这里（onBeforeRouteLeave）存 —— 离开守卫里 route 仍指向本页、DOM 与
+   * 滚动位置都还在。不要放到 onBeforeUnmount 兜底：目标页是懒加载时，卸载可能比路由守卫
+   * 晚很多，那时 currentRoute 已指向详情页，会把 path 存错（快照返不回来）。
    */
   function persistSnapshot() {
     const snapshotKey = keyOf();
-    if (!snapshotKey || !capture || saved) {
+    if (!snapshotKey || !capture) {
       return;
     }
-    saved = true;
     saveSnapshot(snapshotKey, {
       path: route.fullPath,
       account: currentAccount(),
@@ -118,17 +116,11 @@ export function useListRestore(options = {}) {
 
   onBeforeRouteLeave(() => {
     persistSnapshot();
-    // 守卫被拦截（例如权限层改道登录）时页面并不会卸载：下一个宏任务放开标记，
-    // 保证下一次真正离开时还会存一份新的位置（正常离开时组件已先卸载完）。
-    setTimeout(() => {
-      saved = false;
-    }, 0);
   });
 
-  // 兜底：极少数不经过路由守卫的卸载（如整页替换）也留一份快照
+  // 卸载后不再动新页面的滚动（静默刷新可能还在飞）
   onBeforeUnmount(() => {
     disposed = true;
-    persistSnapshot();
   });
 
   return { restored, refreshInPlace };
