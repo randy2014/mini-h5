@@ -9,7 +9,7 @@
     />
 
     <div class="list">
-      <div v-for="h in history" :key="h.novelId" class="hist-book" @click="read(h)">
+      <div v-for="h in history" :key="h.novelId" :data-list-key="'history-' + h.novelId" class="hist-book" @click="read(h)">
         <div class="hcover" :class="coverClass(h.novelId)">{{ (h.title || '').slice(0, 4) }}</div>
         <div class="info">
           <div class="ht">{{ h.title || ('小说 #' + h.novelId) }}</div>
@@ -24,10 +24,11 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import { clearSubscribeRead, subscribeReadList } from '../services/subscribeReadStatus';
+import { useListRestore } from '../composables/useListRestore';
 import { goBack } from '../utils/navigation';
 
 const router = useRouter();
@@ -86,9 +87,24 @@ async function clearAll() {
   showToast('已清理');
 }
 
-onMounted(() => {
+/** 阅读历史是本机记录：进入/返回时重新读一次本地列表（可能刚读过新书）。 */
+function load() {
   history.value = subscribeReadList();
-});
+}
+
+function captureState() {
+  return { history: [...history.value] };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.history)) {
+    return false;
+  }
+  history.value = state.history;
+  return true;
+}
+
+useListRestore({ key: 'subscribe-history', capture: captureState, restore: restoreState, load });
 </script>
 
 <style scoped>

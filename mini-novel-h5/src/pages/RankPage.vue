@@ -12,6 +12,7 @@
       <BookCard
         v-for="(book, index) in books"
         :key="book.id"
+        :data-list-key="'rank-' + rankType + '-' + book.id"
         :book="book"
         :rank="index + 1"
         @open="openBook"
@@ -22,16 +23,18 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
 import { fetchRankNovels } from '../services/book';
+import { useListRestore } from '../composables/useListRestore';
 import { goBack } from '../utils/navigation';
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
 const books = ref([]);
+const rankType = computed(() => String(route.params.type || 'hot').toLowerCase());
 
 /** 返回上一层；直接打开榜单时兜底回首页。 */
 function goBackToParent() {
@@ -45,19 +48,41 @@ const rankMap = {
   long: { apiType: 'LONG', title: '长篇精选', subtitle: '章节和字数更充足的长篇作品' }
 };
 
-const rankMeta = computed(() => rankMap[String(route.params.type || '').toLowerCase()] || rankMap.hot);
+const rankMeta = computed(() => rankMap[rankType.value] || rankMap.hot);
 
-onMounted(loadRank);
-watch(() => route.params.type, loadRank);
-
-async function loadRank() {
-  loading.value = true;
+/** 拉当前榜单最新数据；返回时静默刷新。 */
+async function loadRank({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     books.value = await fetchRankNovels(rankMeta.value.apiType, 80);
   } finally {
     loading.value = false;
   }
 }
+
+function captureState() {
+  return { type: rankType.value, books: [...books.value] };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.books) || state.type !== rankType.value) {
+    return false;
+  }
+  books.value = state.books;
+  loading.value = false;
+  return true;
+}
+
+useListRestore({
+  key: () => `rank:${rankType.value}`,
+  capture: captureState,
+  restore: restoreState,
+  load: loadRank
+});
+
+watch(rankType, () => loadRank());
 
 function openBook(book) {
   router.push(`/h5/book/${book.id}`);

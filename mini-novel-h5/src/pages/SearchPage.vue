@@ -22,17 +22,18 @@
         <h2>搜索结果</h2>
         <span>{{ results.length }} 本</span>
       </div>
-      <BookCard v-for="book in results" :key="book.id" :book="book" @open="openBook" />
+      <BookCard v-for="book in results" :key="book.id" :data-list-key="'search-' + book.id" :book="book" @open="openBook" />
       <van-empty v-if="searched && results.length === 0" description="没有找到相关书籍" />
     </template>
   </section>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
 import { searchNovels } from '../services/book';
+import { useListRestore } from '../composables/useListRestore';
 import { goBack } from '../utils/navigation';
 
 const route = useRoute();
@@ -47,13 +48,46 @@ function goBackToParent() {
   goBack(router, '/h5/home');
 }
 
-onMounted(() => {
+/** 按当前关键词检索（返回时静默刷新，结果列表不闪空态）。 */
+async function load({ silent = false } = {}) {
   const query = String(route.query.q || '').trim();
-  if (query) {
+  if (!keyword.value && query) {
     keyword.value = query;
-    submitSearch();
   }
-});
+  const value = keyword.value.trim();
+  if (!value) {
+    searched.value = false;
+    results.value = [];
+    loading.value = false;
+    return;
+  }
+  if (!silent) {
+    loading.value = true;
+  }
+  searched.value = true;
+  try {
+    results.value = await searchNovels(value, 50);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function captureState() {
+  return { keyword: keyword.value, searched: searched.value, results: [...results.value] };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.results)) {
+    return false;
+  }
+  keyword.value = state.keyword || '';
+  searched.value = Boolean(state.searched);
+  results.value = state.results;
+  loading.value = false;
+  return true;
+}
+
+useListRestore({ key: 'search', capture: captureState, restore: restoreState, load });
 
 async function submitSearch() {
   const value = keyword.value.trim();

@@ -127,6 +127,7 @@
           <BookCard
             v-for="book in books"
             :key="book.novelId || book.id"
+            :data-list-key="'vip-' + (book.novelId || book.id)"
             :book="book"
             @open="$router.push(`/h5/book/${book.novelId || book.id}`)"
           />
@@ -141,7 +142,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import BookCard from '../components/BookCard.vue';
@@ -151,6 +152,7 @@ import { canRequestVipContent, shouldCheckVipStatus } from '../services/vipAcces
 import { clearVipReadBooks, vipReadIds } from '../services/vipReadStatus';
 import { fetchMySubscribes } from '../services/subscribe';
 import { useUserStore } from '../stores/user';
+import { useListRestore } from '../composables/useListRestore';
 import { goBack } from '../utils/navigation';
 
 const router = useRouter();
@@ -184,6 +186,8 @@ const statusLoading = ref(shouldCheckVipStatus(userStore.isAuthenticated));
 const statusError = ref(false);
 const pageSize = 20;
 const MAX_FREE_PAGES = 3;
+// 防御：返回定位后的静默刷新最多回溯这么多页
+const MAX_REFRESH_PAGES = 60;
 const hasSubscription = ref(false);
 const isTrial = ref(false);
 let requestVersion = 0;
@@ -367,14 +371,136 @@ async function clearLocalReadBooks() {
   loadNextPage();
 }
 
-onMounted(async () => {
-  if (!shouldCheckVipStatus(isAuthenticated.value)) return;
-  await loadStatus();
-  if (canRequestVipContent(isAuthenticated.value, status.value)) {
-    loadSubscriptionState();
-    if (confirmed.value) loadCategories();
+/**
+ * 返回定位后的静默刷新：按刷新前的条数把书单重新拉一遍（不重置滚动位置）。
+ * 与 loadNextPage 独立实现，避免和 van-list 的自动加载抢同一个 requestVersion。
+ */
+async function refreshBooksKeepingCount() {
+  const target = books.value.length;
+  if (!target) {
+    return;
   }
-});
+  const version = requestVersion + 1;
+  requestVersion = version;
+  const category = selectedCategory.value;
+  const readIds = vipReadIds();
+  const collected = [];
+  const known = new Set();
+  let hidden = 0;
+  let nextPage = 1;
+  let totalCount = 0;
+  let reachedEnd = false;
+  requestInFlight.value = false;
+  loading.value = true;
+  listError.value = false;
+  try {
+    while (collected.length < target && !reachedEnd && nextPage <= MAX_REFRESH_PAGES) {
+      if (!hasSubscription.value && !isTrial.value && nextPage > MAX_FREE_PAGES) {
+        reachedEnd = true;
+        break;
+      }
+      const result = await fetchVipBooks(nextPage, pageSize, category);
+      if (version !== requestVersion || category !== selectedCategory.value) {
+        return;
+      }
+      const incoming = result.records || [];
+      const visible = incoming.filter((book) => !readIds.has(String(bookIdOf(book))));
+      hidden += incoming.length - visible.length;
+      visible.forEach((book) => {
+        const novelId = bookIdOf(book);
+        if (novelId && !known.has(novelId)) {
+          known.add(novelId);
+          collected.push(book);
+        }
+      });
+      totalCount = Number(result.total || 0);
+      const current = Number(result.page || nextPage);
+      const pagesCount = Number(result.pages || 0);
+      reachedEnd = !result.hasMore || current >= pagesCount;
+      nextPage = current + 1;
+    }
+    books.value = collected;
+    total.value = totalCount;
+    hiddenReadCount.value = hidden;
+    page.value = nextPage;
+    finished.value = reachedEnd;
+  } catch {
+    if (version === requestVersion) {
+      listError.value = true;
+    }
+  } finally {
+    if (version === requestVersion) {
+      requestInFlight.value = false;
+      loading.value = false;
+    }
+  }
+}
+
+/**
+ * 进入页面：刷新 VIP 资格 / 订阅状态 / 分类；返回定位时额外按原有条数静默刷新书单。
+ * 首次进入的书单仍由 van-list 自己触发（保持原行为）。
+ */
+async function load({ silent = false } = {}) {
+  if (!shouldCheckVipStatus(isAuthenticated.value)) {
+    statusLoading.value = false;
+    return;
+  }
+  await loadStatus();
+  if (!canRequestVipContent(isAuthenticated.value, status.value)) {
+    return;
+  }
+  loadSubscriptionState();
+  if (confirmed.value) {
+    await loadCategories();
+  }
+  if (silent && confirmed.value && books.value.length) {
+    await refreshBooksKeepingCount();
+  }
+}
+
+function captureState() {
+  return {
+    books: [...books.value],
+    page: page.value,
+    total: total.value,
+    pages: pages.value,
+    finished: finished.value,
+    hiddenReadCount: hiddenReadCount.value,
+    selectedCategory: selectedCategory.value,
+    categories: [...categories.value],
+    hasSubscription: hasSubscription.value,
+    isTrial: isTrial.value,
+    status: { ...status.value },
+    statusError: statusError.value,
+    categoryError: categoryError.value
+  };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.books)) {
+    return false;
+  }
+  books.value = state.books;
+  page.value = Math.max(1, Number(state.page) || 1);
+  total.value = Number(state.total || 0);
+  pages.value = Number(state.pages || 0);
+  finished.value = Boolean(state.finished);
+  hiddenReadCount.value = Number(state.hiddenReadCount || 0);
+  selectedCategory.value = state.selectedCategory || 'all';
+  if (Array.isArray(state.categories) && state.categories.length) {
+    categories.value = state.categories;
+  }
+  hasSubscription.value = Boolean(state.hasSubscription);
+  isTrial.value = Boolean(state.isTrial);
+  status.value = state.status && typeof state.status === 'object' ? state.status : { active: false, vipExpireTime: null };
+  statusError.value = Boolean(state.statusError);
+  categoryError.value = Boolean(state.categoryError);
+  statusLoading.value = false;
+  loading.value = false;
+  return true;
+}
+
+useListRestore({ key: 'vip', capture: captureState, restore: restoreState, load });
 </script>
 
 <style scoped>

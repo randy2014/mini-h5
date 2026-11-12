@@ -17,7 +17,13 @@
 
     <!-- 列表：统一混排（卡片式，参考 VIP 专区精选书单） -->
     <div class="list">
-      <div v-for="item in visible" :key="item.kind + '-' + item.id" class="feed-card" @click="open(item)">
+      <div
+        v-for="item in visible"
+        :key="item.kind + '-' + item.id"
+        :data-list-key="itemAnchor(item)"
+        class="feed-card"
+        @click="open(item)"
+      >
         <div class="fc-cover-wrap">
           <img :src="coverSrc(item) || fallbackCover" :alt="item.title" class="fc-cover-img" @error="handleImgError" />
         </div>
@@ -46,11 +52,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { fetchChannelFeed, mediaFileUrl, subscribeChannel } from '../services/subscribe';
 import { markSubscribeRead, subscribeReadIds } from '../services/subscribeReadStatus';
+import { useListRestore } from '../composables/useListRestore';
 import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { rememberMediaMeta } from '../utils/mediaMetaCache';
 import { goBack } from '../utils/navigation';
@@ -73,6 +80,8 @@ const forceNovelDefaultCover = ref(false);
 const loading = ref(false);
 const page = ref(1);
 const pageSize = 20;
+// 防御：刷新时按已加载页数逐页重拉，页数上限避免异常数据把请求打爆
+const MAX_LOADED_PAGES = 60;
 
 // 响应式已读集合：点击小说标记后即时从列表移除（媒体内容不参与已读过滤）
 const readIds = ref(new Set(subscribeReadIds()));
@@ -123,6 +132,11 @@ function coverSrc(item) {
   return '';
 }
 
+/** 列表项锚点（返回定位用）；同一频道内 kind+id 唯一。 */
+function itemAnchor(item) {
+  return `feed-${item.kind}-${item.id}`;
+}
+
 function open(item) {
   if (restricted.value) {
     showToast('订阅后查看');
@@ -160,31 +174,95 @@ async function onSubscribe() {
   }
 }
 
-async function loadMore() {
-  page.value += 1;
-  await load(true);
+/** 已读隐藏数量按最终列表重算（分页/刷新后不会累加出错）。 */
+function recountHidden() {
+  readHiddenCount.value = feed.value.filter(
+    (item) => item.kind === 'NOVEL' && readIds.value.has(String(item.id))
+  ).length;
 }
 
-async function load(append = false) {
-  loading.value = true;
+/**
+ * 拉最新数据：按「已加载页数」逐页重拉并整体替换。
+ * 正常进入 = 第 1 页；返回定位后的后台刷新 = 已加载的 N 页（保证用户看到的内容都是最新的，
+ * 又不丢掉已下拉出来的分页）。
+ */
+async function load({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   refreshReadIds();
   try {
-    const data = await fetchChannelFeed(channelId, page.value, pageSize);
-    const incoming = data.records || [];
-    const next = append ? feed.value.concat(incoming) : incoming;
-    feed.value = next;
-    total.value = data.total || 0;
-    restricted.value = data.restricted;
-    forceNovelDefaultCover.value = !!data.forceNovelDefaultCover;
-    const novelItems = incoming.filter((i) => i.kind === 'NOVEL');
-    const hidden = novelItems.filter((i) => readIds.value.has(String(i.id))).length;
-    readHiddenCount.value = append ? readHiddenCount.value + hidden : hidden;
+    const pageCount = Math.min(Math.max(1, Number(page.value) || 1), MAX_LOADED_PAGES);
+    const collected = [];
+    let last = null;
+    for (let p = 1; p <= pageCount; p += 1) {
+      last = await fetchChannelFeed(channelId, p, pageSize);
+      collected.push(...(last.records || []));
+    }
+    feed.value = collected;
+    total.value = Number(last?.total || 0);
+    restricted.value = Boolean(last?.restricted);
+    forceNovelDefaultCover.value = Boolean(last?.forceNovelDefaultCover);
+    page.value = pageCount;
+    recountHidden();
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(load);
+async function loadMore() {
+  if (loading.value || !hasMore.value || page.value >= MAX_LOADED_PAGES) {
+    return;
+  }
+  loading.value = true;
+  refreshReadIds();
+  try {
+    const nextPage = page.value + 1;
+    const data = await fetchChannelFeed(channelId, nextPage, pageSize);
+    page.value = nextPage;
+    feed.value = feed.value.concat(data.records || []);
+    total.value = Number(data.total || 0);
+    restricted.value = Boolean(data.restricted);
+    forceNovelDefaultCover.value = Boolean(data.forceNovelDefaultCover);
+    recountHidden();
+  } finally {
+    loading.value = false;
+  }
+}
+
+/** 离开列表时的渲染快照：返回时先按它渲染，高度与离开时一致，滚回原位不会闪顶部。 */
+function captureState() {
+  return {
+    feed: [...feed.value],
+    total: total.value,
+    page: page.value,
+    restricted: restricted.value,
+    forceNovelDefaultCover: forceNovelDefaultCover.value,
+    readHiddenCount: readHiddenCount.value
+  };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.feed)) {
+    return false;
+  }
+  feed.value = state.feed;
+  total.value = Number(state.total || 0);
+  page.value = Math.max(1, Number(state.page) || 1);
+  restricted.value = Boolean(state.restricted);
+  forceNovelDefaultCover.value = Boolean(state.forceNovelDefaultCover);
+  readHiddenCount.value = Number(state.readHiddenCount || 0);
+  refreshReadIds();
+  loading.value = false;
+  return true;
+}
+
+useListRestore({
+  key: `subscribe-channel:${channelId}`,
+  capture: captureState,
+  restore: restoreState,
+  load
+});
 </script>
 
 <style scoped>

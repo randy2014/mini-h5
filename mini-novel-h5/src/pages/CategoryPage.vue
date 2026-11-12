@@ -25,7 +25,14 @@
       </div>
 
       <div class="rank-list">
-        <BookCard v-for="(book, index) in books" :key="book.id" :book="book" :rank="index + 1" @open="openBook" />
+        <BookCard
+          v-for="(book, index) in books"
+          :key="book.id"
+          :data-list-key="'category-' + activeCategoryId + '-' + book.id"
+          :book="book"
+          :rank="index + 1"
+          @open="openBook"
+        />
       </div>
       <van-empty v-if="books.length === 0" description="该分类暂无书籍" />
     </template>
@@ -33,10 +40,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
 import { fetchCategories, fetchCategoryBooks } from '../services/book';
+import { useListRestore } from '../composables/useListRestore';
 
 const router = useRouter();
 const loading = ref(true);
@@ -48,21 +56,55 @@ const activeCategoryName = computed(() => {
   return categories.value.find((item) => item.id === activeCategoryId.value)?.name || '';
 });
 
-onMounted(async () => {
+/** 拉分类与当前分类书单；返回时静默刷新，保留用户选中的分类。 */
+async function load({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
-    categories.value = await fetchCategories();
-    if (categories.value.length) {
-      await selectCategory(categories.value[0]);
+    const list = await fetchCategories();
+    categories.value = Array.isArray(list) ? list : [];
+    const target = categories.value.find((item) => item.id === activeCategoryId.value) || categories.value[0];
+    if (!target) {
+      activeCategoryId.value = null;
+      books.value = [];
+      return;
     }
+    activeCategoryId.value = target.id;
+    books.value = await fetchCategoryBooks(target.id);
   } finally {
     loading.value = false;
   }
-});
+}
 
 async function selectCategory(category) {
+  if (category.id === activeCategoryId.value) {
+    return;
+  }
   activeCategoryId.value = category.id;
   books.value = await fetchCategoryBooks(category.id);
 }
+
+function captureState() {
+  return {
+    categories: [...categories.value],
+    activeCategoryId: activeCategoryId.value,
+    books: [...books.value]
+  };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.books)) {
+    return false;
+  }
+  categories.value = Array.isArray(state.categories) ? state.categories : [];
+  activeCategoryId.value = state.activeCategoryId ?? null;
+  books.value = state.books;
+  loading.value = false;
+  return true;
+}
+
+useListRestore({ key: 'category', capture: captureState, restore: restoreState, load });
 
 function openBook(book) {
   router.push(`/h5/book/${book.id}`);

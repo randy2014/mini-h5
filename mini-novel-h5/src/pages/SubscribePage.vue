@@ -33,7 +33,7 @@
       </div>
 
       <div class="channel-list">
-        <div v-for="c in channels" :key="c.id" class="channel-card" @click="goChannel(c)">
+        <div v-for="c in channels" :key="c.id" :data-list-key="'channel-' + c.id" class="channel-card" @click="goChannel(c)">
           <div class="cover" :class="coverClass(c.id)">{{ c.name.slice(0, 4) }}</div>
           <div class="info">
             <div class="nm">
@@ -63,11 +63,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { useCapability } from '../permission';
 import { fetchChannels, subscribeAll, subscribeChannel } from '../services/subscribe';
+import { useListRestore } from '../composables/useListRestore';
 
 const router = useRouter();
 const { subscribeGate, promptFor, permissionStore } = useCapability();
@@ -134,23 +135,35 @@ async function refreshAfterSubscribe() {
   await load();
 }
 
+/** 拉频道列表（含权限快照）；返回时静默刷新，页面不闪空态。 */
 async function load() {
   try {
+    // 权限快照是唯一判据（登录态 / VIP / 试用 / 订阅 / 余额），页面不再自己拼条件
+    await permissionStore.load();
+    if (!canBrowse.value) {
+      channels.value = [];
+      return;
+    }
     channels.value = await fetchChannels();
   } finally {
     loaded.value = true;
   }
 }
 
-onMounted(async () => {
-  // 权限快照是唯一判据（登录态 / VIP / 试用 / 订阅 / 余额），页面不再自己拼条件
-  await permissionStore.load();
-  if (canBrowse.value) {
-    await load();
-  } else {
-    loaded.value = true;
+function captureState() {
+  return { channels: [...channels.value] };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.channels)) {
+    return false;
   }
-});
+  channels.value = state.channels;
+  loaded.value = true;
+  return true;
+}
+
+useListRestore({ key: 'subscribe-channels', capture: captureState, restore: restoreState, load });
 </script>
 
 <style scoped>

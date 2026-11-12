@@ -10,7 +10,7 @@
       </router-link>
     </header>
 
-    <button v-if="heroBook" class="daily-card" type="button" @click="openBook(heroBook)">
+    <button v-if="heroBook" class="daily-card" type="button" data-list-key="home-hero" @click="openBook(heroBook)">
       <img :src="heroBook.coverUrl || fallbackCover" :alt="heroBook.title" @error="handleImgError" />
       <span>
         <small>今日推荐</small>
@@ -32,7 +32,13 @@
         <h2>继续阅读</h2>
         <span>最近 {{ recentBooks.length }} 本</span>
       </div>
-      <button v-for="item in recentBooks" :key="item.book.id" type="button" @click="continueRead(item)">
+      <button
+        v-for="item in recentBooks"
+        :key="item.book.id"
+        type="button"
+        :data-list-key="'home-recent-' + item.book.id"
+        @click="continueRead(item)"
+      >
         <img :src="item.book.coverUrl || fallbackCover" :alt="item.book.title" @error="handleImgError" />
         <span>
           <strong>{{ item.book.title }}</strong>
@@ -52,10 +58,11 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onMounted, ref } from 'vue';
+import { computed, defineComponent, h, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import BookCard from '../components/BookCard.vue';
 import { fetchHome, fetchHomeSections } from '../services/book';
+import { useListRestore } from '../composables/useListRestore';
 import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { formatTextLineBreaks } from '../utils/text';
 
@@ -107,6 +114,7 @@ const BookSection = defineComponent({
           h('div', { class: 'cover-row' }, props.books.map((book) => h('button', {
             key: book.id,
             type: 'button',
+            'data-list-key': `home-cover-${book.id}`,
             onClick: () => emit('open', book)
           }, [
             h('img', { src: book.coverUrl || fallbackCover, alt: book.title, onError: handleImgError }),
@@ -119,6 +127,7 @@ const BookSection = defineComponent({
         title,
         h('div', { class: 'rank-list' }, props.books.map((book, index) => h(BookCard, {
           key: book.id,
+          'data-list-key': `home-${book.id}`,
           book,
           rank: index + 1,
           onOpen: () => emit('open', book)
@@ -128,7 +137,11 @@ const BookSection = defineComponent({
   }
 });
 
-onMounted(async () => {
+/** 拉首页最新数据（返回时静默刷新，不闪整页 loading）。 */
+async function load({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     try {
       const data = await fetchHomeSections();
@@ -145,7 +158,36 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+
+function captureState() {
+  const current = sections.value;
+  return {
+    sections: {
+      hot: [...(current.hot || [])],
+      completed: [...(current.completed || [])],
+      latest: [...(current.latest || [])],
+      long: [...(current.long || [])]
+    }
+  };
+}
+
+function restoreState(state) {
+  if (!state || !state.sections) {
+    return false;
+  }
+  const saved = state.sections;
+  sections.value = {
+    hot: saved.hot || [],
+    completed: saved.completed || [],
+    latest: saved.latest || [],
+    long: saved.long || []
+  };
+  loading.value = false;
+  return true;
+}
+
+useListRestore({ key: 'home', capture: captureState, restore: restoreState, load });
 
 function openBook(book) {
   router.push(`/h5/book/${book.id}`);

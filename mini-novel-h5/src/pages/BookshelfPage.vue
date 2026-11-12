@@ -14,7 +14,7 @@
         <span>{{ books.length }} 本</span>
       </div>
       <div v-for="book in sortedBooks" :key="book.id" class="bookshelf-row">
-        <BookCard :book="book" @open="openBook" />
+        <BookCard :data-list-key="'shelf-' + book.id" :book="book" @open="openBook" />
         <div class="bookshelf-progress">
           <span>{{ progressText(book) }}</span>
           <small>{{ progressTime(book) }}</small>
@@ -32,12 +32,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 import BookCard from '../components/BookCard.vue';
 import { fetchBookshelf, removeBookshelf } from '../services/user';
 import { useUserStore } from '../stores/user';
+import { useListRestore } from '../composables/useListRestore';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -50,22 +51,37 @@ const sortedBooks = computed(() => {
   });
 });
 
-onMounted(() => {
-  if (!userStore.isAuthenticated) {
+/** 拉书架最新数据；返回时静默刷新。 */
+async function load({ silent = false } = {}) {
+  if (!isAuthenticated.value) {
     loading.value = false;
+    books.value = [];
     return;
   }
-  loadBookshelf();
-});
-
-async function loadBookshelf() {
-  loading.value = true;
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     books.value = await fetchBookshelf();
   } finally {
     loading.value = false;
   }
 }
+
+function captureState() {
+  return { authenticated: isAuthenticated.value, books: [...books.value] };
+}
+
+function restoreState(state) {
+  if (!state || !Array.isArray(state.books) || Boolean(state.authenticated) !== isAuthenticated.value) {
+    return false;
+  }
+  books.value = state.books;
+  loading.value = false;
+  return true;
+}
+
+useListRestore({ key: 'bookshelf', capture: captureState, restore: restoreState, load });
 
 function openBook(book) {
   router.push(`/h5/book/${book.id}`);
