@@ -69,6 +69,7 @@ import { showToast } from 'vant';
 import { useCapability } from '../permission';
 import { fetchChannels, subscribeAll, subscribeChannel } from '../services/subscribe';
 import { useListRestore } from '../composables/useListRestore';
+import { rememberChannelName } from '../utils/channelMetaCache';
 
 const router = useRouter();
 const { subscribeGate, promptFor, permissionStore } = useCapability();
@@ -106,6 +107,8 @@ function coverClass(id) {
 }
 
 function goChannel(c) {
+  // 频道详情页没有频道名（feed 接口不下发），从列表进入时先缓存名称，标题立即正确
+  rememberChannelName(c.id, c.name);
   router.push(`/h5/subscribe/${c.id}`);
 }
 
@@ -145,6 +148,8 @@ async function load() {
       return;
     }
     channels.value = await fetchChannels();
+    // 顺手记住频道名，供频道详情页标题直接使用（含直接打开详情页的兜底场景）
+    (Array.isArray(channels.value) ? channels.value : []).forEach((c) => rememberChannelName(c.id, c.name));
   } finally {
     loaded.value = true;
   }

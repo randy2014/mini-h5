@@ -55,9 +55,10 @@
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
-import { fetchChannelFeed, mediaFileUrl, subscribeChannel } from '../services/subscribe';
+import { fetchChannelFeed, fetchChannels, mediaFileUrl, subscribeChannel } from '../services/subscribe';
 import { markSubscribeRead, subscribeReadIds } from '../services/subscribeReadStatus';
 import { useListRestore } from '../composables/useListRestore';
+import { readChannelName, rememberChannelName } from '../utils/channelMetaCache';
 import { FALLBACK_COVER, handleImgError } from '../utils/cover';
 import { rememberMediaMeta } from '../utils/mediaMetaCache';
 import { goBack } from '../utils/navigation';
@@ -71,7 +72,8 @@ function goBackToParent() {
 }
 
 const channelId = Number(route.params.id);
-const channelName = ref('频道详情');
+// 频道名不在 feed 接口里：优先用列表页缓存的名称，直接打开时再由 ensureChannelName() 兜底查询
+const channelName = ref(readChannelName(channelId) || '频道详情');
 const feed = ref([]);
 const total = ref(0);
 const restricted = ref(false);
@@ -174,6 +176,27 @@ async function onSubscribe() {
   }
 }
 
+/**
+ * 频道名兜底：标题不能一直是「频道详情」。
+ * 有缓存直接用；缓存缺失（直接打开/刷新/换设备）时查一次频道列表补上，失败则保留通用标题。
+ */
+async function ensureChannelName() {
+  if (channelName.value && channelName.value !== '频道详情') {
+    return;
+  }
+  try {
+    const list = await fetchChannels();
+    const found = (Array.isArray(list) ? list : []).find((c) => Number(c.id) === channelId);
+    const name = String(found?.name || '').trim();
+    if (name) {
+      channelName.value = name;
+      rememberChannelName(channelId, name);
+    }
+  } catch {
+    // 拉不到名称不影响内容浏览，保留通用标题
+  }
+}
+
 /** 已读隐藏数量按最终列表重算（分页/刷新后不会累加出错）。 */
 function recountHidden() {
   readHiddenCount.value = feed.value.filter(
@@ -191,6 +214,8 @@ async function load({ silent = false } = {}) {
     loading.value = true;
   }
   refreshReadIds();
+  // 标题不阻塞内容：缺名称时后台补一次
+  ensureChannelName();
   try {
     const pageCount = Math.min(Math.max(1, Number(page.value) || 1), MAX_LOADED_PAGES);
     const collected = [];
@@ -233,6 +258,7 @@ async function loadMore() {
 /** 离开列表时的渲染快照：返回时先按它渲染，高度与离开时一致，滚回原位不会闪顶部。 */
 function captureState() {
   return {
+    channelName: channelName.value,
     feed: [...feed.value],
     total: total.value,
     page: page.value,
@@ -247,6 +273,9 @@ function restoreState(state) {
     return false;
   }
   feed.value = state.feed;
+  if (state.channelName) {
+    channelName.value = state.channelName;
+  }
   total.value = Number(state.total || 0);
   page.value = Math.max(1, Number(state.page) || 1);
   restricted.value = Boolean(state.restricted);

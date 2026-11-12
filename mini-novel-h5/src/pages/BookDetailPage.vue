@@ -102,7 +102,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { fetchBook, fetchChapters } from '../services/book';
@@ -116,6 +116,10 @@ const PAGE_SIZE = 50;
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
+// 书号在 setup 固定：目录是循环异步加载的，离开页面后 route.params.id 会变成 undefined，
+// 继续用 route.params.id 会打出 /api/novels/undefined/chapters 这类脏请求
+const bookId = route.params.id;
+let disposed = false;
 const loading = ref(true);
 const book = ref({});
 const chapters = ref([]);
@@ -168,7 +172,7 @@ const displayedChapters = computed(() => {
 
 onMounted(async () => {
   try {
-    book.value = await fetchBook(route.params.id);
+    book.value = await fetchBook(bookId);
     const progress = readProgress();
     const targetChapterId = Number(route.query.chapterId || progress.chapterId || 0);
     activeChapterId.value = targetChapterId;
@@ -181,11 +185,16 @@ onMounted(async () => {
     pendingScrollChapterId.value = targetChapterId;
   } finally {
     loading.value = false;
-    if (pendingScrollChapterId.value) {
+    if (!disposed && pendingScrollChapterId.value) {
       scrollToChapter(pendingScrollChapterId.value);
       pendingScrollChapterId.value = 0;
     }
   }
+});
+
+// 离开页面后停止目录循环加载，避免继续发请求、也避免动新页面的滚动
+onBeforeUnmount(() => {
+  disposed = true;
 });
 
 function resetChapters() {
@@ -197,7 +206,7 @@ function resetChapters() {
 }
 
 async function loadNextChapterPage() {
-  if (chapterFinished.value || chapterRequestInFlight.value) {
+  if (disposed || chapterFinished.value || chapterRequestInFlight.value) {
     chapterLoading.value = false;
     return;
   }
@@ -205,7 +214,10 @@ async function loadNextChapterPage() {
   chapterLoading.value = true;
   chapterError.value = false;
   try {
-    const data = await fetchChapters(route.params.id, pageNo.value, PAGE_SIZE);
+    const data = await fetchChapters(bookId, pageNo.value, PAGE_SIZE);
+    if (disposed) {
+      return;
+    }
     const incoming = data?.records || [];
     const knownIds = new Set(chapters.value.map((chapter) => chapter.id));
     incoming.forEach((chapter) => {
@@ -228,13 +240,13 @@ async function loadNextChapterPage() {
 }
 
 async function loadUntilChapter(predicate) {
-  while (!chapters.value.some(predicate) && !chapterFinished.value && !chapterError.value) {
+  while (!disposed && !chapters.value.some(predicate) && !chapterFinished.value && !chapterError.value) {
     await loadNextChapterPage();
   }
 }
 
 async function loadAllChapterPages() {
-  while (!chapterFinished.value && !chapterError.value) {
+  while (!disposed && !chapterFinished.value && !chapterError.value) {
     await loadNextChapterPage();
   }
 }
@@ -310,7 +322,7 @@ function saveProgress(chapter) {
 
 function readProgress() {
   try {
-    return JSON.parse(localStorage.getItem(progressKey(route.params.id)) || '{}');
+    return JSON.parse(localStorage.getItem(progressKey(bookId)) || '{}');
   } catch {
     return {};
   }
